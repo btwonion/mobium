@@ -20,11 +20,16 @@ Requires JDK 25 (same as CI).
 ```bash
 ./gradlew build                            # all targets; what CI runs. Jars land in versions/<target>/build/libs/
 ./gradlew :26.3-fabric:build               # a single target
+./gradlew :26.3-fabric:test                # unit tests only (src/test, pure Kotlin)
 ./gradlew :26.3-fabric:runClient           # dev client, Fabric (Sodium, Iris, EMF, ETF on the dev classpath)
 ./gradlew :26.3-neoforge:runMainClient     # dev client, NeoForge (game dir: run/)
 ./gradlew :26.3-fabric:runClientGameTest   # Fabric client gametests (scene smoke tests, screenshots)
 ./gradlew "Set active project to 26.3-neoforge"   # switch the version the src/ comments are written for
 ```
+
+On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game: locally a window opens and
+closes by itself, CI runs it under `xvfb-run`. Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);
+screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`.
 
 ## Ground rules
 

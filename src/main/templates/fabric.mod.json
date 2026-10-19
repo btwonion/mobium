@@ -1,0 +1,43 @@
+{
+    "schemaVersion": 1,
+    "id": "${mod_id}",
+    "version": "${mod_version}",
+    "name": "${mod_name}",
+    "description": "${mod_description}",
+    "contact": {
+        "issues": "https://github.com/${repo}/issues",
+        "sources": "https://github.com/${repo}"
+    },
+    "authors": [
+        "${mod_author}"
+    ],
+    "icon": "${icon}",
+    "license": [
+        "${mod_license}"
+    ],
+    "environment": "client",
+    "depends": {
+        "fabricloader": ">=${fabric_loader}",
+        "fabric-language-kotlin": ">=${flk}",
+        "fabric-api": ">=${fapi}",
+        "minecraft": "${mc}"
+    },
+    "suggests": {
+        "modmenu": "${modmenu}"
+    },
+    "entrypoints": {
+        "client": [
+            {
+                "adapter": "kotlin",
+                "value": "dev.nyon.mobium.MobiumEntrypoint"
+            }
+        ]
+    },
+    "custom": {
+        "modmenu": {
+            "links": {
+                "modmenu.discord": "https://discord.gg/pmHTtZnMd3"
+            }
+        }
+    }
+}

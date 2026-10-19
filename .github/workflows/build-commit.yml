@@ -1,0 +1,89 @@
+name: build-commit
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+      - "COPYING"
+      - ".gitignore"
+      - "changelog.md"
+      - ".editorconfig"
+      - "src/main/resources/assets/*/lang/**"
+      - "docs/**"
+      - "media/**"
+  pull_request:
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+      - "COPYING"
+      - ".gitignore"
+      - "changelog.md"
+      - ".editorconfig"
+      - "src/main/resources/assets/*/lang/**"
+      - "docs/**"
+      - "media/**"
+  workflow_dispatch:
+
+concurrency:
+  group: build-commit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: ${{ matrix.version }} / ${{ matrix.loader }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "26.3"
+            loader: fabric
+          - version: "26.3"
+            loader: neoforge
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: 25
+          distribution: temurin
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+      # Fabric client gametests run inside `check`; they need a display, provided by xvfb with Mesa's software OpenGL.
+      - name: Install xvfb and Mesa
+        if: matrix.loader == 'fabric'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
+      - name: Build, unit tests and client gametests
+        if: matrix.loader == 'fabric'
+        run: xvfb-run -a ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build --stacktrace
+      - name: Build and unit tests
+        if: matrix.loader != 'fabric'
+        run: ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build --stacktrace
+      - name: Store gametest screenshots
+        if: always() && matrix.loader == 'fabric'
+        uses: actions/upload-artifact@v7
+        with:
+          name: gametest-screenshots-${{ matrix.version }}-${{ matrix.loader }}
+          if-no-files-found: warn
+          path: versions/${{ matrix.version }}-${{ matrix.loader }}/build/run/clientGameTest/screenshots/
+      - name: Store test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-${{ matrix.version }}-${{ matrix.loader }}
+          if-no-files-found: warn
+          path: |
+            versions/${{ matrix.version }}-${{ matrix.loader }}/build/reports/
+            versions/${{ matrix.version }}-${{ matrix.loader }}/build/test-results/
+            versions/${{ matrix.version }}-${{ matrix.loader }}/build/run/clientGameTest/logs/
+      - name: Store build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobium-${{ matrix.version }}-${{ matrix.loader }}
+          path: versions/${{ matrix.version }}-${{ matrix.loader }}/build/libs/*.jar
