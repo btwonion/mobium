@@ -3,6 +3,7 @@
 import me.modmuss50.mpp.platforms.modrinth.ModrinthEnvironment
 import net.fabricmc.loom.api.LoomGradleExtensionAPI
 import net.fabricmc.loom.api.fabricapi.FabricApiExtension
+import net.fabricmc.loom.task.AbstractRunTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
@@ -113,6 +114,12 @@ if (isFabric) {
 
     tasks.named("check") {
         dependsOn("runClientGameTest")
+    }
+
+    // CI runs Gradle inside its own 24-bit xvfb-run (build-commit.yml); Loom would otherwise wrap client runs in another
+    // xvfb-run with an 8-bit screen, where Minecraft finds no GLX visual.
+    tasks.withType<AbstractRunTask>().configureEach {
+        useXvfb = false
     }
 }
 

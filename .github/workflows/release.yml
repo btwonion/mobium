@@ -6,6 +6,7 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     name: Release
     permissions: write-all
 
@@ -23,7 +24,7 @@ jobs:
       - name: Install xvfb and Mesa
         run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
       - name: Build with Gradle
-        run: xvfb-run -a ./gradlew build --stacktrace
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew build --stacktrace
       - name: Release with Gradle
         run: ./gradlew releaseMod --stacktrace
         env:
