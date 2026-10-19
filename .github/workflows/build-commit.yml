@@ -34,6 +34,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     name: ${{ matrix.version }} / ${{ matrix.loader }}
     strategy:
       fail-fast: false
@@ -56,12 +57,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
       # Fabric client gametests run inside `check`; they need a display, provided by xvfb with Mesa's software OpenGL.
+      # The screen must be 24-bit: on xvfb-run's default 8-bit screen Minecraft finds no GLX visual and hangs on its
+      # "no graphics backend" screen.
       - name: Install xvfb and Mesa
         if: matrix.loader == 'fabric'
         run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
       - name: Build, unit tests and client gametests
         if: matrix.loader == 'fabric'
-        run: xvfb-run -a ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build --stacktrace
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build --stacktrace
       - name: Build and unit tests
         if: matrix.loader != 'fabric'
         run: ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build --stacktrace
