@@ -1,3 +1,12 @@
 {
-    "mobium.name": "Mobium"
+    "mobium.name": "Mobium",
+    "mobium.bench.started": "Benchmark %s (%s): %s s Aufwärmen, danach %s s Aufnahme",
+    "mobium.bench.finished": "Benchmark %s (%s): %s Frames, Ø %s FPS, 1%%-Low %s FPS, Ø %s ms, p95 %s ms",
+    "mobium.bench.sections": "Ø ms pro Frame: Extract %s, Submit %s, Pose %s, Tessellate %s, Prepare %s, Draw %s",
+    "mobium.bench.saved": "Gespeichert: %s",
+    "mobium.bench.stopped": "Benchmark abgebrochen, nichts wurde gespeichert",
+    "mobium.bench.idle": "Es läuft kein Benchmark",
+    "mobium.bench.busy": "Es läuft bereits ein Benchmark; abbrechen mit /mobium stop",
+    "mobium.bench.empty": "Der Benchmark hat keine Frames aufgezeichnet",
+    "mobium.bench.failed": "Die Benchmark-Ergebnisse konnten nicht gespeichert werden: %s"
 }

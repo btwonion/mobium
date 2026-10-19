@@ -1,6 +1,7 @@
 @file:Suppress("SpellCheckingInspection", "UnstableApiUsage", "RedundantNullableReturnType")
 
 import me.modmuss50.mpp.platforms.modrinth.ModrinthEnvironment
+import net.fabricmc.loom.api.LoomGradleExtensionAPI
 import net.fabricmc.loom.api.fabricapi.FabricApiExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -100,6 +101,13 @@ if (isFabric) {
             modId = "mobium-test"
             eula = true
             enableGameTests = false
+        }
+    }
+
+    // BenchmarkScenesGameTest installs the benchmark datapack straight from the repository.
+    extensions.configure<LoomGradleExtensionAPI>("loom") {
+        runConfigs.named("clientGameTest") {
+            property("mobium.benchmarkPack", rootDir.resolve("benchmark/mobium-bench").absolutePath)
         }
     }
 
