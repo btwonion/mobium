@@ -3,9 +3,12 @@ package dev.nyon.mobium.test
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext
+import dev.nyon.mobium.cache.ChestPrototype
+import dev.nyon.mobium.config.config
 import dev.nyon.mobium.debug.DebugLines
 import dev.nyon.mobium.debug.Sections
 import net.minecraft.client.Minecraft
+import net.minecraft.client.Options
 import net.minecraft.client.gui.components.debug.DebugScreenEntries
 import net.minecraft.client.gui.components.debug.DebugScreenEntryStatus
 import net.minecraft.core.BlockPos
@@ -16,6 +19,8 @@ import net.minecraft.tags.TagKey
 import net.minecraft.world.entity.decoration.ItemFrame
 import net.minecraft.world.level.Level
 import net.minecraft.world.scores.ScoreHolder
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.copyTo
@@ -41,7 +46,12 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }.create().use { singleplayer ->
             installPack(singleplayer, pack)
             checkOriginIsClear(singleplayer)
-            context.runOnClient<RuntimeException> { if (!it.gui.hud.isHidden) it.gui.hud.toggle() }
+            context.runOnClient<RuntimeException> {
+                if (!it.gui.hud.isHidden) it.gui.hud.toggle()
+                // As in the protocol: benchmarks must not stop at vanilla's default 120 FPS cap.
+                it.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
+                it.options.enableVsync().set(false)
+            }
 
             for (scene in SCENES) {
                 singleplayer.server.runCommand("execute as @a at @s run function $NAMESPACE:$scene")
@@ -49,7 +59,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 singleplayer.connection.waitForChunksRender()
                 if (scene == "map_wall") context.waitFor({ mapsSynced(it) }, MAP_SYNC_TIMEOUT_TICKS)
                 context.waitTicks(SETTLE_TICKS)
-                context.takeScreenshot("scene_$scene")
+                val vanilla = context.takeScreenshot("scene_$scene")
+                if (scene == "storage_room") checkChestPrototype(context, vanilla)
             }
 
             checkBenchCommand(context)
@@ -72,20 +83,63 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         context.runOnClient<RuntimeException> { it.debugEntries.setStatus(DebugLines.ID, DebugScreenEntryStatus.NEVER) }
     }
 
+    /**
+     * M3: switches the chest prototype on in `storage_room`, checks that it caches and draws all chests, and compares
+     * the picture with the vanilla screenshot taken just before. Also logs a short benchmark with and without it.
+     */
+    private fun checkChestPrototype(context: ClientGameTestContext, vanilla: Path) {
+        context.runOnClient<RuntimeException> {
+            config.cache.prototype = true
+            ChestPrototype.setActive(true)
+        }
+        context.waitTicks(SETTLE_TICKS)
+        context.runOnClient<RuntimeException> {
+            check(ChestPrototype.active) { "The chest prototype did not start: ${ChestPrototype.unavailableReason()}" }
+            check(ChestPrototype.cachedCount == CHESTS) { "Expected $CHESTS cached chests, got ${ChestPrototype.cachedCount}" }
+            check(ChestPrototype.lastDrawn == CHESTS) { "Expected $CHESTS drawn chests, got ${ChestPrototype.lastDrawn}" }
+        }
+        val cached = context.takeScreenshot("scene_storage_room_chest_prototype")
+        ScreenshotDiff.compare(vanilla, cached).also { diff ->
+            LOGGER.info("Chest prototype screenshot diff: {}", diff)
+            check(diff.differingFraction <= MAX_DIFFERING_FRACTION) {
+                "The chest prototype changes the picture: $diff (see ${diff.diffImage})"
+            }
+        }
+
+        val withCache = runBench(context, "storage_room")
+        context.runOnClient<RuntimeException> { ChestPrototype.setActive(false) }
+        val withoutCache = runBench(context, "storage_room")
+        LOGGER.info(
+            "storage_room first look: vanilla {} ms ({} FPS), chest prototype {} ms ({} FPS)",
+            withoutCache.getValue("avg_ms"), withoutCache.getValue("avg_fps"),
+            withCache.getValue("avg_ms"), withCache.getValue("avg_fps")
+        )
+        check(withCache.getValue("setup").endsWith("+chestcache")) { "Setup should name the prototype: $withCache" }
+        context.runOnClient<RuntimeException> { config.cache.prototype = false }
+    }
+
+    /** Runs `/mobium bench <scene>` for [BENCH_SECONDS] and returns its row of summary.csv. */
+    private fun runBench(context: ClientGameTestContext, scene: String): Map<String, String> {
+        val summary = benchDirectory(context).resolve("summary.csv")
+        val rowsBefore = if (Files.exists(summary)) Files.readAllLines(summary).size else 1
+        context.runOnClient<RuntimeException> {
+            checkNotNull(it.player).connection.sendUnattendedCommand("mobium bench $scene $BENCH_SECONDS", null)
+        }
+        context.waitFor(
+            { Files.exists(summary) && Files.readAllLines(summary).size > rowsBefore },
+            (BENCH_SECONDS + 5 + 10) * 20
+        )
+        val lines = Files.readAllLines(summary)
+        return lines.first().split(',').zip(lines.last().split(',')).toMap()
+    }
+
+    private fun benchDirectory(context: ClientGameTestContext): Path =
+        context.computeOnClient<Path, RuntimeException> { it.gameDirectory.toPath().resolve("mobium-bench") }
+
     /** Runs `/mobium bench` on the last scene (live mobs) and checks the files it writes. */
     private fun checkBenchCommand(context: ClientGameTestContext) {
-        val directory = context.computeOnClient<Path, RuntimeException> { it.gameDirectory.toPath().resolve("mobium-bench") }
-        val summary = directory.resolve("summary.csv")
-        Files.deleteIfExists(summary)
-
-        context.runOnClient<RuntimeException> {
-            checkNotNull(it.player).connection.sendUnattendedCommand("mobium bench mob_pen_live $BENCH_SECONDS", null)
-        }
-        context.waitFor({ Files.exists(summary) }, (BENCH_SECONDS + 5 + 10) * 20)
-
-        val lines = Files.readAllLines(summary)
-        check(lines.size == 2) { "summary.csv should have a header and one row, has ${lines.size} lines" }
-        val row = lines[0].split(',').zip(lines[1].split(',')).toMap()
+        val directory = benchDirectory(context)
+        val row = runBench(context, "mob_pen_live")
         check(row.getValue("scene") == "mob_pen_live") { "Unexpected scene in $row" }
         check(row.getValue("frames").toInt() > 0) { "No frames recorded: $row" }
         check(row.getValue("entities").toInt() >= MOBS) { "Expected at least $MOBS entities: $row" }
@@ -160,6 +214,13 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         const val MOBS = 500
         const val BENCH_SECONDS = 5
         const val MAP_SYNC_TIMEOUT_TICKS = 600
+        const val CHESTS = 1000
+
+        // Cached chests are drawn from section-local vertices with the section origin in the model-view matrix, so
+        // positions differ from vanilla's by float rounding at most; allow a handful of edge pixels.
+        const val MAX_DIFFERING_FRACTION = 0.001
+
+        val LOGGER: Logger = LoggerFactory.getLogger("Mobium")
 
         // Must match X0 / Z0 in benchmark/generate.py.
         val ORIGIN = BlockPos(-3840, -60, -2816)

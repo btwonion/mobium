@@ -1,6 +1,7 @@
 package dev.nyon.mobium.bench
 
 import dev.nyon.mobium.Mobium
+import dev.nyon.mobium.cache.ChestPrototype
 import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
@@ -8,6 +9,7 @@ import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.debug.Sections
 import net.minecraft.SharedConstants
 import net.minecraft.client.Minecraft
+import net.minecraft.client.Options
 import net.minecraft.network.chat.Component
 import java.io.IOException
 import java.nio.file.Files
@@ -52,7 +54,10 @@ object FrameRecorder {
         Sections.endFrame(phase != Phase.IDLE)
         val previous = lastFrameStart
         lastFrameStart = now
-        if (phase == Phase.IDLE || previous == 0L) return
+        if (phase == Phase.IDLE) return
+        // Nobody touches the game during a run; without this vanilla caps the frame rate after 60 s of inactivity.
+        Minecraft.getInstance().framerateLimitTracker.onInputReceived()
+        if (previous == 0L) return
 
         if (phase == Phase.WARMUP) {
             if (now >= phaseEndNanos) {
@@ -87,6 +92,10 @@ object FrameRecorder {
         if (hudToggled) hud.toggle()
 
         chat(Component.translatable("mobium.bench.started", this.scene, this.setup, WARMUP_SECONDS, seconds))
+        val options = Minecraft.getInstance().options
+        if (options.enableVsync().get() || options.framerateLimit().get() < Options.UNLIMITED_FRAMERATE_CUTOFF) {
+            chat(Component.translatable("mobium.bench.capped", options.framerateLimit().get(), options.enableVsync().get()))
+        }
         return true
     }
 
@@ -201,7 +210,7 @@ object FrameRecorder {
         val header = buildString {
             append("timestamp,scene,setup,seconds,frames,avg_fps,low1_fps,avg_ms,p95_ms")
             for (name in Sections.NAMES) append(",${name}_ms")
-            append(",entities,block_entities,minecraft,mobium,loader,backend,gpu\n")
+            append(",entities,block_entities,framerate_limit,vsync,minecraft,mobium,loader,backend,gpu\n")
         }
         val capabilities = Capabilities.current
         val row = buildString {
@@ -209,6 +218,10 @@ object FrameRecorder {
             append(",${fmt(summary.avgMs, 4)},${fmt(summary.p95Ms, 4)}")
             for (mean in sectionMeans) append(",${fmt(mean, 4)}")
             append(",$entities,$blockEntities")
+            val options = Minecraft.getInstance().options
+            val limit = options.framerateLimit().get()
+            append(",${if (limit >= Options.UNLIMITED_FRAMERATE_CUTOFF) "unlimited" else limit.toString()}")
+            append(",${options.enableVsync().get()}")
             append(",${csv(SharedConstants.getCurrentVersion().name())}")
             append(",${csv(Compat.modVersion(Mobium.MOD_ID) ?: "")}")
             append(",${Compat.LOADER}")
@@ -219,7 +232,10 @@ object FrameRecorder {
         Files.writeString(file, row, StandardOpenOption.APPEND)
     }
 
-    /** The setup name for the file: base renderer, Iris with an active pack, EMF, and Fresh Animations if selected. */
+    /**
+     * The setup name for the file: base renderer, Iris with an active pack, EMF, Fresh Animations if selected, and the
+     * Mobium features that are on.
+     */
     private fun detectSetup(): String {
         val parts = ArrayList<String>()
         parts += if (Compat.isLoaded(CompatMod.SODIUM)) "sodium" else "vanilla"
@@ -227,6 +243,7 @@ object FrameRecorder {
         if (Compat.isLoaded(CompatMod.EMF)) parts += "emf"
         val packs = Minecraft.getInstance().resourcePackRepository.selectedIds
         if (packs.any { "fresh" in it.lowercase(Locale.ROOT) }) parts += "fa"
+        if (ChestPrototype.active) parts += "chestcache"
         return parts.joinToString("+")
     }
 

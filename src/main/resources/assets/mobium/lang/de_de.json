@@ -8,5 +8,13 @@
     "mobium.bench.idle": "Es läuft kein Benchmark",
     "mobium.bench.busy": "Es läuft bereits ein Benchmark; abbrechen mit /mobium stop",
     "mobium.bench.empty": "Der Benchmark hat keine Frames aufgezeichnet",
-    "mobium.bench.failed": "Die Benchmark-Ergebnisse konnten nicht gespeichert werden: %s"
+    "mobium.bench.failed": "Die Benchmark-Ergebnisse konnten nicht gespeichert werden: %s",
+    "key.category.mobium.main": "Mobium",
+    "key.mobium.toggle_chest_prototype": "Truhen-Cache-Prototyp umschalten",
+    "mobium.prototype.on": "Mobium Truhen-Cache-Prototyp: an",
+    "mobium.prototype.off": "Mobium Truhen-Cache-Prototyp: aus",
+    "mobium.prototype.unavailable.config": "Der Mobium Truhen-Cache-Prototyp ist aus; setze cache.prototype in config/mobium.json auf true",
+    "mobium.prototype.unavailable.backend": "Der Mobium Truhen-Cache-Prototyp läuft nur mit OpenGL",
+    "mobium.prototype.unavailable.shader_pack": "Der Mobium Truhen-Cache-Prototyp läuft nicht mit einem Shaderpack",
+    "mobium.bench.capped": "Die Bildrate ist begrenzt (max. Bildrate %s, VSync %s); stelle die max. Bildrate auf Unbegrenzt und VSync aus, sonst enden die Ergebnisse an der Grenze"
 }

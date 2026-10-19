@@ -29,7 +29,8 @@ Requires JDK 25 (same as CI).
 
 In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark (`/mobium stop` aborts), scenes come from the
 `benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
-shows the stage timers. Protocol and results: `docs/benchmarks.md`.
+shows the stage timers. Protocol and results: `docs/benchmarks.md`. The M3 chest prototype is enabled with
+`"cache": {"prototype": true}` in `config/mobium.json` and toggled live with `]`.
 
 On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game: locally a window opens and
 closes by itself, CI runs it under `xvfb-run`. Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);

@@ -8,12 +8,16 @@
         "defaultRequire": 1
     },
     "client": [
+        "BlockEntityRenderDispatcherMixin",
+        "ClientChunkCacheMixin",
         "DebugScreenEntriesAccessor",
         "LevelExtractorMixin",
         "LevelRendererMixin",
         "MinecraftMixin",
         "ModelFeatureRendererMixin",
         "ModelSubmitMixin",
-        "PreparedFrameMixin"
+        "PreparedFrameMixin",
+        "RenderTypeFeatureRendererInvoker",
+        "RenderTypeFeatureRendererMixin"
     ]
 }

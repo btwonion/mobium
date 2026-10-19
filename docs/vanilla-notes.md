@@ -488,3 +488,26 @@ Open points for later milestones (not answered by reading code):
 - Item frames only take the map path (`ItemFrameRenderState.mapId`) when the client has the map's data
   (`ItemFrameRenderer.extractRenderState` → `level.getMapData`); otherwise the map renders as an item.
 - `pack.mcmeta` for 26.3 data packs: `"min_format": 121, "max_format": 121`.
+
+---
+
+## 12. Frame-rate limits that distort measurements
+
+- `Options.framerateLimit()` defaults to 120; `Options.UNLIMITED_FRAMERATE_CUTOFF` (260) means unlimited.
+- `FramerateLimitTracker.getThrottleReason()`: with `inactivityFpsLimit` = AFK (default) the limit drops to 30 FPS after
+  60 s without input and to 10 FPS after 10 min (`onInputReceived()` resets it); an iconified window, or an unfocused
+  exclusive-fullscreen one, runs at 10 FPS. `/mobium bench` resets the idle timer every frame while it records.
+
+## 13. Capturing an object through vanilla (M3)
+
+- `SubmitNodeStorage` can be instantiated and used as a private collector; `drainPhases` hands over each non-empty
+  phase and `FeatureRenderPhase.sortInto(Output)` empties it into any `FeatureRenderPhase.Output`.
+- `RenderTypeFeatureRenderer.buildGroup(FeatureFrameContext, List)` (protected, reached with an `@Invoker`) runs a
+  feature renderer's own vertex writing; `ModelFeatureRenderer.buildGroup` ignores the context and calls
+  `prepareModel` per submit. Redirecting `getVertexBuilder` at its head hands it any `VertexConsumer`
+  (`new BufferBuilder(ByteBufferBuilder, PrimitiveTopology, VertexFormat)` → `build()` → `MeshData`).
+- NeoForge adds `tryExtractRenderState(…, Frustum)` and deprecates the vanilla overload, which forwards to it; vanilla's
+  `LevelExtractor` calls the new one (culling by `getRenderBoundingBox`), Sodium the old one.
+- Light reaching a block entity: `ClientChunkCache.onLightUpdate` fires for sections the client light engine changed
+  (`LayerLightSectionStorage.swapSectionMap`), not for section data the server sends (`queueSectionData`); those
+  only mark sections dirty for a rebuild, and only when the packet asks for it.

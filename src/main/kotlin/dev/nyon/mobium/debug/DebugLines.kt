@@ -1,5 +1,6 @@
 package dev.nyon.mobium.debug
 
+import dev.nyon.mobium.cache.ChestPrototype
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer
 import net.minecraft.client.gui.components.debug.DebugScreenEntry
 import net.minecraft.resources.Identifier
@@ -34,6 +35,7 @@ object DebugLines : DebugScreenEntry {
             "Mobium prepare ${ms(Sections.PREPARE)} | draw ${ms(Sections.DRAW)} ms" +
                 " | ${Sections.averageEntities()} entities, ${Sections.averageBlockEntities()} block entities"
         )
+        ChestPrototype.debugLine()?.let(displayer::addLine)
     }
 
     private fun ms(section: Int) = String.format(Locale.ROOT, "%.2f", Sections.averageMillis(section))
