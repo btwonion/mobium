@@ -22,6 +22,10 @@ Read this first when picking the work up in a new session.
   Merge in order with merge commits, not squash, so the stack stays intact. After a merge, retarget the next PR to
   `main` (`gh pr edit <n> --base main`); retargeting does not trigger CI, a push or a close/reopen does. Merging is
   Anton's call.
+- **CI:** the first runs hung in the Fabric gametests, because Loom's own `xvfb-run` uses an 8-bit screen without
+  GLX. Fixed in #2 (commit `52eb0d8`: Loom's wrapper off, a 24-bit `xvfb-run` in the workflow, 45-minute job
+  timeout) and merged up into #3 and #4; `main` gets it when #2 is merged. If CI hangs or fails again, read the job log
+  first (`gh run view --log`).
 - **Done:**
   - M0 and M1;
   - the code of M2: timers, `/mobium bench`, `/mobium suite`, scenes, protocol;
