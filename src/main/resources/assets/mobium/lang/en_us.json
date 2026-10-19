@@ -16,5 +16,19 @@
     "mobium.prototype.unavailable.config": "Mobium chest cache prototype is off; set cache.prototype to true in config/mobium.json",
     "mobium.prototype.unavailable.backend": "Mobium chest cache prototype only runs on OpenGL",
     "mobium.prototype.unavailable.shader_pack": "Mobium chest cache prototype does not run with a shader pack",
-    "mobium.bench.capped": "Frame rate is capped (max framerate %s, VSync %s); set max framerate to Unlimited and VSync off, or the results stop at the cap"
+    "mobium.bench.capped": "Frame rate is capped (max framerate %s, VSync %s); set max framerate to Unlimited and VSync off, or the results stop at the cap",
+    "mobium.suite.started": "Benchmark suite: %s scenes × %s runs of %s s, about %s min. Do not touch the game until it reports the medians.",
+    "mobium.suite.gatea_started": "Gate A: storage_room, %s runs of %s s each with the chest prototype off and on, about %s min. Do not touch the game.",
+    "mobium.suite.result": "%s (%s): %s ms, %s FPS, 1%% low %s FPS (median of %s)",
+    "mobium.suite.gatea_result": "Gate A: %s× faster with the chest prototype (target %s×): %s",
+    "mobium.suite.gatea_pass": "passed",
+    "mobium.suite.gatea_below": "below the target",
+    "mobium.suite.saved": "Medians saved to %s",
+    "mobium.suite.failed": "Benchmark suite failed: %s",
+    "mobium.suite.stopped": "Benchmark suite stopped",
+    "mobium.suite.singleplayer": "The benchmark suite only runs in a singleplayer world",
+    "mobium.suite.no_datapack": "The mobium-bench datapack is not enabled in this world",
+    "mobium.suite.timeout": "scene %s was not ready after %s s",
+    "mobium.suite.unknown_scene": "Unknown scene: %s",
+    "mobium.suite.not_quiet": "Scene %s was still busy after %s s (section rebuilds, light or server load); measuring anyway, results may be noisy"
 }

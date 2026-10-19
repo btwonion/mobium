@@ -26,6 +26,14 @@ import java.util.Locale
  * while it runs. [onFrameStart] is called once per game-loop iteration on the render thread and does not allocate
  * unless a run outgrows its preallocated arrays.
  */
+/** The result of one finished benchmark run. */
+class BenchResult(
+    @JvmField val scene: String,
+    @JvmField val setup: String,
+    @JvmField val summary: FrameSummary,
+    @JvmField val sectionMeansMs: DoubleArray
+)
+
 object FrameRecorder {
     const val WARMUP_SECONDS = 5
     private const val PREALLOCATED_FPS = 400
@@ -48,6 +56,13 @@ object FrameRecorder {
 
     val isActive: Boolean
         get() = phase != Phase.IDLE
+
+    /** Increments when a run finishes and its results are written; [lastResult] then holds them. */
+    var completedRuns = 0
+        private set
+
+    var lastResult: BenchResult? = null
+        private set
 
     @JvmStatic
     fun onFrameStart(now: Long) {
@@ -135,6 +150,8 @@ object FrameRecorder {
 
         val summary = FrameStats.summarize(frameNanos, frames)
         val sectionMeans = DoubleArray(Sections.COUNT) { FrameStats.columnMeanMs(sectionNanos, frames, Sections.COUNT, it) }
+        lastResult = BenchResult(scene, setup, summary, sectionMeans)
+        completedRuns++
         val entities = entityCounts.copyOf(frames).average().toInt()
         val blockEntities = blockEntityCounts.copyOf(frames).average().toInt()
 

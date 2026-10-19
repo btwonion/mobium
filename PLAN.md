@@ -9,6 +9,45 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 ---
 
+## Current state (updated 19 Oct 2026)
+
+Read this first when picking the work up in a new session.
+
+- **Repository:** `btwonion/mobium` on GitHub, one stacked PR per milestone:
+  - #1 M0, merged into `main` with a merge commit;
+  - #2 M1, base `main`;
+  - #3 M2, base `m1-vanilla-recon`;
+  - #4 M3, base `m2-instrumentation`.
+
+  Merge in order with merge commits, not squash, so the stack stays intact. After a merge, retarget the next PR to
+  `main` (`gh pr edit <n> --base main`); retargeting does not trigger CI, a push or a close/reopen does. Merging is
+  Anton's call.
+- **Done:**
+  - M0 and M1;
+  - the code of M2: timers, `/mobium bench`, `/mobium suite`, scenes, protocol;
+  - the M3 chest prototype, plus `/mobium gatea` for Gate A.
+- **Waiting for Anton:**
+  - the M2 baselines and the Gate A runs, done with the Prism instances "Mobium Bench A–D" as described in
+    `docs/benchmarks.md` → *Running a setup*: one `/mobium suite` per setup, plus `/mobium gatea` in setup A;
+  - the shader pack choice for setups B and D (§11).
+- **Next steps, once Anton hands over the `mobium-bench/` result folders:**
+  1. Copy them to `docs/benchmarks/results/<date>-<machine>/<setup>/`. Fill in the *Results* table and the
+     *Cost split* section of `docs/benchmarks.md` from the `suite-*.csv` medians, and tick M2.
+  2. Decide Gate A from `gatea-*.csv`: at least 1.5× and no visible difference reported by Anton.
+     - **Pass:** update the M3 status here and in PR #4, then start M4.
+     - **Fail:** stop, write the numbers and the analysis into PR #4 (the remaining cost of `storage_room` is mostly
+       the 300 signs' translucent text, see *First look*), and agree on the next step with Anton.
+- **Rebuilding the benchmark instances after code changes:**
+  `./gradlew :26.3-fabric:benchKit && python3 benchmark/prism_instances.py`. A new world comes from
+  `./gradlew :26.3-fabric:runBenchWorld` followed by deleting `saves/Mobium Bench` in the instances.
+- **Measurement pitfalls found so far:**
+  - the default 120 FPS cap;
+  - vanilla's idle frame limit (the bench handles it);
+  - running on battery (vanilla `storage_room` 9 → 42 ms on the dev laptop);
+  - the first run after a scene build (the suite waits for the world to settle).
+
+---
+
 ## 0. How to work in this repository
 
 1. **One milestone at a time.** Each milestone is one branch and one PR. Do not start a milestone before the
@@ -446,6 +485,9 @@ origin (x −3840, z −2816) in the seed-`mobium` classic superflat world, whic
 ~600 blocks from the nearest village (villages must stay on for the exploration maps). The gametest also runs
 `/mobium bench` and checks the CSVs, and shows the F3 entry. Abort is `/mobium stop` (a `bench stop` literal would be
 ambiguous with the scene argument).
+Later additions for running the protocol: `/mobium suite` (whole setup, medians) and `/mobium gatea`, the `benchKit` and
+`runBenchWorld` Gradle tasks and `benchmark/prism_instances.py`, which installed the Prism instances "Mobium Bench A–D"
+on the development machine.
 
 ### M3 · Chest prototype → Gate A
 - [x] Minimal Module 1 for closed chests only, OpenGL only, behind `cache.prototype` (off by default).

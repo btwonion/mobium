@@ -11,7 +11,8 @@ hides the Loom/ModDevGradle differences. Targets are declared in `settings.gradl
 The structure follows `btwonion/autodrop`; check it first when unsure how something is done.
 
 **Start with `PLAN.md`.** It is the build plan: work through its milestones in order, tick its checkboxes as tasks
-land, and treat its gates as hard stops. If the repository only contains `PLAN.md` and this file, you are at M0.
+land, and treat its gates as hard stops. Its *Current state* section at the top says where the work stands and what to
+do next; keep it up to date at the end of every session.
 
 ## Commands
 
@@ -25,9 +26,13 @@ Requires JDK 25 (same as CI).
 ./gradlew :26.3-neoforge:runMainClient     # dev client, NeoForge (game dir: run/)
 ./gradlew :26.3-fabric:runClientGameTest   # Fabric client gametests (scene smoke tests, screenshots)
 ./gradlew "Set active project to 26.3-neoforge"   # switch the version the src/ comments are written for
+./gradlew :26.3-fabric:benchKit            # mods of the four benchmark setups + datapack -> versions/26.3-fabric/build/bench-kit
+./gradlew :26.3-fabric:runBenchWorld       # saves a ready benchmark world -> versions/26.3-fabric/build/bench-world
+python3 benchmark/prism_instances.py       # creates/updates the Prism instances "Mobium Bench A–D" from the two above
 ```
 
-In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark (`/mobium stop` aborts), scenes come from the
+In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium suite` runs every scene of a setup
+and `/mobium gatea` runs Gate A unattended (`/mobium stop` aborts), scenes come from the
 `benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
 shows the stage timers. Protocol and results: `docs/benchmarks.md`. The M3 chest prototype is enabled with
 `"cache": {"prototype": true}` in `config/mobium.json` and toggled live with `]`.

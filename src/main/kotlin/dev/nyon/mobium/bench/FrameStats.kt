@@ -43,6 +43,14 @@ object FrameStats {
         return sorted[rank - 1]
     }
 
+    /** Median of [values] (mean of the middle two for an even count). */
+    fun median(values: DoubleArray): Double {
+        require(values.isNotEmpty()) { "no values" }
+        val sorted = values.sortedArray()
+        val middle = sorted.size / 2
+        return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2
+    }
+
     /** Mean of column [column] in a row-major table with [columns] columns and [rows] rows, in milliseconds. */
     fun columnMeanMs(values: LongArray, rows: Int, columns: Int, column: Int): Double {
         if (rows == 0) return 0.0

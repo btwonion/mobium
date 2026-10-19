@@ -11,7 +11,8 @@
     "entrypoints": {
         "fabric-client-gametest": [
             "dev.nyon.mobium.test.StartupGameTest",
-            "dev.nyon.mobium.test.BenchmarkScenesGameTest"
+            "dev.nyon.mobium.test.BenchmarkScenesGameTest",
+            "dev.nyon.mobium.test.BenchWorldGameTest"
         ]
     }
 }

@@ -1,6 +1,7 @@
 package dev.nyon.mobium.mixins;
 
 import dev.nyon.mobium.MobiumKeys;
+import dev.nyon.mobium.bench.BenchSuite;
 import dev.nyon.mobium.bench.FrameRecorder;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,9 +20,10 @@ public class MinecraftMixin {
         FrameRecorder.onFrameStart(System.nanoTime());
     }
 
-    // Handles Mobium's key bindings once per client tick, after vanilla's own input handling. No behaviour change.
+    // Handles Mobium's key bindings and advances a running benchmark suite once per client tick. No behaviour change.
     @Inject(method = "tick", at = @At("TAIL"))
     private void mobium$handleKeys(CallbackInfo ci) {
         MobiumKeys.tick((Minecraft) (Object) this);
+        BenchSuite.tick((Minecraft) (Object) this);
     }
 }
