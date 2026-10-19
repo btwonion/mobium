@@ -2,6 +2,7 @@ package dev.nyon.mobium
 
 import dev.nyon.konfig.config.config
 import dev.nyon.konfig.config.loadConfig
+import dev.nyon.mobium.cache.ChestPrototype
 import dev.nyon.mobium.config.CONFIG_VERSION
 import dev.nyon.mobium.config.Config
 import dev.nyon.mobium.config.config
@@ -31,5 +32,6 @@ object Mobium {
     fun onClientStarted() {
         val capabilities = Capabilities.detect()
         LOGGER.info("Graphics: {}", capabilities.describe())
+        ChestPrototype.onClientStarted()
     }
 }

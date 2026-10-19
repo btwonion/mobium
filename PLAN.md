@@ -448,11 +448,27 @@ origin (x −3840, z −2816) in the seed-`mobium` classic superflat world, whic
 ambiguous with the scene argument).
 
 ### M3 · Chest prototype → Gate A
-- [ ] Minimal Module 1 for closed chests only, OpenGL only, behind `cache.prototype` (off by default).
-- [ ] A temporary keybind toggles the prototype on and off live, so Anton can compare in the same spot.
+- [x] Minimal Module 1 for closed chests only, OpenGL only, behind `cache.prototype` (off by default).
+- [x] A temporary keybind toggles the prototype on and off live, so Anton can compare in the same spot.
 
 **Gate A:** `storage_room` runs at least 1.5× faster than the Sodium-only baseline with no visible difference.
 If it fails, stop and report the measurements.
+
+Status (19 Oct 2026): prototype done (`cache/ChestPrototype.kt`, `CaptureConsumer.kt`, `SectionBucket.kt`), Gate A
+waiting for Anton's measurement. How it works:
+- Closed, unbroken chests are captured once by running vanilla's own submit and `ModelFeatureRenderer.prepareModel`
+  (through `buildGroup`) with the vertex builder redirected into a capture buffer. Every mod hook on that path still
+  runs.
+- The captured vertices go into one GPU buffer per (section, render type). The extract hook returns no render state
+  for cached chests, and the buckets are drawn at the end of the level's solid features through
+  `PreparedRenderType.drawFromBuffer`, with the section origin in the model-view matrix.
+- Light is re-read only after a light update in the chest's section, plus every 128 frames as a safety net.
+- The key `]` toggles the prototype live.
+
+`BenchmarkScenesGameTest` compares `storage_room` with the prototype off and on: 0 differing pixels. First look
+(5 s, laptop iGPU, Sodium + EMF/ETF, uncapped): 9.38 → 5.55 ms per frame, 1.69×. With the default 120 FPS cap the
+gain disappears, and the remaining cost in `storage_room` is mostly the 300 signs' text, which is translucent and
+therefore outside Module 1 as planned (§M5).
 
 ### M4 · Core infrastructure
 - [ ] `core/` (ModuleState, Fallback, Capabilities, Compat) with unit tests for the pure parts.

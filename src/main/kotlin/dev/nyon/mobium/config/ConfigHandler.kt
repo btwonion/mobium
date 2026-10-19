@@ -2,11 +2,14 @@ package dev.nyon.mobium.config
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 var config: Config = Config()
     internal set
 
-const val CONFIG_VERSION = 1
+const val CONFIG_VERSION = 2
 
 /**
  * Converts older formats when Konfig requests a migration. Konfig only asks after the current format failed to
@@ -18,6 +21,13 @@ const val CONFIG_VERSION = 1
  * @return the migrated config, or null if Konfig should apply its default config.
  */
 @Suppress("UNUSED_PARAMETER")
-internal fun migrate(json: Json, jsonTree: JsonElement, version: Int?): Config? = when (version) {
-    else -> null
-}
+internal fun migrate(json: Json, jsonTree: JsonElement, version: Int?): Config? = runCatching {
+    when (version) {
+        1 -> migrateVersion1(jsonTree)
+        else -> null
+    }
+}.getOrNull()
+
+/** Version 1 (M0–M2) only had the global switch. */
+private fun migrateVersion1(jsonTree: JsonElement): Config =
+    Config(enabled = jsonTree.jsonObject["enabled"]?.jsonPrimitive?.booleanOrNull ?: true)

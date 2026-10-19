@@ -8,5 +8,13 @@
     "mobium.bench.idle": "No benchmark is running",
     "mobium.bench.busy": "A benchmark is already running; stop it with /mobium stop",
     "mobium.bench.empty": "The benchmark recorded no frames",
-    "mobium.bench.failed": "Could not write the benchmark results: %s"
+    "mobium.bench.failed": "Could not write the benchmark results: %s",
+    "key.category.mobium.main": "Mobium",
+    "key.mobium.toggle_chest_prototype": "Toggle chest cache prototype",
+    "mobium.prototype.on": "Mobium chest cache prototype: on",
+    "mobium.prototype.off": "Mobium chest cache prototype: off",
+    "mobium.prototype.unavailable.config": "Mobium chest cache prototype is off; set cache.prototype to true in config/mobium.json",
+    "mobium.prototype.unavailable.backend": "Mobium chest cache prototype only runs on OpenGL",
+    "mobium.prototype.unavailable.shader_pack": "Mobium chest cache prototype does not run with a shader pack",
+    "mobium.bench.capped": "Frame rate is capped (max framerate %s, VSync %s); set max framerate to Unlimited and VSync off, or the results stop at the cap"
 }

@@ -29,6 +29,17 @@ class ConfigFormatTest {
     }
 
     @Test
+    fun `version 1 keeps the global switch and gets the default cache settings`() {
+        val tree = json.parseToJsonElement("""{"enabled": false}""")
+        assertEquals(Config(enabled = false, cache = CacheConfig(prototype = false)), migrate(json, tree, 1))
+    }
+
+    @Test
+    fun `the chest prototype is off by default`() {
+        assertEquals(false, Config().cache.prototype)
+    }
+
+    @Test
     fun `unknown versions fall back to defaults`() {
         assertNull(migrate(json, JsonObject(emptyMap()), null))
         assertNull(migrate(json, JsonObject(emptyMap()), CONFIG_VERSION + 1))

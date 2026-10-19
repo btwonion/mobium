@@ -12,7 +12,8 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
     entity counts);
   - `summary.csv`: one row per run, appended (averages, Minecraft and Mobium version, loader, backend, GPU).
   `setup` is detected when omitted: `sodium` or `vanilla`, `+iris` if a shader pack is active, `+emf` if Entity Model
-  Features is installed, `+fa` if a resource pack with "fresh" in its id is enabled. `/mobium stop` aborts a run.
+  Features is installed, `+fa` if a resource pack with "fresh" in its id is enabled, `+chestcache` while the M3 chest
+  prototype is on. `/mobium stop` aborts a run.
 - **F3 entry `mobium:timings`** — the same timers averaged over the last 64 frames. Enable it in the debug options
   screen (the timers only run while it is shown or a benchmark records).
 
@@ -58,6 +59,7 @@ Iris's shadow pass). See `docs/vanilla-notes.md` §0 for the stages.
 | Improved transparency (OIT) | Off, unless a run says otherwise |
 | Graphics preset | Note the preset in the results |
 | F3 | Closed (the benchmark hides the HUD itself) |
+| Inactivity FPS limit | Any; `/mobium bench` keeps vanilla's 60-second idle limit (30 FPS, later 10 FPS) from engaging while it records |
 | Other programs | Closed; laptop on mains power |
 
 ### Setups
@@ -134,7 +136,21 @@ what that means for Modules 1–3 (`PLAN.md` M2 is done when this section is fil
 ### First look (not a baseline)
 
 From the Fabric client gametest on the development laptop (Intel Arc 130V/140V iGPU, Mesa 26.2.4, OpenGL, 854×480
-gametest window, Sodium + EMF/ETF without Fresh Animations, no shader pack), 5-second run of `mob_pen_live`:
+gametest window, Sodium + EMF/ETF without Fresh Animations, no shader pack). Max framerate unlimited and VSync off:
+with vanilla's default 120 FPS cap these scenes sit at the cap (8.33 ms) and differences disappear.
+
+`storage_room`, 5-second runs, M3 chest prototype off and on (the gametest also checks that both pictures are
+identical):
+
+| Setup | Frame | Extract BE | Submit BE | Tessellate BE | Prepare | Draw |
+| --- | --- | --- | --- | --- | --- | --- |
+| Chest prototype off | 9.38 ms (107 FPS) | 0.45 ms | 0.79 ms | 0.81 ms | 4.81 ms | 0.56 ms |
+| Chest prototype on | 5.55 ms (180 FPS) | 0.34 ms | 0.47 ms | 0 | 3.11 ms | 0.62 ms |
+
+With the prototype on, what is left of `prepare` and `submit` is almost entirely the 300 signs (their text is
+translucent, so Module 1 leaves it on the vanilla path).
+
+`mob_pen_live`, 5-second run (measured before the frame-rate cap was lifted, at 110 FPS, just under it):
 
 | Frame | Extract E | Submit E | Pose E | Tessellate E | Prepare | Draw |
 | --- | --- | --- | --- | --- | --- | --- |
