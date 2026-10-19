@@ -16,5 +16,19 @@
     "mobium.prototype.unavailable.config": "Der Mobium Truhen-Cache-Prototyp ist aus; setze cache.prototype in config/mobium.json auf true",
     "mobium.prototype.unavailable.backend": "Der Mobium Truhen-Cache-Prototyp läuft nur mit OpenGL",
     "mobium.prototype.unavailable.shader_pack": "Der Mobium Truhen-Cache-Prototyp läuft nicht mit einem Shaderpack",
-    "mobium.bench.capped": "Die Bildrate ist begrenzt (max. Bildrate %s, VSync %s); stelle die max. Bildrate auf Unbegrenzt und VSync aus, sonst enden die Ergebnisse an der Grenze"
+    "mobium.bench.capped": "Die Bildrate ist begrenzt (max. Bildrate %s, VSync %s); stelle die max. Bildrate auf Unbegrenzt und VSync aus, sonst enden die Ergebnisse an der Grenze",
+    "mobium.suite.started": "Benchmark-Suite: %s Szenen × %s Läufe à %s s, etwa %s min. Bitte nichts berühren, bis die Mediane angezeigt werden.",
+    "mobium.suite.gatea_started": "Gate A: storage_room, je %s Läufe à %s s mit Truhen-Prototyp aus und an, etwa %s min. Bitte nichts berühren.",
+    "mobium.suite.result": "%s (%s): %s ms, %s FPS, 1%%-Low %s FPS (Median aus %s)",
+    "mobium.suite.gatea_result": "Gate A: %s× schneller mit dem Truhen-Prototyp (Ziel %s×): %s",
+    "mobium.suite.gatea_pass": "bestanden",
+    "mobium.suite.gatea_below": "unter dem Ziel",
+    "mobium.suite.saved": "Mediane gespeichert: %s",
+    "mobium.suite.failed": "Benchmark-Suite fehlgeschlagen: %s",
+    "mobium.suite.stopped": "Benchmark-Suite abgebrochen",
+    "mobium.suite.singleplayer": "Die Benchmark-Suite läuft nur in einer Einzelspielerwelt",
+    "mobium.suite.no_datapack": "Das Datenpaket mobium-bench ist in dieser Welt nicht aktiv",
+    "mobium.suite.timeout": "Szene %s war nach %s s nicht fertig",
+    "mobium.suite.unknown_scene": "Unbekannte Szene: %s",
+    "mobium.suite.not_quiet": "Szene %s war nach %s s noch beschäftigt (Abschnitte, Licht oder Serverlast); es wird trotzdem gemessen, die Ergebnisse können schwanken"
 }

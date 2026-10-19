@@ -37,6 +37,7 @@ import kotlin.math.sqrt
 @Suppress("unused")
 class BenchmarkScenesGameTest : FabricClientGameTest {
     override fun runTest(context: ClientGameTestContext) {
+        if (BenchWorldGameTest.creatingBenchWorld()) return
         val pack = Path.of(checkNotNull(System.getProperty(PACK_PROPERTY)) { "$PACK_PROPERTY is not set" })
         check(Files.isRegularFile(pack.resolve("pack.mcmeta"))) { "No datapack at $pack" }
 
@@ -65,6 +66,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
             checkBenchCommand(context)
             checkDebugEntry(context)
+            checkSuiteCommand(context)
         }
     }
 
@@ -106,16 +108,31 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
             }
         }
 
-        val withCache = runBench(context, "storage_room")
-        context.runOnClient<RuntimeException> { ChestPrototype.setActive(false) }
-        val withoutCache = runBench(context, "storage_room")
-        LOGGER.info(
-            "storage_room first look: vanilla {} ms ({} FPS), chest prototype {} ms ({} FPS)",
-            withoutCache.getValue("avg_ms"), withoutCache.getValue("avg_fps"),
-            withCache.getValue("avg_ms"), withCache.getValue("avg_fps")
-        )
-        check(withCache.getValue("setup").endsWith("+chestcache")) { "Setup should name the prototype: $withCache" }
-        context.runOnClient<RuntimeException> { config.cache.prototype = false }
+        // Back to the default state; /mobium gatea enables and restores the prototype itself.
+        context.runOnClient<RuntimeException> {
+            ChestPrototype.setActive(false)
+            config.cache.prototype = false
+        }
+        val gate = runPlan(context, "mobium gatea $BENCH_SECONDS 1", "gatea-")
+        val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
+        check(setups.size == 2 && setups.count { it.endsWith("+chestcache") } == 1) { "Unexpected Gate A rows: $gate" }
+        val speedUp = gate.single { it.startsWith("# gate_a_speedup") }.substringAfter(',').toDouble()
+        LOGGER.info("storage_room first look (/mobium gatea {} 1): {}x faster with the chest prototype", BENCH_SECONDS, speedUp)
+        context.runOnClient<RuntimeException> {
+            check(!ChestPrototype.active && !config.cache.prototype) { "/mobium gatea did not restore the prototype state" }
+        }
+    }
+
+    /** Runs a `/mobium suite` or `/mobium gatea` command and returns the lines of the medians file it writes. */
+    private fun runPlan(context: ClientGameTestContext, command: String, filePrefix: String): List<String> {
+        val directory = benchDirectory(context)
+        fun planFiles() = if (!Files.isDirectory(directory)) emptyList() else Files.list(directory).use { files ->
+            files.filter { it.fileName.toString().startsWith(filePrefix) }.toList()
+        }
+        val before = planFiles().toSet()
+        context.runOnClient<RuntimeException> { checkNotNull(it.player).connection.sendUnattendedCommand(command, null) }
+        context.waitFor({ (planFiles() - before).isNotEmpty() }, PLAN_TIMEOUT_TICKS)
+        return Files.readAllLines((planFiles() - before).single())
     }
 
     /** Runs `/mobium bench <scene>` for [BENCH_SECONDS] and returns its row of summary.csv. */
@@ -135,6 +152,12 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
     private fun benchDirectory(context: ClientGameTestContext): Path =
         context.computeOnClient<Path, RuntimeException> { it.gameDirectory.toPath().resolve("mobium-bench") }
+
+    /** Runs `/mobium suite` on the control scene and checks its medians file. */
+    private fun checkSuiteCommand(context: ClientGameTestContext) {
+        val medians = runPlan(context, "mobium suite $BENCH_SECONDS 1 control", "suite-")
+        check(medians.size == 2 && medians[1].startsWith("control,")) { "Unexpected suite medians: $medians" }
+    }
 
     /** Runs `/mobium bench` on the last scene (live mobs) and checks the files it writes. */
     private fun checkBenchCommand(context: ClientGameTestContext) {
@@ -215,6 +238,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         const val BENCH_SECONDS = 5
         const val MAP_SYNC_TIMEOUT_TICKS = 600
         const val CHESTS = 1000
+        const val PLAN_TIMEOUT_TICKS = 20 * 120
 
         // Cached chests are drawn from section-local vertices with the section origin in the model-view matrix, so
         // positions differ from vanilla's by float rounding at most; allow a handful of edge pixels.

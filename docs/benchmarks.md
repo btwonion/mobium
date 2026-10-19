@@ -14,10 +14,22 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
   `setup` is detected when omitted: `sodium` or `vanilla`, `+iris` if a shader pack is active, `+emf` if Entity Model
   Features is installed, `+fa` if a resource pack with "fresh" in its id is enabled, `+chestcache` while the M3 chest
   prototype is on. `/mobium stop` aborts a run.
+- **`/mobium suite [seconds] [runs] [scenes…]`** — runs a whole setup unattended (defaults: 60 s, 3 runs, all six
+  scenes). For each scene it builds the scene through the integrated server (singleplayer only; no cheats needed),
+  waits at least 10 s and until section rebuilds, client light updates and server ticks have calmed down, then
+  records `runs` runs. At the end it prints the medians and writes `mobium-bench/suite-<timestamp>.csv`.
+- **`/mobium gatea [seconds] [runs]`** — Gate A: builds `storage_room` and records it with the M3 chest prototype off
+  and on, alternating (defaults: 60 s, 3 runs each), then prints the speed-up against the 1.5× target and writes
+  `mobium-bench/gatea-<timestamp>.csv`. It enables the prototype for the run only; `cache.prototype` stays as it is.
 - **F3 entry `mobium:timings`** — the same timers averaged over the last 64 frames. Enable it in the debug options
   screen (the timers only run while it is shown or a benchmark records).
+- **Prism instances** — `./gradlew :26.3-fabric:benchKit` collects the mods of the four setups and the datapack,
+  `./gradlew :26.3-fabric:runBenchWorld` saves a ready benchmark world (both under `versions/26.3-fabric/build/`), and
+  `python3 benchmark/prism_instances.py` creates or updates four Prism Launcher instances "Mobium Bench A–D" with the
+  mods, the world and the settings below. Re-run the first and last step after changing Mobium.
 
-The game directory of the dev clients is `versions/26.3-fabric/run/` (Fabric) and `run/` (NeoForge).
+The game directory of the dev clients is `versions/26.3-fabric/run/` (Fabric) and `run/` (NeoForge); in a Prism
+instance it is the instance's `minecraft/` folder.
 
 ### What the numbers mean
 
@@ -41,6 +53,8 @@ Iris's shadow pass). See `docs/vanilla-notes.md` §0 for the stages.
 
 ### World
 
+The Prism instances already contain it as "Mobium Bench". To make it by hand:
+
 1. Create a world: **Creative**, world type **Superflat** with the default *Classic* preset, seed **`mobium`**,
    commands on, structures on (the map wall needs villages to exist somewhere; the scene origin at x −3840, z −2816 is
    about 600 blocks from the nearest one).
@@ -48,6 +62,8 @@ Iris's shadow pass). See `docs/vanilla-notes.md` §0 for the stages.
    the world) and run `/reload` if the world is already open.
 
 ### Settings (keep them identical for every run and write down anything that differs)
+
+The Prism instances start with these settings (`options.txt` is only written when it does not exist yet).
 
 | Setting | Value |
 | --- | --- |
@@ -64,14 +80,15 @@ Iris's shadow pass). See `docs/vanilla-notes.md` §0 for the stages.
 
 ### Setups
 
-| Setup | Mods and resources |
-| --- | --- |
-| A · Sodium | Sodium, Mobium (Fabric API, Fabric Language Kotlin) |
-| B · + Iris | A + Iris with the shader pack named in `PLAN.md` §11 (version noted in the results) |
-| C · + EMF/ETF | A + Entity Model Features, Entity Texture Features and the Fresh Animations resource pack |
-| D · All | A + B + C |
+| Setup | Prism instance | Mods and resources |
+| --- | --- | --- |
+| A · Sodium | Mobium Bench A (Sodium) | Sodium, Mobium (Fabric API, Fabric Language Kotlin) |
+| B · + Iris | Mobium Bench B (Sodium + Iris) | A + Iris; add the shader pack named in `PLAN.md` §11 to `shaderpacks/` and select it |
+| C · + EMF/ETF | Mobium Bench C (Sodium + EMF/ETF) | A + Entity Model Features, Entity Texture Features; add Fresh Animations to `resourcepacks/` and enable it |
+| D · All | Mobium Bench D (all) | A + B + C |
 
-Use the mod versions from `versions/26.3-fabric/gradle.properties`. NeoForge is checked for parity, not benchmarked.
+The mod versions are the ones in `versions/26.3-fabric/gradle.properties`. NeoForge is checked for parity, not
+benchmarked.
 
 ### Scenes
 
@@ -87,13 +104,18 @@ Use the mod versions from `versions/26.3-fabric/gradle.properties`. NeoForge is 
 Every function switches you to spectator mode, teleports you to the scene's camera position and rotation, and builds
 the scene two seconds later in the same place (each scene replaces the previous one). Wait for "Scene … is ready".
 
-### A run
+### Running a setup
 
-1. `/function mobium-bench:<scene>`, wait for "Scene <scene> is ready", then wait another 10 seconds.
-2. `/mobium bench <scene> 60`. Do not touch the mouse or keyboard until the summary appears (65 s).
-3. Repeat step 2 two more times; the result for a scene and setup is the **median of the three runs**.
-4. Do this for all six scenes in all four setups.
-5. Copy `<game dir>/mobium-bench/` into `docs/benchmarks/results/<yyyy-mm-dd>-<machine>/` and fill in the tables below.
+1. Start the setup's Prism instance on mains power and open the "Mobium Bench" world.
+2. `/mobium suite`. Leave the computer alone until chat shows the medians (about 22 minutes; the HUD is hidden while
+   it records). The result for a scene and setup is the median of the three runs.
+3. Setup A only: `/mobium gatea` for Gate A (about 7 minutes).
+4. Do this for all four setups, then copy each instance's `minecraft/mobium-bench/` folder into
+   `docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/` and fill in the tables below (or hand the folders to
+   Claude Code).
+
+By hand instead: `/function mobium-bench:<scene>`, wait for "Scene <scene> is ready" plus 10 seconds, then
+`/mobium bench <scene> 60` three times without touching anything.
 
 ## Results
 
@@ -134,6 +156,9 @@ To be written from the baseline runs: for each scene, how the frame divides into
 what that means for Modules 1–3 (`PLAN.md` M2 is done when this section is filled in).
 
 ### First look (not a baseline)
+
+Run on mains power: on battery the laptop's vanilla `storage_room` frame grows to about 42 ms while the cached and
+empty scenes stay as fast, which inflates every speed-up (19 Oct 2026: 7–8× on battery).
 
 From the Fabric client gametest on the development laptop (Intel Arc 130V/140V iGPU, Mesa 26.2.4, OpenGL, 854×480
 gametest window, Sodium + EMF/ETF without Fresh Animations, no shader pack). Max framerate unlimited and VSync off:

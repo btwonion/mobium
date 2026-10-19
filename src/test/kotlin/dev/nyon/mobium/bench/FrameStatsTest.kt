@@ -56,7 +56,15 @@ class FrameStatsTest {
     }
 
     @Test
+    fun `median of odd and even counts`() {
+        assertEquals(2.0, FrameStats.median(doubleArrayOf(3.0, 1.0, 2.0)), 1e-9)
+        assertEquals(2.5, FrameStats.median(doubleArrayOf(4.0, 1.0, 3.0, 2.0)), 1e-9)
+        assertEquals(7.0, FrameStats.median(doubleArrayOf(7.0)), 1e-9)
+    }
+
+    @Test
     fun `invalid input is rejected`() {
+        assertThrows<IllegalArgumentException> { FrameStats.median(DoubleArray(0)) }
         assertThrows<IllegalArgumentException> { FrameStats.summarize(LongArray(3), 0) }
         assertThrows<IllegalArgumentException> { FrameStats.summarize(LongArray(3), 4) }
         assertThrows<IllegalArgumentException> { FrameStats.percentile(DoubleArray(0), 0.5) }

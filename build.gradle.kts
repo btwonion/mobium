@@ -104,15 +104,55 @@ if (isFabric) {
         }
     }
 
-    // BenchmarkScenesGameTest installs the benchmark datapack straight from the repository.
+    // BenchmarkScenesGameTest installs the benchmark datapack straight from the repository. runBenchWorld runs the
+    // gametest client once more to save a ready benchmark world (BenchWorldGameTest) instead of testing.
     extensions.configure<LoomGradleExtensionAPI>("loom") {
         runConfigs.named("clientGameTest") {
             property("mobium.benchmarkPack", rootDir.resolve("benchmark/mobium-bench").absolutePath)
+        }
+        runConfigs.create("benchWorld") {
+            inherit(runConfigs.getByName("clientGameTest"))
+            runDir("build/run/benchWorld")
+            property("mobium.benchWorld", layout.buildDirectory.dir("bench-world").get().asFile.absolutePath)
         }
     }
 
     tasks.named("check") {
         dependsOn("runClientGameTest")
+    }
+
+    // Mods for the four benchmark setups of docs/benchmarks.md, for a normal launcher instance
+    // (benchmark/prism_instances.py installs them into Prism Launcher).
+    val benchKitBase by configurations.creating { isTransitive = false }
+    val benchKitIris by configurations.creating { isTransitive = false }
+    val benchKitEmf by configurations.creating { isTransitive = false }
+    dependencies {
+        prop("vers.deps.fapi") { benchKitBase("net.fabricmc.fabric-api:fabric-api:$it") }
+        benchKitBase("net.fabricmc:fabric-language-kotlin:$flk")
+        prop("vers.deps.sodium") { benchKitBase("maven.modrinth:sodium:$it") }
+        prop("vers.deps.iris") { benchKitIris("maven.modrinth:iris:$it") }
+        prop("vers.deps.emf") { benchKitEmf("maven.modrinth:entity-model-features:$it") }
+        prop("vers.deps.etf") { benchKitEmf("maven.modrinth:entitytexturefeatures:$it") }
+    }
+    tasks.register<Sync>("benchKit") {
+        group = "mobium"
+        description = "Collects the mods of the four benchmark setups and the benchmark datapack in build/bench-kit"
+        val mobiumJar = modstitch.finalJarTask.flatMap { it.archiveFile }
+        val setups = mapOf(
+            "A-sodium" to listOf(),
+            "B-iris" to listOf(benchKitIris),
+            "C-emf-etf" to listOf(benchKitEmf),
+            "D-all" to listOf(benchKitIris, benchKitEmf)
+        )
+        for ((setup, extras) in setups) {
+            into("$setup/mods") {
+                from(benchKitBase)
+                extras.forEach { from(it) }
+                from(mobiumJar)
+            }
+        }
+        into("datapacks/mobium-bench") { from(rootDir.resolve("benchmark/mobium-bench")) }
+        into(layout.buildDirectory.dir("bench-kit"))
     }
 }
 
