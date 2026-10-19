@@ -7,5 +7,13 @@
     "injectors": {
         "defaultRequire": 1
     },
-    "client": []
+    "client": [
+        "DebugScreenEntriesAccessor",
+        "LevelExtractorMixin",
+        "LevelRendererMixin",
+        "MinecraftMixin",
+        "ModelFeatureRendererMixin",
+        "ModelSubmitMixin",
+        "PreparedFrameMixin"
+    ]
 }

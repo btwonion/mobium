@@ -27,6 +27,10 @@ Requires JDK 25 (same as CI).
 ./gradlew "Set active project to 26.3-neoforge"   # switch the version the src/ comments are written for
 ```
 
+In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark (`/mobium stop` aborts), scenes come from the
+`benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
+shows the stage timers. Protocol and results: `docs/benchmarks.md`.
+
 On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game: locally a window opens and
 closes by itself, CI runs it under `xvfb-run`. Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);
 screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`.

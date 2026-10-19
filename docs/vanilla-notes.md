@@ -188,6 +188,10 @@ model.renderToBuffer(this.poseStack, buffer, submit.lightCoords(), submit.overla
 `Model.setupAnim(S)` defaults to `resetPose()` (every part back to its initial pose). `Model.renderToBuffer` is
 `final` and only calls `root().render(poseStack, buffer, light, overlay, color)`.
 
+NeoForge 26.3.0.94 patches `prepareModel`: between `setupAnim` and `renderToBuffer` it calls
+`ClientHooks.updateModelVisibility(model, state)` (part visibility from `RegisterRenderStateModifiersEvent`) and
+afterwards `ClientHooks.resetVisibility(previous)`. Wrapping the two vanilla calls works on both loaders.
+
 ### Part tree walk
 
 `ModelPart.render(PoseStack, VertexConsumer, int light, int overlay, int color)`:
@@ -456,7 +460,7 @@ staged draw) and light/overlay/colour are all final. EMF's `renderLikeVanilla` r
 | Part records | `ModelPart.compile(PoseStack.Pose, VertexConsumer, int, int, int)` (private) inside `ModelFeatureRenderer.prepareModel` | `@WrapMethod` (emit a record instead of vertices when the consumer is the frame's staged builder for a known format; else original) | 2 |
 | Expand pass | after `StagedVertexBuffer.upload()` in `FeatureRenderDispatcher.prepareFrameWithContext` | `@Inject` after the `upload` call; dispatch compute into the uploaded vertex buffer | 2 |
 | Animation LOD | `ModelFeatureRenderer.prepareModel` around `Model.setupAnim`; `LivingEntityRenderer.submit` around its layer `setupAnim` | `@WrapOperation` | 3 |
-| Debug timers | `LevelExtractor.extract`, `LevelRenderer.submitFeatures`, `FeatureRenderDispatcher.prepareFrame`, `ModelFeatureRenderer.prepareModel`, main frame pass | `@Inject` HEAD/RETURN | M2 instrumentation |
+| Debug timers (M2, shipped) | `LevelExtractor.extractVisibleEntities` / `extractVisibleBlockEntities`, `LevelRenderer.submitEntities` / `submitBlockEntities`, the `prepareFrame` call in `LevelRenderer.render`, `Model.setupAnim` / `Model.renderToBuffer` in `ModelFeatureRenderer.prepareModel`, `FeatureRenderDispatcher.PreparedFrame.executePhase(…, OitStage, RenderPass)`, `Minecraft.runTick` HEAD; `ModelFeatureRenderer.Submit` gets a field marking block entity submits | `@WrapMethod`, `@WrapOperation`, `@Inject` | M2 instrumentation |
 
 Open points for later milestones (not answered by reading code):
 
@@ -467,3 +471,20 @@ Open points for later milestones (not answered by reading code):
   submit (M6).
 - `RenderType.prepare()` writes `DynamicTransforms` from the current model-view matrix. Calling it from the execute
   stage for section buckets needs a check that dynamic uniform writes are allowed there on Vulkan (M3/M5).
+
+---
+
+## 11. Data and command formats (found while writing the benchmark datapack)
+
+- Block states in NBT (e.g. `block_display`'s `block_state`) are an id string (`"minecraft:stone"`) or a compound with
+  **`id`** and properties; the old `{Name: …}` form fails with "No key id" and leaves the display empty.
+- Item frames and paintings (`BlockAttachedEntity`) read `block_pos` and reject it unless it lies within 16 blocks of
+  the entity's position at load time; `/summon` sets the position after loading, so the NBT needs `Pos` as well.
+- Gamerules are `snake_case` registry ids (`advance_time`, `spawn_mobs`, `random_tick_speed`,
+  `max_block_modifications`, …).
+- Loot table entries use `modifier` (not `functions`); `exploration_map` creates real map data
+  (`MapItem.applyNewSavedData` + `renderBiomePreviewMap`) but finds nothing when structures are disabled
+  (`ChunkGenerator.findNearestMapStructure`).
+- Item frames only take the map path (`ItemFrameRenderState.mapId`) when the client has the map's data
+  (`ItemFrameRenderer.extractRenderState` → `level.getMapData`); otherwise the map renders as an item.
+- `pack.mcmeta` for 26.3 data packs: `"min_format": 121, "max_format": 121`.

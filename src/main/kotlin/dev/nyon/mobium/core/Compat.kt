@@ -17,6 +17,13 @@ enum class CompatMod(val modId: String, val displayName: String) {
 
 /** Detects the installed compat mods once at startup. Shader-pack state and overlapping mods follow in M4. */
 object Compat {
+    /** The loader this jar was built for. */
+    /*? if fabric {*/
+    const val LOADER = "fabric"
+    /*?} else {*/
+    /*const val LOADER = "neoforge"
+    *//*?}*/
+
     private val versions = HashMap<CompatMod, String>()
 
     fun detect() {
@@ -31,7 +38,8 @@ object Compat {
         return CompatMod.entries.filter(::isLoaded).joinToString { "${it.displayName} ${versions[it]}" }
     }
 
-    private fun modVersion(modId: String): String? {
+    /** The installed version of [modId], or null if it is not loaded. */
+    fun modVersion(modId: String): String? {
         /*? if fabric {*/
         return FabricLoader.getInstance().getModContainer(modId).map { it.metadata.version.friendlyString }.orElse(null)
         /*?} else {*/
