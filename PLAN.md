@@ -240,31 +240,42 @@ Maven coordinates: `maven.modrinth:sodium|iris|entity-model-features|entitytextu
 
 ### 5.1 How 26.3 draws entities (what Mobium plugs into)
 
-Since 1.21.9 vanilla renders world objects through a queue *(verify each step and its classes in M1)*:
+Confirmed in M1 against the 26.3 sources; details, signatures and excerpts are in `docs/vanilla-notes.md`. Vanilla
+renders world objects in four stages, and posing and tessellation happen together in the third:
 
-1. **Extract** — `EntityRenderer#extractRenderState` / `BlockEntityRenderer` render states copy data out of the
-   entity or block entity.
-2. **Submit** — `submit(state, poseStack, collector, cameraState)` queues work on a `SubmitNodeCollector`
-   (`submitModel`, `submitModelPart`, `submitItem`, `submitText`, …). In 26.3 `submitModel` takes a `UvMapping`.
-3. **Pose** — the shared model is posed from the render state (`setupAnim`). EMF / Fresh Animations act here.
-4. **Tessellate** — the posed `ModelPart` tree is walked and every cuboid vertex is transformed on the CPU and
-   written into a buffer.
-5. **Draw** — `FeatureRenderDispatcher.renderAllFeatures(RenderPass, PreparedFrame)` draws everything in a fixed
-   order per render type. With order-independent transparency (OIT, new in 26.3) some phases draw more than once.
+1. **Extract** — `LevelExtractor.extract` culls and builds one render state per visible object:
+   `extractVisibleEntities` → `EntityRenderDispatcher.extractEntity`, `extractVisibleBlockEntities` →
+   `BlockEntityRenderDispatcher.tryExtractRenderState` (a new state object per block entity per frame).
+2. **Submit** — `LevelRenderer.submitFeatures` → `EntityRenderDispatcher.submit` / `BlockEntityRenderDispatcher.submit`
+   → `renderer.submit(state, poseStack, collector, cameraState)` queues records on `SubmitNodeStorage`
+   (`submitModel`, `submitModelPart`, `submitItem`, `submitText`, `submitCustomGeometry`, …). In 26.3 `submitModel`
+   takes a `@Nullable UvMapping`. A model submit keeps references to the shared `Model` and the render state.
+3. **Prepare (pose + tessellate)** — `FeatureRenderDispatcher.prepareFrame` groups records by phase, feature type and
+   render type, then each feature renderer writes vertices into one shared `StagedVertexBuffer` per frame. For models,
+   `ModelFeatureRenderer.prepareModel` calls `model.setupAnim(state)` (EMF / Fresh Animations act here) and right
+   after it `model.renderToBuffer(…)` → `ModelPart.render` → `ModelPart.compile` → `Cube.compile`, which transforms
+   every vertex on the CPU. `StagedVertexBuffer.upload()` then copies all vertices to pooled GPU buffers once.
+   (`LivingEntityRenderer.submit` also calls `setupAnim` at submit time so that layers can read the posed parts.)
+4. **Draw** — the level's `main` frame pass calls the prepared frame per phase (`executeSolid` after opaque terrain,
+   then classic `executeTranslucent`/`executeTranslucentAfterTerrain` or, with improved transparency (OIT), `executeOit`
+   once per `OitStage` — `DEPTH_BOUNDS`, `TRANSMITTANCE`, `ACCUMULATE` — so every translucent feature is drawn three
+   times), then outline, see-through and always-on-top passes. Every draw is
+   `PreparedRenderType.drawFromBuffer(ExecuteInfo, RenderPass)`. `FeatureRenderDispatcher.renderAllFeatures` is only
+   used for the hand, GUI, picture-in-picture and Iris's shadow pass.
 
-The GPU layer is **Renderpearl** (`com.mojang.renderpearl`, renamed from Blaze3D in 26.3, split into `api`,
-`backend`, `frontend`). OpenGL is the 26.3 default; Vulkan is opt-in and becomes the default in 26.4.
+The GPU layer is **Renderpearl** (`com.mojang.renderpearl`, split into `api`, `backend`, `frontend`); parts of
+`com.mojang.blaze3d` remain (`RenderSystem`, vertex formats, platform). Windowing uses SDL. OpenGL is the 26.3 default
+(`PreferredGraphicsApi.DEFAULT` tries GL, then Vulkan); Vulkan is opt-in and becomes the default in 26.4. Renderpearl
+has no compute API and no storage-buffer usage, so compute runs on raw GL 4.3 against `GlBuffer.handle()` (M6) and on
+the game's Vulkan device later (M7).
 
 ### 5.2 Where each module hooks in
 
-| Module | Hook (verify in M1) | Replaces | Output |
+| Module | Hook (confirmed in M1, see `docs/vanilla-notes.md` §10) | Replaces | Output |
 | --- | --- | --- | --- |
-| 1 · Static cache | The per-block-entity submit loop and the submit of static entities (item frames, armor stands, display entities) | Steps 2–5 for unchanged objects | Section buckets drawn through vanilla's draw path |
-| 2 · GPU part transform | The point in the model feature renderer right after `setupAnim`, where vanilla would tessellate the part tree | Step 4 for model-part geometry | Ring-buffer range drawn through vanilla's draw path |
-| 3 · Animation LOD | Before `setupAnim` for throttled entities | Steps 3–4 on skipped frames | Reuses Module 2's last records |
-
-Everything not accelerated (fishing lines, beams, leashes, custom modded vertex code, glint, outlines, breaking
-overlay in the first releases) flows through vanilla untouched.
+| 1 · Static cache | `BlockEntityRenderDispatcher.tryExtractRenderState` and `.submit` (reached by vanilla, Sodium's own block entity iteration and Iris's shadow pass); `EntityRenderDispatcher.submit` for item frames, armor stands and `FIXED` display entities | Steps 1–3 for unchanged objects | Section buckets drawn with `PreparedRenderType.drawFromBuffer` at the end of `PreparedFrame.executeSolid` in the level pass |
+| 2 · GPU part transform | `ModelPart.compile(PoseStack.Pose, VertexConsumer, int, int, int)` inside `ModelFeatureRenderer.prepareModel`: below EMF's per-part render-type switches and ETF's emissive re-renders, above Sodium's `Cube.compile` fast path | The CPU vertex transform of step 3 | Records expanded by compute into the frame's uploaded staged vertex buffer, drawn by vanilla's own draws |
+| 3 · Animation LOD | `ModelFeatureRenderer.prepareModel` around `Model.setupAnim` (and `LivingEntityRenderer.submit`'s layer `setupAnim`) | Posing on skipped frames | Reuses Module 2's last records. EMF already throttles animations (`animationLODDistance`, default 20) |
 
 ### 5.3 Package map
 
@@ -308,7 +319,7 @@ dev.nyon.mobium
 ├── parts/                     # Module 2
 │   ├── MeshPool.kt            # ModelPart identity → local-space cuboid mesh in a shared GPU buffer
 │   ├── PartRecords.kt         # off-heap record writer (layout below)
-│   ├── PartWalker.kt          # walks the posed part tree exactly like vanilla, emits records
+│   ├── PartWalker.kt          # ModelPart.compile hook: emits one record per drawn part (vanilla and EMF walks stay on the CPU)
 │   ├── VertexFormats.kt       # vanilla entity format + Iris extended format descriptions
 │   └── ExpandPass.kt          # per render type: dispatch compute, then draw the ring range
 ├── lod/                       # Module 3
@@ -327,8 +338,13 @@ dev.nyon.mobium
 | 72 | packed overlay (hurt flash / white) | u32 |
 | 76 | tint colour ARGB | u32 |
 
-Iris's extended attributes (tangent, mid-texture coordinates, entity id) are computed per quad inside the compute
-shader, matching what Iris's own vertex writer does *(verify Iris 1.11's layout and math in M1)*.
+Iris's extended attributes are computed per quad inside the compute shader, matching Iris 1.11.7's own vertex
+writer (`MixinBufferBuilder`, confirmed in M1): `IrisVertexFormats.ENTITY` is the 36-byte vanilla entity format plus
+`iris_Entity` RGBA16_UINT (entity, block entity and item id, written **per vertex**), `mc_midTexCoord` RG32_FLOAT (mean
+UV of the quad) and `at_tangent` RGBA8_SNORM (`NormalHelper.computeTangent`), 56 bytes in total; while rendering the
+level Iris also replaces each quad's normals with the face normal. The three ids come from the submit
+(`CapturedRenderingState`), so they have to travel with the records: either 8 more bytes per record (88 bytes) or a
+per-submit table the record indexes into — decided in M6.
 
 ---
 
@@ -372,25 +388,31 @@ logged). The NeoForge dev client starts with the same stack and logs Mobium's co
 (no GitHub repository yet, see §11) and Anton's visual check of both dev clients.
 
 ### M1 · Vanilla recon (documentation only)
-- [ ] `docs/vanilla-notes.md` answers, with class + method signatures and short source excerpts:
-  - [ ] Where block entities are iterated, culled and submitted each frame (and what Sodium 0.9 replaces there).
-  - [ ] How item frames, armor stands and display entities are submitted.
-  - [ ] The model feature renderer: where `setupAnim` runs relative to tessellation, how `ModelPart` trees are
+- [x] `docs/vanilla-notes.md` answers, with class + method signatures and short source excerpts:
+  - [x] Where block entities are iterated, culled and submitted each frame (and what Sodium 0.9 replaces there).
+  - [x] How item frames, armor stands and display entities are submitted.
+  - [x] The model feature renderer: where `setupAnim` runs relative to tessellation, how `ModelPart` trees are
         walked (visibility, `skipDraw`, children), how `UvMapping` is applied.
-  - [ ] `FeatureRenderDispatcher.renderAllFeatures`: order, render-type grouping, OIT multi-pass behaviour.
-  - [ ] Renderpearl: buffer creation/upload, how a render type's pipeline is bound and drawn, how the GL and
+  - [x] `FeatureRenderDispatcher.renderAllFeatures`: order, render-type grouping, OIT multi-pass behaviour.
+  - [x] Renderpearl: buffer creation/upload, how a render type's pipeline is bound and drawn, how the GL and
         Vulkan backends are selected, whether any compute API exists.
-  - [ ] Change signals: block-entity data updates on the client, block state changes, section light changes,
+  - [x] Change signals: block-entity data updates on the client, block state changes, section light changes,
         resource reload, render distance / level change.
-  - [ ] Iris 1.11: extended entity vertex format layout, how tangent and mid-texture coordinates are computed,
+  - [x] Iris 1.11: extended entity vertex format layout, how tangent and mid-texture coordinates are computed,
         how `entityId` / `blockEntityId` reach the shader (per vertex or per-draw uniform), shader-pack reload
         signal, shadow pass.
-  - [ ] EMF/ETF: which `ModelPart` / `setupAnim` paths they hook, whether EMF already throttles animations, how
+  - [x] EMF/ETF: which `ModelPart` / `setupAnim` paths they hook, whether EMF already throttles animations, how
         ETF draws emissive layers.
-  - [ ] Sodium 0.9: whether it still carries a model-part fast path and where; Config API artifact coordinates.
-- [ ] A final "Hook list" table: hook name → target class/method → injection type → which module uses it.
+  - [x] Sodium 0.9: whether it still carries a model-part fast path and where; Config API artifact coordinates.
+- [x] A final "Hook list" table: hook name → target class/method → injection type → which module uses it.
 
 Done when every *(verify)* in this plan is either confirmed or corrected in PLAN.md.
+
+Status (19 Oct 2026): done. `docs/vanilla-notes.md` answers every question; §5.1–§5.3 are corrected (posing and
+tessellation are one prepare stage, the level does not use `renderAllFeatures`, Iris's format is 56 bytes with
+per-vertex ids). Findings that change later milestones: Module 2 hooks `ModelPart.compile` instead of walking trees
+itself (EMF/ETF), the part record needs Iris's three ids, Sodium `@Overwrite`s `LevelExtractor`'s dirty methods (hook
+the `ClientLevel`/`ClientChunkCache` callers), and EMF already has an animation LOD.
 
 ### M2 · Instrumentation and benchmark harness (Phase 0)
 - [ ] `debug/Sections.kt`: timers around extract, submit, pose, tessellate and draw, split by entity vs block
