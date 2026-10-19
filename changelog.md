@@ -1,0 +1,1 @@
+- first beta: draws block entities and static entities from GPU buffers instead of rebuilding them every frame

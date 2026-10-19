@@ -1,0 +1,20 @@
+name: sync-readme
+
+# TODO: once the Modrinth and CurseForge projects exist (PLAN.md Gate B), set the project ids below and add back the
+# trigger on pushes to main that touch README.md or media/.
+on:
+  workflow_dispatch:
+
+jobs:
+  modrinth-description:
+    runs-on: ubuntu-latest
+    name: Sync Modrinth description
+    steps:
+      - uses: actions/checkout@v7
+      - uses: btwonion/mc-readme-sync@v1
+        with:
+          modrinth-api-key: ${{ secrets.MODRINTH_API_KEY }}
+          curseforge-api-key: ${{ secrets.CURSEFORGE_API_KEY }}
+          modrinth-project-id: "TODO"
+          curseforge-project-id: "TODO"
+          readme-path: README.md

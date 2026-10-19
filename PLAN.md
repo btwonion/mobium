@@ -126,9 +126,10 @@ Copy autodrop's files and change only what is listed here.
 - `rootProject.name = "mobium"`; same `pluginManagement` repositories; `id("dev.kikugie.stonecutter") version "0.9"`.
 - `stonecutter { kotlinController = true; centralScript = "build.gradle.kts"; shared { version("26.3-fabric", "26.3"); version("26.3-neoforge", "26.3"); vcsVersion = "26.3-fabric" }; create(rootProject) }`
 
-**gradle/libs.versions.toml** — start from autodrop's catalog: kotlin `2.3.10`, modstitch `0.8.5`,
-fabric-loader `0.19.5`, fabric-language-kotlin `1.13.9+kotlin.`, konfig `3.0.1`, moddev `2.0.147`,
-mod-publish `2.1.+` (better-boat-movement's newer pin). Re-check each for a newer release when scaffolding.
+**gradle/libs.versions.toml** — start from autodrop's catalog, re-checked in M0 (19 Oct 2026): kotlin `2.4.21`,
+modstitch `0.8.5`, fabric-loader `0.20.0`, fabric-language-kotlin `1.14.2+kotlin.`, KotlinLangForge `2.15.0` (catalog
+key `klf`; a `kotlin-*` key would shadow `libs.versions.kotlin`), konfig `3.0.1`, moddev `2.0.148`, mod-publish
+`2.2.+`, JUnit `6.1.3`. The Gradle wrapper stays on the house version 9.4.1.
 
 **gradle.properties**
 ```
@@ -150,18 +151,20 @@ mod.major-version=0.1.0
 mod.supported-loaders=fabric,quilt,neoforge
 ```
 
-**versions/26.3-fabric/gradle.properties** (values from autodrop; compat versions to look up on Modrinth)
+**versions/26.3-fabric/gradle.properties** (looked up on Modrinth and the CaffeineMC Maven in M0; Fabric uses Sodium
+0.9.2, the build Iris 1.11.7 lists on Modrinth)
 ```
 vers.mcVersion=26.3
 vers.mcVersionRange=>26.2
 vers.supportedMcVersions=26.3
 
-vers.deps.fapi=0.160.5+26.3
-vers.deps.modMenu=21.0.0-beta.1
-vers.deps.sodium=<26.3 Fabric build of Sodium 0.9.x>
-vers.deps.iris=<26.3 Fabric build of Iris 1.11.x>
-vers.deps.emf=<26.3 Fabric build of Entity Model Features>
-vers.deps.etf=<26.3 Fabric build of Entity Texture Features>
+vers.deps.fapi=0.164.0+26.3
+vers.deps.modMenu=21.0.0
+vers.deps.sodium=mc26.3-0.9.2-fabric
+vers.deps.sodiumApi=0.9.2+mc26.3
+vers.deps.iris=1.11.7+26.3-fabric
+vers.deps.emf=3.3.12-fabric-26.3
+vers.deps.etf=7.2.6-fabric-26.3
 
 modstitch.platform=fabric-loom
 ```
@@ -172,15 +175,25 @@ vers.mcVersion=26.3
 vers.mcVersionRange=>26.2
 vers.supportedMcVersions=26.3
 
-vers.deps.fml=26.3.0.1-beta
+vers.deps.fml=26.3.0.94
 vers.deps.klf=3.1
-vers.deps.sodium=<26.3 NeoForge build>
-vers.deps.iris=<26.3 NeoForge build>
-vers.deps.emf=<26.3 NeoForge build>
-vers.deps.etf=<26.3 NeoForge build>
+vers.deps.sodium=mc26.3-0.9.3-beta.1-neoforge
+vers.deps.sodiumApi=0.9.3-beta.1+mc26.3
+vers.deps.iris=1.11.7+26.3-neoforge
+vers.deps.emf=3.3.12-neoforge-26.3
+vers.deps.etf=7.2.6-neoforge-26.3
 
 modstitch.platform=moddevgradle
 ```
+
+NeoForge needs Sodium 0.9.3-beta.1: Sodium 0.9.2-neoforge carries a `LevelExtractorMixin` for an
+`extractVisibleBlockEntities(Camera, float, LevelRenderState, Frustum)` patch that NeoForge 26.3.0.94 no longer has,
+and the dev client crashes on startup (Iris 1.11.7 accepts Sodium `[0.6,)`). Move Fabric to the same Sodium once a
+0.9.3 release is out.
+
+Maven coordinates: `maven.modrinth:sodium|iris|entity-model-features|entitytexturefeatures:<version>`, Sodium API
+`net.caffeinemc:sodium-<loader>-api:<sodiumApi>`. Mod ids (same on both loaders): `sodium`, `iris`,
+`entity_model_features`, `entity_texture_features`, `modmenu`.
 
 **build.gradle.kts** — autodrop's central script with these changes:
 - `modLicense = "GNU Lesser General Public License v3.0"`, `modAuthor = "btwonion"`.
@@ -188,11 +201,14 @@ modstitch.platform=moddevgradle
 - Repositories: add `https://maven.caffeinemc.net/releases` (Sodium Config API) and `https://api.modrinth.com/maven`
   (Iris, EMF, ETF, Sodium as `maven.modrinth:<slug>:<version>`).
 - Compat mods are **compile-only** dependencies (Mobium must load without them) and **dev-runtime** dependencies so
-  `runClient` starts with the full compat stack. Use modstitch's compile-only configuration for the first and its
-  local-runtime configuration for the second *(verify configuration names in modstitch 0.8.5)*.
+  `runClient` starts with the full compat stack: `modstitchModCompileOnly` and `modstitchModLocalRuntime`
+  (confirmed in modstitch 0.8.5; they proxy Loom's/MDG's `compileOnly` and `localRuntime`).
 - Fabric targets only: enable Fabric client gametests (`fabricApi { configureTests { createSourceSet = true;
-  modId = "mobium-test"; eula = true } }`, see Fabric's "Automatic testing" docs) and register a
-  `runClientGameTest` dependency from `check`.
+  modId = "mobium-test"; eula = true; enableGameTests = false } }`, see Fabric's "Automatic testing" docs; server
+  gametests are off because Mobium is client-only) and register a `runClientGameTest` dependency from `check`.
+  The `fabricApi` extension is reached with `extensions.configure<FabricApiExtension>("fabricApi")` because the
+  central script has no generated Loom accessors. Locally, `./gradlew build` therefore opens a game window for
+  the gametests; CI runs it under `xvfb-run`.
 - Keep `publishMods` and the `nyon` Maven publication, but leave `modrinth.projectId` / `curseforge.projectId` as
   TODO until the projects exist; do not run `releaseMod` before the Gate B release.
 - NeoForge `mainClient` run: same as autodrop (`gameDirectory = ../../run`, X11 env vars).
@@ -201,7 +217,8 @@ modstitch.platform=moddevgradle
 - `fabric.mod.json`: copy autodrop's (client environment, kotlin adapter). Entrypoints: `client` →
   `dev.nyon.mobium.MobiumEntrypoint`, `modmenu` → `dev.nyon.mobium.config.ModMenuImpl`,
   `sodium:config_api_user` → `dev.nyon.mobium.config.SodiumOptions`. `breaks` / `conflicts`: none (overlaps are
-  handled at runtime, §6).
+  handled at runtime, §6). M0 declares only `client`; `modmenu` and `sodium:config_api_user` are added in M4
+  together with the classes they name (an entrypoint pointing at a missing class crashes the game).
 - `neoforge.mods.toml`: copy autodrop's (`modLoader = "klf"`, minecraft dependency `side = "CLIENT"`).
 - `mobium.mixins.json`: package `dev.nyon.mobium.mixins`, `compatibilityLevel` `JAVA_25`,
   `injectors.defaultRequire = 1`, all mixins under `client`. Add a mixin plugin
@@ -337,17 +354,22 @@ Each milestone lists tasks, what "done" means, and what Anton checks. Gates A–
 gate fails, stop, write up why in the PR, and agree on the next step before continuing.
 
 ### M0 · Scaffold
-- [ ] Root files from §3–§4 (settings, build, stonecutter, gradle.properties, version catalog, version folders,
+- [x] Root files from §3–§4 (settings, build, stonecutter, gradle.properties, version catalog, version folders,
       wrapper, .editorconfig, .gitignore, LICENSE + COPYING, README skeleton, changelog.md).
-- [ ] `MobiumEntrypoint` for both loaders (Stonecutter branches as in autodrop's `AutoDropEntrypoint.kt`) that
+- [x] `MobiumEntrypoint` for both loaders (Stonecutter branches as in autodrop's `AutoDropEntrypoint.kt`) that
       loads the konfig config and logs the detected capabilities and compat mods.
-- [ ] Empty `mobium.mixins.json` + `MobiumMixinPlugin`; `en_us.json` / `de_de.json` with the mod name.
-- [ ] CI `build-commit.yml` with the 26.3 × fabric/neoforge matrix (copy autodrop/better-boat-movement).
-- [ ] CLAUDE.md updated with the real commands.
+- [x] Empty `mobium.mixins.json` + `MobiumMixinPlugin`; `en_us.json` / `de_de.json` with the mod name.
+- [x] CI `build-commit.yml` with the 26.3 × fabric/neoforge matrix (copy autodrop/better-boat-movement).
+- [x] CLAUDE.md updated with the real commands.
 
 Done when: `./gradlew build` is green for both targets locally and in CI, and both dev clients reach the title
 screen with Mobium listed.
 How to verify (Anton): run `:26.3-fabric:runClient` and `:26.3-neoforge:runMainClient`, open the mod list.
+
+Status (19 Oct 2026): `./gradlew build` is green locally for both targets, including the Fabric client gametest
+(`StartupGameTest`: title screen reached with Mobium, Sodium, Iris, EMF, ETF and ModMenu loaded, capabilities
+logged). The NeoForge dev client starts with the same stack and logs Mobium's compat and graphics lines. Open: CI
+(no GitHub repository yet, see §11) and Anton's visual check of both dev clients.
 
 ### M1 · Vanilla recon (documentation only)
 - [ ] `docs/vanilla-notes.md` answers, with class + method signatures and short source excerpts:
