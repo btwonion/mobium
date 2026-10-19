@@ -1,0 +1,543 @@
+# Mobium — Implementation Plan
+
+This file is the build plan for Mobium. It is written for the coding agent (Claude Code) working in this
+repository and for Anton, who runs the game. Read it fully before writing code, work through the milestones in
+order, and tick the checkboxes in this file as tasks land.
+
+Design doc (background and reasoning): https://claude.ai/code/artifact/0475447c-94e1-45bc-acb5-2e882690c1e4
+Everything needed to build is repeated here; when this file and the design doc disagree, this file wins.
+
+---
+
+## 0. How to work in this repository
+
+1. **One milestone at a time.** Each milestone is one branch and one PR. Do not start a milestone before the
+   previous one's acceptance criteria are met (gates in §7 are hard stops).
+2. **Never guess the 26.3 API.** Minecraft 26.x is unobfuscated, so the source you see after Loom/ModDevGradle
+   decompiles it uses Mojang's real names. Look up every class, method and field before you hook it, and record
+   what you learned in `docs/vanilla-notes.md` (milestone M1). Names in this plan marked *(verify)* are
+   expectations, not facts.
+3. **You cannot see the game.** Claude Code has no GPU and cannot judge visuals or FPS. Every PR that changes
+   rendering ends with a **"How to verify"** section for Anton: the exact Gradle task, the benchmark scene,
+   key presses, and what correct and broken look like.
+4. **Vanilla first, fast path second.** Every feature has a config switch, a per-type switch and a runtime
+   fallback to the unmodified vanilla path. A new hook ships disabled until its screenshot tests pass.
+5. **Follow the house structure.** Layout, build scripts, Stonecutter usage, config handling, publishing and CI
+   copy `btwonion/autodrop` (single root project) and `btwonion/better-boat-movement` (newer conventions).
+   When unsure how something is done, look at those repositories first.
+
+---
+
+## 1. What Mobium is
+
+Mobium makes entities and block entities cheap to draw by keeping their geometry on the GPU and sending only
+small per-frame updates, while vanilla, EMF and Iris still decide how everything looks.
+
+**The one rule:** Mobium may change *how* geometry reaches the GPU, never *what* ends up on screen.
+
+| Module | What it does | Default |
+| --- | --- | --- |
+| 1 · Static cache | Block entities and static entities (closed chests, signs, beds, shelves, item frames, armor stands, display entities) are captured once and redrawn from GPU buffers until they change | On |
+| 2 · GPU part transform | Animated models keep CPU posing (`setupAnim`, EMF), but the CPU writes one ~80-byte record per model part and a compute shader expands records into vertices | On where compute exists |
+| 3 · Animation LOD | Far or tiny-on-screen mobs reuse last frame's part records; root transform still updates every frame | Off |
+
+**Must-have compatibility:** Iris shader packs; EMF/ETF including the Fresh Animations resource pack.
+**Also expected to coexist with:** Sodium 0.9, EntityCulling, ModMenu.
+**Non-goals:** game-logic changes (client-only mod), terrain rendering, occlusion culling, hiding/capping entities,
+requiring shader packs to be patched.
+
+**Headline targets** (confirmed or revised after M2 profiling):
+- Storage room full of chests and signs: at most 1.2× the frame time of the same room without them.
+- 500-mob scene with Sodium + Iris + Fresh Animations: at least 1.5× faster.
+- Zero visible differences against the vanilla path in the screenshot suite.
+
+---
+
+## 2. Decisions already made
+
+| Topic | Decision |
+| --- | --- |
+| Name / mod id | Mobium / `mobium` |
+| Maven group / package | `dev.nyon` / `dev.nyon.mobium` (mixins in `dev.nyon.mobium.mixins`) |
+| Author | `btwonion` |
+| Repository | `btwonion/mobium` *(assumed; change `mod.repo` if different)* |
+| License | LGPL-3.0 (`modLicense = "GNU Lesser General Public License v3.0"`) |
+| Loaders | Fabric (+ Quilt) and NeoForge from day one, one source tree via Stonecutter + modstitch |
+| First targets | `26.3-fabric`, `26.3-neoforge`; `26.4-*` added in M7 |
+| Side | Client only (`"environment": "client"`, NeoForge dependency `side = "CLIENT"`) |
+| Language | Kotlin for all logic, Java only for mixins |
+| Java | 25 (as 26.x requires; same as CI) |
+| Config storage | `dev.nyon:konfig` (versioned JSON at `config/mobium.json`) |
+| Config UI | Vanilla-widget screen like autodrop (ModMenu on Fabric, `IConfigScreenFactory` on NeoForge) plus a page in Sodium's video settings through the Sodium Config API when Sodium is installed |
+| Translations | `en_us.json` and `de_de.json`, always with identical keys |
+
+---
+
+## 3. Repository layout (target state)
+
+```
+mobium/
+├── .editorconfig                       # copy from autodrop (4 spaces, 120 columns)
+├── .gitignore                          # .idea .gradle build run .kotlin
+├── .github/workflows/
+│   ├── build-commit.yml                # matrix: 26.3 × fabric/neoforge; build + unit tests + Fabric client gametests
+│   ├── release.yml                     # manual dispatch, copy from autodrop
+│   └── readme-modrinth-sync.yml        # copy from autodrop
+├── CLAUDE.md                           # agent guidance (commands, Stonecutter rules, architecture)
+├── PLAN.md                             # this file
+├── LICENSE                             # LGPL-3.0 text
+├── COPYING                             # GPL-3.0 text (LGPL-3.0 builds on it)
+├── README.md                           # user-facing; synced to Modrinth/CurseForge
+├── changelog.md                        # notes for the upcoming release only
+├── settings.gradle.kts                 # Stonecutter targets
+├── stonecutter.gradle.kts              # active target + postUpdate Discord task (copy from autodrop)
+├── build.gradle.kts                    # central per-target script (modstitch)
+├── gradle.properties                   # mod.* properties
+├── gradle/libs.versions.toml
+├── versions/
+│   ├── 26.3-fabric/gradle.properties
+│   └── 26.3-neoforge/gradle.properties
+├── docs/
+│   ├── vanilla-notes.md                # M1: how 26.3 renders entities, exact hook points
+│   ├── benchmarks.md                   # protocol + results table
+│   ├── benchmarks/results/             # CSVs from Anton's runs
+│   └── compat.md                       # compatibility matrix and known issues
+├── benchmark/
+│   └── mobium-bench/                   # datapack that builds the benchmark scenes (works without Mobium too)
+└── src/
+    ├── main/java/dev/nyon/mobium/mixins/            # thin hooks only, forward into Kotlin
+    ├── main/kotlin/dev/nyon/mobium/                 # see §5
+    ├── main/resources/
+    │   ├── mobium.mixins.json
+    │   └── assets/mobium/{icon,lang,shaders}/
+    ├── main/templates/fabric.mod.json
+    ├── main/templates/META-INF/neoforge.mods.toml
+    ├── test/kotlin/dev/nyon/mobium/                 # JUnit 5; pure Kotlin, no Minecraft classes
+    └── gametest/                                    # Fabric client gametests (screenshots, scene smoke tests)
+```
+
+---
+
+## 4. Build setup (milestone M0 builds this)
+
+Copy autodrop's files and change only what is listed here.
+
+**settings.gradle.kts**
+- `rootProject.name = "mobium"`; same `pluginManagement` repositories; `id("dev.kikugie.stonecutter") version "0.9"`.
+- `stonecutter { kotlinController = true; centralScript = "build.gradle.kts"; shared { version("26.3-fabric", "26.3"); version("26.3-neoforge", "26.3"); vcsVersion = "26.3-fabric" }; create(rootProject) }`
+
+**gradle/libs.versions.toml** — start from autodrop's catalog: kotlin `2.3.10`, modstitch `0.8.5`,
+fabric-loader `0.19.5`, fabric-language-kotlin `1.13.9+kotlin.`, konfig `3.0.1`, moddev `2.0.147`,
+mod-publish `2.1.+` (better-boat-movement's newer pin). Re-check each for a newer release when scaffolding.
+
+**gradle.properties**
+```
+org.gradle.jvmargs=-Xmx4096M
+org.gradle.parallel=true
+
+mod.main-branch=main
+mod.color=<pick an int colour for the Discord embed>
+mod.icon=assets/mobium/icon/icon.png
+mod.icon-url=https://raw.githubusercontent.com/btwonion/mobium/main/src/main/resources/assets/mobium/icon/icon.png
+mod.group=dev.nyon
+mod.repo=btwonion/mobium
+mod.slug=mobium
+mod.id=mobium
+mod.name=Mobium
+mod.description=Draws entities and block entities from the GPU instead of rebuilding them every frame
+mod.beta=1
+mod.major-version=0.1.0
+mod.supported-loaders=fabric,quilt,neoforge
+```
+
+**versions/26.3-fabric/gradle.properties** (values from autodrop; compat versions to look up on Modrinth)
+```
+vers.mcVersion=26.3
+vers.mcVersionRange=>26.2
+vers.supportedMcVersions=26.3
+
+vers.deps.fapi=0.160.5+26.3
+vers.deps.modMenu=21.0.0-beta.1
+vers.deps.sodium=<26.3 Fabric build of Sodium 0.9.x>
+vers.deps.iris=<26.3 Fabric build of Iris 1.11.x>
+vers.deps.emf=<26.3 Fabric build of Entity Model Features>
+vers.deps.etf=<26.3 Fabric build of Entity Texture Features>
+
+modstitch.platform=fabric-loom
+```
+
+**versions/26.3-neoforge/gradle.properties**
+```
+vers.mcVersion=26.3
+vers.mcVersionRange=>26.2
+vers.supportedMcVersions=26.3
+
+vers.deps.fml=26.3.0.1-beta
+vers.deps.klf=3.1
+vers.deps.sodium=<26.3 NeoForge build>
+vers.deps.iris=<26.3 NeoForge build>
+vers.deps.emf=<26.3 NeoForge build>
+vers.deps.etf=<26.3 NeoForge build>
+
+modstitch.platform=moddevgradle
+```
+
+**build.gradle.kts** — autodrop's central script with these changes:
+- `modLicense = "GNU Lesser General Public License v3.0"`, `modAuthor = "btwonion"`.
+- `mixin { addMixinsToModManifest = true; configs.register("mobium") }`.
+- Repositories: add `https://maven.caffeinemc.net/releases` (Sodium Config API) and `https://api.modrinth.com/maven`
+  (Iris, EMF, ETF, Sodium as `maven.modrinth:<slug>:<version>`).
+- Compat mods are **compile-only** dependencies (Mobium must load without them) and **dev-runtime** dependencies so
+  `runClient` starts with the full compat stack. Use modstitch's compile-only configuration for the first and its
+  local-runtime configuration for the second *(verify configuration names in modstitch 0.8.5)*.
+- Fabric targets only: enable Fabric client gametests (`fabricApi { configureTests { createSourceSet = true;
+  modId = "mobium-test"; eula = true } }`, see Fabric's "Automatic testing" docs) and register a
+  `runClientGameTest` dependency from `check`.
+- Keep `publishMods` and the `nyon` Maven publication, but leave `modrinth.projectId` / `curseforge.projectId` as
+  TODO until the projects exist; do not run `releaseMod` before the Gate B release.
+- NeoForge `mainClient` run: same as autodrop (`gameDirectory = ../../run`, X11 env vars).
+
+**Templates**
+- `fabric.mod.json`: copy autodrop's (client environment, kotlin adapter). Entrypoints: `client` →
+  `dev.nyon.mobium.MobiumEntrypoint`, `modmenu` → `dev.nyon.mobium.config.ModMenuImpl`,
+  `sodium:config_api_user` → `dev.nyon.mobium.config.SodiumOptions`. `breaks` / `conflicts`: none (overlaps are
+  handled at runtime, §6).
+- `neoforge.mods.toml`: copy autodrop's (`modLoader = "klf"`, minecraft dependency `side = "CLIENT"`).
+- `mobium.mixins.json`: package `dev.nyon.mobium.mixins`, `compatibilityLevel` `JAVA_25`,
+  `injectors.defaultRequire = 1`, all mixins under `client`. Add a mixin plugin
+  (`dev.nyon.mobium.mixins.MobiumMixinPlugin`) so compat mixins apply only when their target mod is present.
+
+**Commands (also go into CLAUDE.md)**
+```
+./gradlew build                            # all targets; what CI runs
+./gradlew :26.3-fabric:build               # one target
+./gradlew :26.3-fabric:runClient           # dev client, Fabric (compat stack on the classpath)
+./gradlew :26.3-neoforge:runMainClient     # dev client, NeoForge (game dir: run/)
+./gradlew :26.3-fabric:runClientGameTest   # client gametests (screenshots)
+./gradlew "Set active project to 26.3-neoforge"   # switch the version the src/ comments are written for
+```
+
+---
+
+## 5. Architecture
+
+### 5.1 How 26.3 draws entities (what Mobium plugs into)
+
+Since 1.21.9 vanilla renders world objects through a queue *(verify each step and its classes in M1)*:
+
+1. **Extract** — `EntityRenderer#extractRenderState` / `BlockEntityRenderer` render states copy data out of the
+   entity or block entity.
+2. **Submit** — `submit(state, poseStack, collector, cameraState)` queues work on a `SubmitNodeCollector`
+   (`submitModel`, `submitModelPart`, `submitItem`, `submitText`, …). In 26.3 `submitModel` takes a `UvMapping`.
+3. **Pose** — the shared model is posed from the render state (`setupAnim`). EMF / Fresh Animations act here.
+4. **Tessellate** — the posed `ModelPart` tree is walked and every cuboid vertex is transformed on the CPU and
+   written into a buffer.
+5. **Draw** — `FeatureRenderDispatcher.renderAllFeatures(RenderPass, PreparedFrame)` draws everything in a fixed
+   order per render type. With order-independent transparency (OIT, new in 26.3) some phases draw more than once.
+
+The GPU layer is **Renderpearl** (`com.mojang.renderpearl`, renamed from Blaze3D in 26.3, split into `api`,
+`backend`, `frontend`). OpenGL is the 26.3 default; Vulkan is opt-in and becomes the default in 26.4.
+
+### 5.2 Where each module hooks in
+
+| Module | Hook (verify in M1) | Replaces | Output |
+| --- | --- | --- | --- |
+| 1 · Static cache | The per-block-entity submit loop and the submit of static entities (item frames, armor stands, display entities) | Steps 2–5 for unchanged objects | Section buckets drawn through vanilla's draw path |
+| 2 · GPU part transform | The point in the model feature renderer right after `setupAnim`, where vanilla would tessellate the part tree | Step 4 for model-part geometry | Ring-buffer range drawn through vanilla's draw path |
+| 3 · Animation LOD | Before `setupAnim` for throttled entities | Steps 3–4 on skipped frames | Reuses Module 2's last records |
+
+Everything not accelerated (fishing lines, beams, leashes, custom modded vertex code, glint, outlines, breaking
+overlay in the first releases) flows through vanilla untouched.
+
+### 5.3 Package map
+
+```
+dev.nyon.mobium
+├── MobiumEntrypoint.kt        # Fabric ClientModInitializer / NeoForge @Mod (Stonecutter branches, like autodrop)
+├── Mobium.kt                  # bootstrap(configPath), module registry, logger "Mobium"
+├── config/
+│   ├── Config.kt              # @Serializable config: global switch, per-module switches, per-type switches, budgets
+│   ├── ConfigHandler.kt       # CONFIG_VERSION + migrate(), konfig wiring (autodrop pattern)
+│   ├── ModMenuImpl.kt         # Fabric only
+│   ├── SodiumOptions.kt       # Sodium Config API page (Fabric entrypoint / NeoForge @ConfigEntryPointForge)
+│   └── screen/                # vanilla-widget settings screen (autodrop's DraftScreen pattern)
+├── core/
+│   ├── ModuleState.kt         # enabled / disabled + human-readable reason, per module and per type
+│   ├── Fallback.kt            # catch → disable module for this session, log once, one toast
+│   ├── Capabilities.kt        # graphics API, GL version, compute support, MultiDrawIndirect
+│   └── Compat.kt              # detects Sodium, Iris (+ shader pack active), EMF, ETF, EntityCulling, overlapping mods
+├── debug/
+│   ├── DebugLines.kt          # F3 lines: cached objects, records/frame, GPU memory, fallbacks by reason
+│   ├── AbToggle.kt            # keybind toggling all modules live for A/B comparison
+│   ├── Sections.kt            # timers around extract / submit / pose / tessellate / draw
+│   └── Validation.kt          # dev builds: draw both ways off-screen and pixel-diff
+├── bench/
+│   ├── BenchCommand.kt        # client command: /mobium bench <scene> <seconds>
+│   └── FrameRecorder.kt       # frame times → CSV + summary (avg FPS, 1% low, avg and p95 frame ms, section times)
+├── gpu/
+│   ├── GpuBackend.kt          # interface: buffers, uploads, compute dispatch, draw a range with a vanilla render type
+│   ├── RenderpearlBackend.kt  # buffers + draws through Renderpearl (works on GL and Vulkan)
+│   ├── RingBuffer.kt          # 3 frames in flight, fences, grow by doubling
+│   ├── gl/GlCompute.kt        # OpenGL 4.3 compute + SSBOs + memory barrier
+│   ├── vk/VkCompute.kt        # M7: compute pipeline on the game's Vulkan device/queue
+│   └── Shaders.kt             # loads GLSL from assets/mobium/shaders, compiles per backend
+├── cache/                     # Module 1
+│   ├── StaticCache.kt         # lookup / capture / invalidate, per-frame "mark section" list
+│   ├── CaptureConsumer.kt     # VertexConsumer recording per render type, block-local space, active vertex format
+│   ├── SectionBucket.kt       # concatenated meshes per (chunk section, render type), rebuilt on change
+│   ├── CachePolicy.kt         # per-type rules: when cacheable, when vanilla
+│   ├── Invalidation.kt        # data/state/light/reload/shader-pack listeners
+│   └── MemoryBudget.kt        # default 128 MB, evict by distance
+├── parts/                     # Module 2
+│   ├── MeshPool.kt            # ModelPart identity → local-space cuboid mesh in a shared GPU buffer
+│   ├── PartRecords.kt         # off-heap record writer (layout below)
+│   ├── PartWalker.kt          # walks the posed part tree exactly like vanilla, emits records
+│   ├── VertexFormats.kt       # vanilla entity format + Iris extended format descriptions
+│   └── ExpandPass.kt          # per render type: dispatch compute, then draw the ring range
+├── lod/                       # Module 3
+│   └── AnimationLod.kt        # screen-size rule, presets, exclusions, record reuse
+└── util/                      # MemoryUtil helpers, LogOnce, math
+```
+
+**Part record layout (Module 2), 80 bytes, std430-friendly:**
+
+| Offset | Field | Type |
+| --- | --- | --- |
+| 0 | pose matrix, 3 columns of a 4×3 affine transform | 12 × f32 |
+| 48 | UV mapping (atlas sprite u0, v0, u-scale, v-scale) | 4 × f32 |
+| 64 | mesh id (index into MeshPool) | u32 |
+| 68 | packed light (block, sky) | u32 |
+| 72 | packed overlay (hurt flash / white) | u32 |
+| 76 | tint colour ARGB | u32 |
+
+Iris's extended attributes (tangent, mid-texture coordinates, entity id) are computed per quad inside the compute
+shader, matching what Iris's own vertex writer does *(verify Iris 1.11's layout and math in M1)*.
+
+---
+
+## 6. Runtime behaviour every module must follow
+
+- **Fallback ladder:** per submit (unknown or wrapped vertex consumer → vanilla), per type (config or repeated
+  failure → vanilla), per module (exception or GPU error → off for the session with one log line and one toast).
+- **Overlap detection:** if Enhanced Block Entities Reloaded, an Accelerated Rendering port or CrankShaft is
+  installed, switch off the overlapping Mobium module and say so in the log and the settings screen.
+- **Sodium:** take over only the submits Mobium accelerates; everything else falls through to Sodium.
+- **Iris:** capture and expand in Iris's active vertex format; treat a shader pack change like a resource reload
+  (clear caches). Shadow-pass entity draws reuse the frame's records where possible.
+- **EMF/ETF:** never bypass `setupAnim`; EMF parts are pooled like vanilla parts; ETF emissive textures are just
+  another render-type pass.
+- **Thread:** all render work stays on the render thread. No new threads in Modules 1–2.
+- **Defaults:** Module 1 on; Module 2 on when compute is available; Module 3 off.
+
+---
+
+## 7. Milestones
+
+Each milestone lists tasks, what "done" means, and what Anton checks. Gates A–C are go/no-go decisions: if a
+gate fails, stop, write up why in the PR, and agree on the next step before continuing.
+
+### M0 · Scaffold
+- [ ] Root files from §3–§4 (settings, build, stonecutter, gradle.properties, version catalog, version folders,
+      wrapper, .editorconfig, .gitignore, LICENSE + COPYING, README skeleton, changelog.md).
+- [ ] `MobiumEntrypoint` for both loaders (Stonecutter branches as in autodrop's `AutoDropEntrypoint.kt`) that
+      loads the konfig config and logs the detected capabilities and compat mods.
+- [ ] Empty `mobium.mixins.json` + `MobiumMixinPlugin`; `en_us.json` / `de_de.json` with the mod name.
+- [ ] CI `build-commit.yml` with the 26.3 × fabric/neoforge matrix (copy autodrop/better-boat-movement).
+- [ ] CLAUDE.md updated with the real commands.
+
+Done when: `./gradlew build` is green for both targets locally and in CI, and both dev clients reach the title
+screen with Mobium listed.
+How to verify (Anton): run `:26.3-fabric:runClient` and `:26.3-neoforge:runMainClient`, open the mod list.
+
+### M1 · Vanilla recon (documentation only)
+- [ ] `docs/vanilla-notes.md` answers, with class + method signatures and short source excerpts:
+  - [ ] Where block entities are iterated, culled and submitted each frame (and what Sodium 0.9 replaces there).
+  - [ ] How item frames, armor stands and display entities are submitted.
+  - [ ] The model feature renderer: where `setupAnim` runs relative to tessellation, how `ModelPart` trees are
+        walked (visibility, `skipDraw`, children), how `UvMapping` is applied.
+  - [ ] `FeatureRenderDispatcher.renderAllFeatures`: order, render-type grouping, OIT multi-pass behaviour.
+  - [ ] Renderpearl: buffer creation/upload, how a render type's pipeline is bound and drawn, how the GL and
+        Vulkan backends are selected, whether any compute API exists.
+  - [ ] Change signals: block-entity data updates on the client, block state changes, section light changes,
+        resource reload, render distance / level change.
+  - [ ] Iris 1.11: extended entity vertex format layout, how tangent and mid-texture coordinates are computed,
+        how `entityId` / `blockEntityId` reach the shader (per vertex or per-draw uniform), shader-pack reload
+        signal, shadow pass.
+  - [ ] EMF/ETF: which `ModelPart` / `setupAnim` paths they hook, whether EMF already throttles animations, how
+        ETF draws emissive layers.
+  - [ ] Sodium 0.9: whether it still carries a model-part fast path and where; Config API artifact coordinates.
+- [ ] A final "Hook list" table: hook name → target class/method → injection type → which module uses it.
+
+Done when every *(verify)* in this plan is either confirmed or corrected in PLAN.md.
+
+### M2 · Instrumentation and benchmark harness (Phase 0)
+- [ ] `debug/Sections.kt`: timers around extract, submit, pose, tessellate and draw, split by entity vs block
+      entity, shown on F3 and visible in spark.
+- [ ] `bench/`: `/mobium bench <scene> <seconds>` client command (Fabric client command API / NeoForge
+      `RegisterClientCommandsEvent`), writing `run/mobium-bench/<scene>-<setup>-<timestamp>.csv` and printing a
+      summary in chat.
+- [ ] `benchmark/mobium-bench` datapack with one function per scene, each building the scene in a superflat
+      world and teleporting the player to a fixed position and rotation:
+
+      | Scene | Contents |
+      | --- | --- |
+      | `mob_pen_static` | 500 mixed mobs (cows, villagers, zombies) with NoAI, for repeatable runs |
+      | `mob_pen_live` | The same mobs with AI in 1×1 pens, so walk animations run |
+      | `storage_room` | 1,000 chests and 300 signs with text |
+      | `map_wall` | 400 item frames with filled maps, plus shelves with items |
+      | `display_build` | A decoration built from item and block display entities |
+      | `control` | Empty superflat, nothing to accelerate |
+
+- [ ] Fabric client gametest that builds each scene and saves baseline screenshots.
+- [ ] `docs/benchmarks.md`: the protocol (60 s per run, median of 3, four setups: Sodium only; + Iris with one
+      named shader pack; + EMF/ETF with Fresh Animations; all together) and an empty results table.
+
+Done when Anton has committed baseline CSVs for all scenes and setups, and `docs/benchmarks.md` states the cost
+split (pose vs tessellate + draw) per scene.
+How to verify (Anton): load the datapack, run each scene in each setup with `/mobium bench`, commit the CSVs.
+
+### M3 · Chest prototype → Gate A
+- [ ] Minimal Module 1 for closed chests only, OpenGL only, behind `cache.prototype` (off by default).
+- [ ] A temporary keybind toggles the prototype on and off live, so Anton can compare in the same spot.
+
+**Gate A:** `storage_room` runs at least 1.5× faster than the Sodium-only baseline with no visible difference.
+If it fails, stop and report the measurements.
+
+### M4 · Core infrastructure
+- [ ] `core/` (ModuleState, Fallback, Capabilities, Compat) with unit tests for the pure parts.
+- [ ] `gpu/` GpuBackend + RenderpearlBackend + RingBuffer (unit-test the ring arithmetic and growth).
+- [ ] `debug/` F3 lines, A/B toggle, Validation skeleton (dev builds only).
+- [ ] Full `Config` (global, per-module, per-type, memory budget, LOD preset) with `CONFIG_VERSION` and
+      `migrate()` following autodrop's konfig rules (unknown keys must keep failing).
+- [ ] Settings screen (vanilla widgets) + ModMenu + NeoForge `IConfigScreenFactory` + Sodium Config API page
+      (`sodium:config_api_user` on Fabric, `@ConfigEntryPointForge("mobium")` on NeoForge), all bound to the same
+      config. Every visible string translated in `en_us` and `de_de`.
+
+Done when both loaders show identical settings, toggling a module at runtime logs the state change, and a forced
+exception in a module disables it with one toast.
+
+### M5 · Module 1, static cache (Phase 1) → Gate B → first release
+- [ ] `CaptureConsumer`: records what the vanilla renderer emits, per render type, in block-local space, in the
+      vertex format active at capture time (Iris-extended when a shader pack is on).
+- [ ] `SectionBucket`: one buffer per (chunk section, render type); rebuilt on the next frame after any member
+      changes; drawn through vanilla's pipeline with the section offset in the model-view matrix (no shader edits).
+      If M1 shows Iris needs per-draw IDs, split buckets by ID.
+- [ ] `CachePolicy`:
+
+      | Object | Cached while | Vanilla path while |
+      | --- | --- | --- |
+      | Chests, ender chests, shulker boxes | Closed | Opening, open, closing (+1 frame) |
+      | Signs and hanging signs, incl. text and glow ink | Always | Being edited |
+      | Beds, skulls and heads, decorated pots | Always | Pot wobbling; dragon head powered |
+      | Shelves and their items | Always | An item is animated (e.g. a compass) |
+      | Item frames and glow item frames | Item and rotation unchanged | Item changes or rotates |
+      | Armor stands, item and block display entities | Pose and transform unchanged | Interpolating or moving |
+
+      Banners, bells, conduits and lecterns animate every frame and wait for Module 2.
+- [ ] Only solid and cutout geometry is cached; translucent parts stay vanilla unless OIT is on. Any object with
+      the breaking overlay uses vanilla for that frame.
+- [ ] `Invalidation` for data, block state, section light, resource reload, shader-pack change, level change.
+- [ ] `MemoryBudget`: 128 MB default, evict farthest first.
+- [ ] Screenshot tests per scene and per effect (Fabric client gametests); Validation mode diff = 0.
+- [ ] `docs/compat.md` filled for Sodium, Iris (+ named packs), EMF/ETF + Fresh Animations, EntityCulling, on
+      both loaders.
+
+**Gate B:** zero screenshot differences; `storage_room` within 1.2× of `control`; `control` not slower than
+baseline; works with the full compat stack on Fabric and NeoForge.
+Then: create the Modrinth/CurseForge projects, fill the project IDs, write README and changelog, release
+`0.1.0-beta1` through `release.yml`.
+
+### M6 · Module 2, GPU part transform (Phase 2) → Gate C
+- [ ] `MeshPool`: first time a `ModelPart` is seen, write its cuboids once in local space; keyed by part
+      identity so EMF parts work; cleared on resource reload.
+- [ ] `PartWalker` + `PartRecords`: after `setupAnim`, walk the tree exactly like vanilla (visibility, skip
+      flags, child order) and write one record per visible part into the off-heap ring buffer.
+- [ ] Per-submit safety checks: vertex consumer must be the frame's own buffer for a known render type, and the
+      active vertex format must be one `VertexFormats` knows; otherwise vanilla.
+- [ ] `ExpandPass`: GLSL 430 compute shader per output format (vanilla entity format, Iris extended), one dispatch
+      per render type, memory barrier, then draw the ring range through vanilla's draw call in vanilla's order.
+- [ ] Effects in the first version: light, hurt overlay, tint, UV mapping (armour trims, atlas sprites), ETF
+      emissive pass. Glint, outline and breaking overlay stay vanilla.
+- [ ] Reference test: a pure-Kotlin implementation of the expand math, unit-tested against vertices captured
+      from vanilla in a gametest; the compute shader must match it.
+- [ ] Banners, bells, conduits and lecterns move onto this path.
+
+**Gate C:** `mob_pen_live` at least 1.5× faster with Sodium + Iris + Fresh Animations; zero screenshot
+differences. Then release.
+
+### M7 · Phase 3: Vulkan, Aperture, Module 3, 26.4
+- [ ] Add `26.4-fabric` / `26.4-neoforge` Stonecutter targets when 26.4 releases (track its snapshots in a branch
+      before that). Vulkan becomes the default there.
+- [ ] `VkCompute` on the game's own Vulkan device and queue; same GLSL compiled to SPIR-V.
+- [ ] Aperture (Iris's Vulkan successor) support once public; contact the Iris team before starting.
+- [ ] Module 3 (`lod/`): throttle by projected size; hurt flash, death animation and targeted mob always full
+      rate; presets Off / Subtle / Aggressive; per-type exclusions; exclude EMF-animated models until tested.
+- [ ] Glint and outline passes generated from the same records.
+
+---
+
+## 8. Coding rules
+
+- **Mixins:** Java, in `dev.nyon.mobium.mixins`, thin: inject and forward to a Kotlin object. Handler methods are
+  prefixed `mobium$`. Prefer MixinExtras (`@WrapOperation`, `@ModifyExpressionValue`) over `@Redirect` and
+  `@Overwrite` for compatibility. Every mixin has a comment naming the vanilla behaviour it changes and its fallback.
+- **Stonecutter:** loader/version code uses `/*? if fabric {*/ … /*?} else {*/ … /*?}*/` like autodrop. Each
+  `//? if` directive stays on its own line above the line it guards. Commit with `26.3-fabric` active; after
+  touching directives, switch to another target and back and check `git diff` is empty. Edit only `src/`.
+- **Hot paths** (anything per frame, per entity or per part): no allocation, no boxing, no capturing lambdas, no
+  Kotlin collection operators. Use `@JvmField`, primitive arrays and LWJGL `MemoryUtil` for off-heap writes.
+  Check with a JFR allocation profile before each gate.
+- **Render thread only.** Assert it at module entry points.
+- **Logging:** logger `Mobium`; repeated warnings through a log-once helper.
+- **Formatting:** `.editorconfig` (4 spaces, 120 columns), Kotlin official code style.
+- **Config changes:** bump `CONFIG_VERSION` and add a migration branch for any format change.
+- **Translations:** `en_us.json` and `de_de.json` keep identical keys.
+
+---
+
+## 9. Testing and verification
+
+| Check | Who / where | When |
+| --- | --- | --- |
+| `./gradlew build` both targets | Claude Code + CI | Every PR |
+| Unit tests (pure Kotlin: ring buffer, budget, record packing, expand reference math, config migration) | CI | Every PR |
+| Fabric client gametests: scene smoke tests and screenshots | CI under xvfb with Mesa's software OpenGL (supports compute, so correctness of the compute path can be checked; speed cannot) | Every PR from M2 |
+| Visual check with shader packs and Fresh Animations | Anton | Every rendering PR |
+| Benchmarks (`/mobium bench`, all scenes, four setups) | Anton | Gates A–C and before each release |
+| NeoForge parity | Anton (manual) + CI build | Every rendering PR |
+| Other GPUs (AMD, Intel, macOS for Module 1) | Community testers | Before each release |
+
+Every rendering PR description contains **How to verify** (task to run, scene, keys, expected result) and the
+benchmark numbers if performance changed.
+
+---
+
+## 10. Release checklist
+
+- [ ] `changelog.md` contains only the upcoming release's notes.
+- [ ] Gate for the release passed and results committed to `docs/benchmarks/results/`.
+- [ ] `docs/compat.md` updated.
+- [ ] Modrinth and CurseForge project IDs set in `build.gradle.kts`.
+- [ ] Run `release.yml` (manual dispatch): builds, `releaseMod`, Discord post, README sync.
+
+---
+
+## 11. Open questions
+
+- [ ] GitHub repository name (assumed `btwonion/mobium`) and whether to reserve the `mobium` slug on Modrinth and
+      CurseForge now (no project with that name was found on 19 Oct 2026).
+- [ ] Which shader packs are the official test set (suggest one heavy and one light pack).
+- [ ] Which GPU/OS Anton tests on; who covers AMD/Intel.
+- [ ] Whether to reach out to the Sodium and Iris maintainers before M5 or before M6.
+
+---
+
+## 12. References
+
+- House structure: `btwonion/autodrop`, `btwonion/better-boat-movement`, `btwonion/magnetic`
+- Stonecutter: https://stonecutter.kikugie.dev/ · modstitch: https://github.com/isXander/modstitch
+- Fabric client gametests: https://docs.fabricmc.net/develop/automatic-testing
+- Sodium Config API: `net.caffeinemc.mods.sodium.api.config.ConfigEntryPoint` (Maven `https://maven.caffeinemc.net/releases`)
+- 26.2 → 26.3 rendering changes: https://docs.neoforged.net/primer/docs/26.3/
+- Prior art: Accelerated Rendering (https://github.com/Argon4W/AcceleratedRendering), Flywheel/Vanillin,
+  Enhanced Block Entities, CrankShaft

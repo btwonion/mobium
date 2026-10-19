@@ -1,0 +1,70 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+Mobium is a client-side Minecraft performance mod (Kotlin, mixins in Java) that draws entities and block entities
+from GPU buffers instead of rebuilding them on the CPU every frame. One source tree targets both loaders
+(Fabric/Quilt and NeoForge) via [Stonecutter](https://stonecutter.kikugie.dev/); [modstitch](https://github.com/isXander/modstitch)
+hides the Loom/ModDevGradle differences. Targets are declared in `settings.gradle.kts` (`26.3` × fabric/neoforge).
+The structure follows `btwonion/autodrop`; check it first when unsure how something is done.
+
+**Start with `PLAN.md`.** It is the build plan: work through its milestones in order, tick its checkboxes as tasks
+land, and treat its gates as hard stops. If the repository only contains `PLAN.md` and this file, you are at M0.
+
+## Commands
+
+Requires JDK 25 (same as CI).
+
+```bash
+./gradlew build                            # all targets; what CI runs. Jars land in versions/<target>/build/libs/
+./gradlew :26.3-fabric:build               # a single target
+./gradlew :26.3-fabric:runClient           # dev client, Fabric (Sodium, Iris, EMF, ETF on the dev classpath)
+./gradlew :26.3-neoforge:runMainClient     # dev client, NeoForge (game dir: run/)
+./gradlew :26.3-fabric:runClientGameTest   # Fabric client gametests (scene smoke tests, screenshots)
+./gradlew "Set active project to 26.3-neoforge"   # switch the version the src/ comments are written for
+```
+
+## Ground rules
+
+- **The one rule:** Mobium may change how geometry reaches the GPU, never what ends up on screen.
+- **You cannot see the game.** Every PR that touches rendering ends with a "How to verify" section for Anton: the
+  Gradle task, the benchmark scene, the keys to press, and what correct and broken look like.
+- **Never guess the 26.3 API.** 26.x is unobfuscated; read the decompiled source and record findings in
+  `docs/vanilla-notes.md`. Plan entries marked *(verify)* are expectations, not facts.
+- **Vanilla first.** Every feature has a config switch, a per-type switch and a runtime fallback to the vanilla
+  path. New hooks ship disabled until their screenshot tests pass.
+- **Must-have compatibility:** Iris shader packs and EMF/ETF with Fresh Animations. Never bypass `setupAnim`.
+- **Hot paths** (per frame, per entity, per part): no allocation, no boxing, no capturing lambdas, no Kotlin
+  collection operators; use `@JvmField`, primitive arrays and LWJGL `MemoryUtil`. Render thread only.
+- **Mixins** stay thin: inject and forward to Kotlin, handler methods prefixed `mobium$`, MixinExtras over
+  `@Redirect`/`@Overwrite`, a comment naming the vanilla behaviour changed and its fallback.
+
+## Stonecutter
+
+- Version- and loader-specific code lives in comments such as `//? if >26.3` and
+  `/*? if fabric {*/ … /*?} else {*/ … /*?}*/`. Code for inactive targets is commented out in `src/`.
+- Each `//? if` directive must stay on its own line, directly above the line it guards. After touching directives,
+  switch to another target and back and check `git diff` is empty.
+- The repo is committed with `26.3-fabric` active (`stonecutter.gradle.kts`); switch back before committing.
+- Edit only `src/`; `versions/*/build/generated/stonecutter` is generated.
+- Shared mod properties are in `gradle.properties`; per-target Minecraft version, version range and dependency
+  versions (`vers.deps.*`, `modstitch.platform`) are in `versions/<target>/gradle.properties`.
+
+## Architecture
+
+See `PLAN.md` §5 (hook points, package map, part-record layout) and §6 (runtime fallback and compat behaviour).
+Replace this paragraph with a short description of the real architecture once Modules 1 and 2 exist.
+
+## Config and translations
+
+Config is stored with konfig at `config/mobium.json` (`{"version", "config"}`). A format change must bump
+`CONFIG_VERSION` and add a migration branch; unknown keys must keep failing (don't enable `ignoreUnknownKeys`).
+`assets/mobium/lang/en_us.json` and `de_de.json` must keep the same keys.
+
+## Releases
+
+`changelog.md` holds only the notes for the upcoming release; publishing and the Discord post read it. Releases
+run from the manually dispatched `release.yml` workflow (`./gradlew releaseMod`), only after the matching gate in
+`PLAN.md` has passed.
