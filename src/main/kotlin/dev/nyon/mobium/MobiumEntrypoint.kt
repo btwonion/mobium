@@ -2,6 +2,7 @@ package dev.nyon.mobium
 
 import dev.nyon.mobium.bench.BenchCommand
 import dev.nyon.mobium.debug.DebugLines
+import dev.nyon.mobium.debug.ModuleLines
 
 /*? if fabric {*/
 import dev.nyon.mobium.mixins.DebugScreenEntriesAccessor
@@ -18,18 +19,22 @@ object MobiumEntrypoint : ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STARTED.register { Mobium.onClientStarted() }
         ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ -> dispatcher.register(BenchCommand.create()) }
         DebugScreenEntriesAccessor.`mobium$register`(DebugLines.ID, DebugLines)
+        DebugScreenEntriesAccessor.`mobium$register`(ModuleLines.ID, ModuleLines)
         MobiumKeys.ALL.forEach(KeyMappingHelper::registerKeyMapping)
     }
 }
 
 /*?} else {*/
 /*import dev.nyon.klf.MOD_BUS
+import dev.nyon.mobium.config.screen.MobiumSettingsScreen
+import net.neoforged.fml.ModLoadingContext
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.loading.FMLLoader
 import net.neoforged.neoforge.client.event.ClientResourceLoadFinishedEvent
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent
 import net.neoforged.neoforge.client.event.RegisterDebugEntriesEvent
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory
 import net.neoforged.neoforge.common.NeoForge
 
 @Mod("mobium")
@@ -44,10 +49,16 @@ object MobiumEntrypoint {
         NeoForge.EVENT_BUS.addListener<RegisterClientCommandsEvent> { event ->
             event.dispatcher.register(BenchCommand.create())
         }
-        MOD_BUS.addListener<RegisterDebugEntriesEvent> { event -> event.register(DebugLines.ID, DebugLines) }
+        MOD_BUS.addListener<RegisterDebugEntriesEvent> { event ->
+            event.register(DebugLines.ID, DebugLines)
+            event.register(ModuleLines.ID, ModuleLines)
+        }
         MOD_BUS.addListener<RegisterKeyMappingsEvent> { event ->
             event.registerCategory(MobiumKeys.CATEGORY)
             MobiumKeys.ALL.forEach(event::register)
+        }
+        ModLoadingContext.get().registerExtensionPoint(IConfigScreenFactory::class.java) {
+            IConfigScreenFactory { _, parent -> MobiumSettingsScreen(parent) }
         }
     }
 }

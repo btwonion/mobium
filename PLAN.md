@@ -18,7 +18,8 @@ Read this first when picking the work up in a new session.
   - #2 M1, base `main`;
   - #3 M2, base `m1-vanilla-recon`;
   - #4 M3, base `m2-instrumentation`; also carries the 19 Oct benchmark results, the harness fixes and the Gate A
-    decision, because the suite and Gate A tooling live on this branch.
+    decision, because the suite and Gate A tooling live on this branch;
+  - #5 M4, base `m3-chest-prototype`.
 
   Merge in order with merge commits, not squash, so the stack stays intact. After a merge, retarget the next PR to
   `main` (`gh pr edit <n> --base main`); retargeting does not trigger CI, a push or a close/reopen does. Merging is
@@ -27,10 +28,15 @@ Read this first when picking the work up in a new session.
   GLX. Fixed in #2 (commit `52eb0d8`: Loom's wrapper off, a 24-bit `xvfb-run` in the workflow, 45-minute job
   timeout) and merged up into #3 and #4; `main` gets it when #2 is merged. If CI hangs or fails again, read the job log
   first (`gh run view --log`).
-- **Done:** M0–M2; M3 with **Gate A passed (1.53×)**, see §M3 and `docs/benchmarks.md`.
-- **Now:** M4 (core infrastructure).
-- **Waiting for Anton:** nothing blocks M4. Before Gate B he refreshes the instances (below) and records a full round:
-  every setup's suite plus `/mobium gatea`, on the external 1920×1080 monitor, on mains power.
+- **Done:** M0–M2; M3 with **Gate A passed (1.53×)**, see §M3 and `docs/benchmarks.md`; the code of M4.
+- **Waiting for Anton:**
+  - the M4 check on both loaders (#5 *How to verify*): settings in Mod Menu / the NeoForge mod list / Sodium's video
+    settings, `]`, F3 `mobium:modules`, `/mobium debug fail`;
+  - before Gate B: refresh the instances (below) and record a full round, every setup's suite plus `/mobium gatea`,
+    on the external 1920×1080 monitor, on mains power.
+- **Next:** M5 (static cache). Settle the sign-text question first (§M5, *Conflict found at Gate A*); then
+  `CaptureConsumer`/`SectionBucket` grow out of the prototype, `CachePolicy` uses the per-type switches, and
+  `ModuleRules` drops `PROTOTYPE_OFF` and `SHADER_PACK` for Module 1.
 - **Rebuilding the benchmark instances after code changes:**
   `./gradlew :26.3-fabric:benchKit && python3 benchmark/prism_instances.py`. The script also refreshes the datapack in
   the instances' worlds, downloads and selects Complementary Reimagined r5.9.3 (B, D) and Fresh Animations 1.11.1
@@ -325,14 +331,16 @@ dev.nyon.mobium
 │   ├── ConfigHandler.kt       # CONFIG_VERSION + migrate(), konfig wiring (autodrop pattern)
 │   ├── ModMenuImpl.kt         # Fabric only
 │   ├── SodiumOptions.kt       # Sodium Config API page (Fabric entrypoint / NeoForge @ConfigEntryPointForge)
-│   └── screen/                # vanilla-widget settings screen (autodrop's DraftScreen pattern)
+│   └── screen/                # MobiumSettingsScreen: vanilla OptionsSubScreen editing a copy of the config
 ├── core/
-│   ├── ModuleState.kt         # enabled / disabled + human-readable reason, per module and per type
-│   ├── Fallback.kt            # catch → disable module for this session, log once, one toast
+│   ├── ModuleState.kt         # Module, OffReason, ModuleStatus and the pure ModuleRules
+│   ├── ModuleStates.kt        # live states: re-resolved on every change, logged, isActive() per frame
+│   ├── Fallback.kt            # catch → disable module for this session, log once, one toast (FailureLedger: pure)
 │   ├── Capabilities.kt        # graphics API, GL version, compute support, MultiDrawIndirect
 │   └── Compat.kt              # detects Sodium, Iris (+ shader pack active), EMF, ETF, EntityCulling, overlapping mods
 ├── debug/
-│   ├── DebugLines.kt          # F3 lines: cached objects, records/frame, GPU memory, fallbacks by reason
+│   ├── DebugLines.kt          # F3 mobium:timings (stage timers)
+│   ├── ModuleLines.kt         # F3 mobium:modules: module states, GPU memory, cached objects, failed types
 │   ├── AbToggle.kt            # keybind toggling all modules live for A/B comparison
 │   ├── Sections.kt            # timers around extract / submit / pose / tessellate / draw
 │   └── Validation.kt          # dev builds: draw both ways off-screen and pixel-diff
@@ -342,6 +350,7 @@ dev.nyon.mobium
 ├── gpu/
 │   ├── GpuBackend.kt          # interface: buffers, uploads, compute dispatch, draw a range with a vanilla render type
 │   ├── RenderpearlBackend.kt  # buffers + draws through Renderpearl (works on GL and Vulkan)
+│   ├── RingAllocator.kt       # pure ring arithmetic (slots, alignment, doubling), unit-tested
 │   ├── RingBuffer.kt          # 3 frames in flight, fences, grow by doubling
 │   ├── gl/GlCompute.kt        # OpenGL 4.3 compute + SSBOs + memory barrier
 │   ├── vk/VkCompute.kt        # M7: compute pipeline on the game's Vulkan device/queue
@@ -515,7 +524,7 @@ state described in `docs/benchmarks.md` (*Slow vanilla `storage_room`*) and does
   for cached chests, and the buckets are drawn at the end of the level's solid features through
   `PreparedRenderType.drawFromBuffer`, with the section origin in the model-view matrix.
 - Light is re-read only after a light update in the chest's section, plus every 128 frames as a safety net.
-- The key `]` toggles the prototype live.
+- The key `]` toggles the prototype live (since M4 the A/B key, which switches all of Mobium).
 
 `BenchmarkScenesGameTest` compares `storage_room` with the prototype off and on: 0 differing pixels. First look
 (5 s, laptop iGPU, Sodium + EMF/ETF, uncapped): 9.38 → 5.55 ms per frame, 1.69×. With the default 120 FPS cap the
@@ -523,17 +532,44 @@ gain disappears, and the remaining cost in `storage_room` is mostly the 300 sign
 therefore outside Module 1 as planned (§M5).
 
 ### M4 · Core infrastructure
-- [ ] `core/` (ModuleState, Fallback, Capabilities, Compat) with unit tests for the pure parts.
-- [ ] `gpu/` GpuBackend + RenderpearlBackend + RingBuffer (unit-test the ring arithmetic and growth).
-- [ ] `debug/` F3 lines, A/B toggle, Validation skeleton (dev builds only).
-- [ ] Full `Config` (global, per-module, per-type, memory budget, LOD preset) with `CONFIG_VERSION` and
+- [x] `core/` (ModuleState, Fallback, Capabilities, Compat) with unit tests for the pure parts.
+- [x] `gpu/` GpuBackend + RenderpearlBackend + RingBuffer (unit-test the ring arithmetic and growth).
+- [x] `debug/` F3 lines, A/B toggle, Validation skeleton (dev builds only).
+- [x] Full `Config` (global, per-module, per-type, memory budget, LOD preset) with `CONFIG_VERSION` and
       `migrate()` following autodrop's konfig rules (unknown keys must keep failing).
-- [ ] Settings screen (vanilla widgets) + ModMenu + NeoForge `IConfigScreenFactory` + Sodium Config API page
+- [x] Settings screen (vanilla widgets) + ModMenu + NeoForge `IConfigScreenFactory` + Sodium Config API page
       (`sodium:config_api_user` on Fabric, `@ConfigEntryPointForge("mobium")` on NeoForge), all bound to the same
       config. Every visible string translated in `en_us` and `de_de`.
 
 Done when both loaders show identical settings, toggling a module at runtime logs the state change, and a forced
 exception in a module disables it with one toast.
+
+Status (20 Oct 2026): code done on branch `m4-core`; Anton's visual check on both loaders is open (PR *How to verify*).
+- **Module states.** `core/ModuleRules` (pure, unit-tested) resolves each module from config, backend, compute, shader
+  pack, A/B key, overlapping mods and failures, with one reason when it is off. `core/ModuleStates` re-resolves on
+  every change and logs each transition ("Mobium static_cache: active -> vanilla (ab_toggle) (A/B key: vanilla)").
+  Module 1 is still the M3 chest prototype (opt-in, `cache.prototype`); Modules 2 and 3 resolve to "not built".
+- **Fallback.** `core/Fallback` takes module failures (log with stack trace, one toast, module on vanilla until
+  restart) and type failures (vanilla after 3). The prototype reports through it: an exception in extract, prepare or
+  draw switches Module 1 off, repeated capture failures switch chests off.
+- **Overlaps.** Enhanced Block Entities (and Reloaded), Vanillate (CrankShaft) and Accelerated Rendering switch off the
+  modules they overlap (`docs/compat.md`).
+- **GPU.** `gpu/GpuBackend` with `RenderpearlBackend` (buffers, uploads, fences, quad draws through
+  `PreparedRenderType.drawFromBuffer`, memory accounting); the prototype's section buckets use it. `RingBuffer` (3
+  frames in flight, fences, doubling with a GPU copy) waits for M6; its arithmetic (`RingAllocator`) is unit-tested.
+- **Debug.** F3 `mobium:modules` (states, A/B, GPU memory, prototype counts, failed types); `]` is now the A/B key for
+  all of Mobium (replacing the prototype key); dev environments get `/mobium debug fail <module>` and the
+  `Validation` skeleton (`/mobium debug validate`; the off-screen comparison comes with M5).
+- **Config 3.** Global switch; Module 1 switch, 9 type switches, GPU memory budget (16–1024 MB, default 128),
+  prototype switch; Module 2 switch and entity exclusions; Module 3 preset (Off/Subtle/Aggressive) and exclusions.
+  Version 2 files decode unchanged; a migration branch keeps their two settings if the rest is broken. The entity
+  exclusion lists are only editable in `config/mobium.json` until M6/M7 use them.
+- **Settings.** `MobiumSettingsScreen` from vanilla's `OptionsSubScreen` and `OptionInstance` widgets, editing a copy
+  (Done applies and saves, Cancel discards), with the module status at the top; opened from Mod Menu, NeoForge's mod
+  list and a button on the Sodium page, which has the same options as native Sodium controls.
+- **Checks.** `SettingsGameTest` (Fabric): the screen opens and scrolls (screenshots), a saved change re-resolves the
+  modules, a forced failure switches a module off with exactly one toast. Both targets build; the NeoForge dev client
+  starts and logs the module states.
 
 ### M5 · Module 1, static cache (Phase 1) → Gate B → first release
 - [ ] `CaptureConsumer`: records what the vanilla renderer emits, per render type, in block-local space, in the

@@ -1,10 +1,8 @@
 package dev.nyon.mobium.cache
 
-import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.renderpearl.api.buffers.GpuBuffer
 import com.mojang.renderpearl.api.commands.RenderPass
-import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
-import net.minecraft.client.renderer.StagedVertexBuffer
+import dev.nyon.mobium.gpu.Gpu
 import net.minecraft.client.renderer.rendertype.PreparedRenderType
 import net.minecraft.client.renderer.rendertype.RenderType
 import org.lwjgl.system.MemoryUtil
@@ -21,8 +19,8 @@ class BucketMember(@JvmField val mesh: CapturedMesh) {
 /**
  * The cached meshes of one chunk section for one render type, concatenated into one GPU vertex buffer in section-local
  * space. The buffer is rebuilt on the next prepare after a member changes; each frame only the members that vanilla
- * would have drawn (marked with [markVisible]) are drawn, in contiguous runs, through vanilla's
- * `PreparedRenderType.drawFromBuffer` with the section origin in the model-view matrix.
+ * would have drawn (marked with [markVisible]) are drawn, in contiguous runs, through [Gpu.backend] (vanilla's
+ * `PreparedRenderType.drawFromBuffer`) with the section origin in the model-view matrix.
  */
 class SectionBucket(
     @JvmField val sectionKey: Long,
@@ -70,7 +68,7 @@ class SectionBucket(
     /** Concatenates the members into a new GPU buffer and assigns each member its first vertex. */
     fun rebuild() {
         dirty = false
-        buffer?.close()
+        buffer?.let(Gpu.backend::release)
         buffer = null
         if (members.isEmpty()) return
 
@@ -85,7 +83,7 @@ class SectionBucket(
                 data.put(member.mesh.vertices.duplicate())
             }
             data.flip()
-            buffer = RenderSystem.getDevice().createBuffer({ "Mobium section bucket" }, GpuBuffer.USAGE_VERTEX, data)
+            buffer = Gpu.backend.createBuffer("Mobium section bucket", GpuBuffer.USAGE_VERTEX, data)
         } finally {
             MemoryUtil.memFree(data)
         }
@@ -98,7 +96,6 @@ class SectionBucket(
     fun draw(renderPass: RenderPass, frame: Long): Int {
         val buffer = buffer ?: return 0
         val prepared = prepared ?: return 0
-        val indices = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS)
         var drawn = 0
         var runStart = -1
         var runVertices = 0
@@ -111,10 +108,7 @@ class SectionBucket(
                 continue
             }
             if (runStart >= 0) {
-                val info = StagedVertexBuffer.ExecuteInfo(
-                    buffer, null, indices.type(), runStart, 0, runVertices / 4 * 6, PrimitiveTopology.QUADS
-                )
-                prepared.drawFromBuffer(info, renderPass)
+                Gpu.backend.drawQuads(renderPass, prepared, buffer, runStart, runVertices)
                 runStart = -1
                 runVertices = 0
             }
@@ -123,7 +117,7 @@ class SectionBucket(
     }
 
     fun close() {
-        buffer?.close()
+        buffer?.let(Gpu.backend::release)
         buffer = null
         members.clear()
     }

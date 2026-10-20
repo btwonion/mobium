@@ -3,6 +3,9 @@ package dev.nyon.mobium.bench
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.cache.ChestPrototype
 import dev.nyon.mobium.config.config
+import dev.nyon.mobium.core.Module
+import dev.nyon.mobium.core.ModuleStates
+import dev.nyon.mobium.core.OffReason
 import dev.nyon.mobium.debug.Sections
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
@@ -86,14 +89,17 @@ object BenchSuite {
     /** Starts `/mobium gatea`; returns an error message or null. */
     fun startGateA(seconds: Int, runs: Int): Component? {
         val plan = (1..runs).flatMap { listOf(Step("storage_room", false), Step("storage_room", true)) }
+        // The prototype is opt-in; enable it for the plan (not in the saved settings). The A/B key does not count.
         prototypeConfigBefore = config.cache.prototype
         config.cache.prototype = true
-        ChestPrototype.unavailableReason()?.let { reason ->
-            config.cache.prototype = prototypeConfigBefore
-            return Component.translatable(reason)
+        ModuleStates.refresh("Gate A")
+        val status = ModuleStates.status(Module.STATIC_CACHE)
+        if (!status.active && status.reason != OffReason.AB_TOGGLE) {
+            restorePrototype()
+            return Component.translatable("mobium.suite.gatea_unavailable", Component.translatable(status.reason!!.translationKey))
         }
         start(plan, seconds, gateA = true)?.let { error ->
-            config.cache.prototype = prototypeConfigBefore
+            restorePrototype()
             return error
         }
         chat(Component.translatable("mobium.suite.gatea_started", runs, seconds, minutes(plan.size, 1)))
@@ -253,8 +259,7 @@ object BenchSuite {
         if (FrameRecorder.isActive) FrameRecorder.stop()
         if (gateA) {
             ChestPrototype.setActive(false)
-            config.cache.prototype = prototypeConfigBefore
-            if (prototypeConfigBefore) ChestPrototype.setActive(true)
+            restorePrototype()
         }
         if (aborted) {
             chat(Component.translatable("mobium.suite.stopped"))
@@ -342,6 +347,11 @@ object BenchSuite {
         }
 
         writeMedians()?.let { chat(Component.translatable("mobium.suite.saved", it.toString())) }
+    }
+
+    private fun restorePrototype() {
+        config.cache.prototype = prototypeConfigBefore
+        ModuleStates.refresh("Gate A finished")
     }
 
     private fun minutes(steps: Int, scenes: Int): Int {

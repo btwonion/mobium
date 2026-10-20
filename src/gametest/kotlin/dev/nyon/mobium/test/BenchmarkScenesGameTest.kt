@@ -6,6 +6,8 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContex
 import dev.nyon.mobium.bench.BenchSuite
 import dev.nyon.mobium.cache.ChestPrototype
 import dev.nyon.mobium.config.config
+import dev.nyon.mobium.core.Module
+import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.debug.DebugLines
 import dev.nyon.mobium.debug.Sections
 import net.minecraft.client.Minecraft
@@ -91,13 +93,16 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
      * the picture with the vanilla screenshot taken just before. Also logs a short benchmark with and without it.
      */
     private fun checkChestPrototype(context: ClientGameTestContext, vanilla: Path) {
+        // The same path as the settings screen: change the config, then re-resolve the module states.
         context.runOnClient<RuntimeException> {
             config.cache.prototype = true
-            ChestPrototype.setActive(true)
+            ModuleStates.refresh("gametest")
         }
         context.waitTicks(SETTLE_TICKS)
         context.runOnClient<RuntimeException> {
-            check(ChestPrototype.active) { "The chest prototype did not start: ${ChestPrototype.unavailableReason()}" }
+            check(ChestPrototype.active) {
+                "The chest prototype did not start: ${ModuleStates.status(Module.STATIC_CACHE).describe()}"
+            }
             check(ChestPrototype.cachedCount == CHESTS) { "Expected $CHESTS cached chests, got ${ChestPrototype.cachedCount}" }
             check(ChestPrototype.lastDrawn == CHESTS) { "Expected $CHESTS drawn chests, got ${ChestPrototype.lastDrawn}" }
         }
@@ -111,8 +116,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
         // Back to the default state; /mobium gatea enables and restores the prototype itself.
         context.runOnClient<RuntimeException> {
-            ChestPrototype.setActive(false)
             config.cache.prototype = false
+            ModuleStates.refresh("gametest")
         }
         val gate = runPlan(context, "mobium gatea $BENCH_SECONDS 1", "gatea-")
         val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }

@@ -511,3 +511,18 @@ Open points for later milestones (not answered by reading code):
 - Light reaching a block entity: `ClientChunkCache.onLightUpdate` fires for sections the client light engine changed
   (`LayerLightSectionStorage.swapSectionMap`), not for section data the server sends (`queueSectionData`); those
   only mark sections dirty for a rebuild, and only when the packet asks for it.
+
+## 14. Settings, toasts and loader hooks (M4)
+
+Looked up on 20 Oct 2026 for the settings screens, the fallback toast and the benchmark's environment columns.
+
+| Topic | Finding |
+| --- | --- |
+| Options screens | `net.minecraft.client.gui.screens.options.OptionsSubScreen(Screen lastScreen, Options, Component title)`: `addOptions()` fills `list` (`OptionsList`: `addHeader(Component)`, `addBig(OptionInstance / AbstractWidget)`, `addSmall(OptionInstance...)`), `addFooter()` puts a Done button into `layout` (`HeaderAndFooterLayout`), `onClose()` applies the list and returns to `lastScreen`, `removed()` saves `options.txt`. Two footer buttons: `layout.addToFooter(LinearLayout.horizontal().spacing(8))` as in `WorldOptionsScreen`. |
+| Option widgets | `OptionInstance.createBoolean(captionKey, TooltipSupplier, initial, ValueUpdateListener)`; generic `OptionInstance(captionKey, tooltip, CaptionBasedToString, ValueSet, initial, listener)` with `OptionInstance.IntRange(min, max)` (slider, applied immediately) or `OptionInstance.Enum(values, codec)` (cycle button). `Options.genericValueLabel(caption, Component)` formats "Caption: value". The listener only fires while the game is running. |
+| Toasts | `SystemToast.add(ToastManager, SystemToast.SystemToastId, Component title, Component message)`; the manager is `minecraft.gui.toastManager()`, `ToastManager.getToast(Class, token)` finds a shown toast by its id. Screens open with `minecraft.gui.setScreen(…)`. |
+| Monitor and window | `Window.findBestMonitor()` → `Monitor` record (`name()`, `currentMode()`); `Window.getActiveVideoMode()` (render thread); `Window.getWidth()/getHeight()` are the framebuffer size. The game logs "Exclusive target … on monitor …" whenever the fullscreen window moves. |
+| Dev environment | Fabric `FabricLoader.isDevelopmentEnvironment`; NeoForge (FML 12) `FMLLoader.getCurrent().isProduction()`. |
+| NeoForge config button | `ModLoadingContext.get().registerExtensionPoint(IConfigScreenFactory::class.java) { IConfigScreenFactory { container, parent -> screen } }` from the `@Mod` object's constructor (same as autodrop). |
+| Sodium Config API (0.9.2 Fabric, 0.9.3-beta.1 NeoForge) | `ConfigEntryPoint.registerConfigLate(ConfigBuilder)`; Fabric entrypoint `sodium:config_api_user`, NeoForge class annotation `@ConfigEntryPointForge("<modid>")` (the annotation is in both API jars). `builder.registerModOptions(modId).addPage(builder.createOptionPage().setName(…).addOptionGroup(…))`; options from `createBooleanOption / createIntegerOption / createEnumOption(Identifier, Class) / createExternalButtonOption(Identifier)` with `setName`, `setTooltip`, `setDefaultValue`, `setBinding(Consumer, Supplier)`, `setStorageHandler(StorageEventHandler)` (called once after Apply), `setRange(min, max, step)`, `setValueFormatter`, `setElementNameProvider`, `setScreenConsumer(Consumer<Screen>)`. |
+| Overlapping mods | See `docs/compat.md`. |

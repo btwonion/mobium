@@ -5,6 +5,10 @@ import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import com.mojang.brigadier.builder.RequiredArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
+import dev.nyon.mobium.core.Compat
+import dev.nyon.mobium.core.Fallback
+import dev.nyon.mobium.core.Module
+import dev.nyon.mobium.debug.Validation
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 
@@ -73,6 +77,36 @@ object BenchCommand {
             val suite = BenchSuite.stop()
             val run = FrameRecorder.stop()
             if (!suite && !run) chat(Component.translatable("mobium.bench.idle"))
+            1
+        })
+        .also { if (Compat.isDevelopment) it.then(debug()) }
+
+    /**
+     * Dev environments only: `/mobium debug fail <module>` throws inside the module's fallback path, which must switch
+     * the module off with one toast (PLAN.md M4), and `/mobium debug validate` requests a validation frame.
+     */
+    private fun <S> debug(): LiteralArgumentBuilder<S> = LiteralArgumentBuilder.literal<S>("debug")
+        .then(
+            LiteralArgumentBuilder.literal<S>("fail").then(
+                RequiredArgumentBuilder.argument<S, String>("module", StringArgumentType.word())
+                    .suggests { _, builder ->
+                        Module.entries.forEach { builder.suggest(it.key) }
+                        builder.buildFuture()
+                    }
+                    .executes {
+                        val module = Module.byKey(StringArgumentType.getString(it, "module"))
+                        if (module == null) {
+                            chat(Component.translatable("mobium.debug.unknown_module"))
+                            return@executes 0
+                        }
+                        Fallback.moduleFailed(module, IllegalStateException("Forced by /mobium debug fail"))
+                        chat(Component.translatable("mobium.debug.failed", Component.translatable(module.translationKey)))
+                        1
+                    }
+            )
+        )
+        .then(LiteralArgumentBuilder.literal<S>("validate").executes {
+            chat(Component.translatable(if (Validation.request()) "mobium.debug.validate" else "mobium.debug.unavailable"))
             1
         })
 
