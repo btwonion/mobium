@@ -3,6 +3,7 @@ package dev.nyon.mobium.test
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext
+import dev.nyon.mobium.bench.BenchSuite
 import dev.nyon.mobium.cache.ChestPrototype
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.debug.DebugLines
@@ -123,7 +124,10 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
     }
 
-    /** Runs a `/mobium suite` or `/mobium gatea` command and returns the lines of the medians file it writes. */
+    /**
+     * Runs a `/mobium suite` or `/mobium gatea` command and returns the lines of the medians file it writes. The file
+     * is rewritten after every run, so wait for the plan to finish before reading it.
+     */
     private fun runPlan(context: ClientGameTestContext, command: String, filePrefix: String): List<String> {
         val directory = benchDirectory(context)
         fun planFiles() = if (!Files.isDirectory(directory)) emptyList() else Files.list(directory).use { files ->
@@ -131,7 +135,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
         val before = planFiles().toSet()
         context.runOnClient<RuntimeException> { checkNotNull(it.player).connection.sendUnattendedCommand(command, null) }
-        context.waitFor({ (planFiles() - before).isNotEmpty() }, PLAN_TIMEOUT_TICKS)
+        context.waitFor({ !BenchSuite.isActive && (planFiles() - before).isNotEmpty() }, PLAN_TIMEOUT_TICKS)
         return Files.readAllLines((planFiles() - before).single())
     }
 
@@ -147,7 +151,27 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
             (BENCH_SECONDS + 5 + 10) * 20
         )
         val lines = Files.readAllLines(summary)
-        return lines.first().split(',').zip(lines.last().split(',')).toMap()
+        return splitCsv(lines.first()).zip(splitCsv(lines.last())).toMap()
+    }
+
+    /** Splits one CSV line; quoted fields may contain commas (GPU names such as "llvmpipe (LLVM 20.1.8, 256 bits)"). */
+    private fun splitCsv(line: String): List<String> {
+        val fields = ArrayList<String>()
+        val field = StringBuilder()
+        var quoted = false
+        var index = 0
+        while (index < line.length) {
+            val char = line[index]
+            when {
+                quoted && char == '"' && line.getOrNull(index + 1) == '"' -> { field.append('"'); index++ }
+                char == '"' -> quoted = !quoted
+                char == ',' && !quoted -> { fields += field.toString(); field.setLength(0) }
+                else -> field.append(char)
+            }
+            index++
+        }
+        fields += field.toString()
+        return fields
     }
 
     private fun benchDirectory(context: ClientGameTestContext): Path =
@@ -165,6 +189,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         val row = runBench(context, "mob_pen_live")
         check(row.getValue("scene") == "mob_pen_live") { "Unexpected scene in $row" }
         check(row.getValue("frames").toInt() > 0) { "No frames recorded: $row" }
+        check(row.getValue("resolution").matches(Regex("\\d+x\\d+"))) { "Window size not recorded: $row" }
         check(row.getValue("entities").toInt() >= MOBS) { "Expected at least $MOBS entities: $row" }
         for (column in listOf("extract_entities_ms", "submit_entities_ms", "pose_entities_ms", "tessellate_entities_ms")) {
             check(row.getValue(column).toDouble() > 0.0) { "$column was not measured: $row" }
