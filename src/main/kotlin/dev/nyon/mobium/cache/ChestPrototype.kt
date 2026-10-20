@@ -7,11 +7,13 @@ import com.mojang.renderpearl.api.commands.RenderPass
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.config.config
-import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
-import dev.nyon.mobium.core.GraphicsBackend
+import dev.nyon.mobium.core.Fallback
 import dev.nyon.mobium.core.IrisCompat
+import dev.nyon.mobium.core.Module
+import dev.nyon.mobium.core.ModuleStates
+import dev.nyon.mobium.gpu.Gpu
 import dev.nyon.mobium.mixins.RenderTypeFeatureRendererInvoker
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
@@ -27,7 +29,6 @@ import net.minecraft.client.renderer.feature.submit.SubmitNode
 import net.minecraft.client.renderer.rendertype.RenderType
 import net.minecraft.core.BlockPos
 import net.minecraft.core.SectionPos
-import net.minecraft.network.chat.Component
 import net.minecraft.util.LightCoordsUtil
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.ChestBlock
@@ -40,15 +41,18 @@ import net.minecraft.world.phys.Vec3
 /**
  * M3 prototype of Module 1: closed chests are captured once through vanilla's own submit and prepare code and then
  * drawn from per-section GPU buffers ([SectionBucket]) instead of being extracted, submitted, posed and tessellated
- * every frame. OpenGL only, no shader packs, off unless `cache.prototype` is set; the key binding toggles it live.
+ * every frame. OpenGL only, no shader packs, off unless `cache.prototype` is set; [ModuleStates] switches it with
+ * Module 1 (settings, A/B key, failures).
  *
- * Fallback: everything that is not a closed, unbroken chest with a known capture goes through vanilla unchanged, and a
- * chest whose capture produced anything but solid quads stays on vanilla for good.
+ * Fallback: everything that is not a closed, unbroken chest with a known capture goes through vanilla unchanged, a
+ * chest whose capture produced anything but solid quads stays on vanilla for good, and an exception switches Module 1
+ * off for the session ([Fallback]).
  */
 object ChestPrototype {
     private const val EVICT_AFTER_FRAMES = 2400L
     private const val SWEEP_INTERVAL_FRAMES = 600L
     private const val REVALIDATE_MASK = 127L
+    private const val TYPE = "chests"
 
     /** Read by the mixin on `BlockEntityRenderDispatcher.tryExtractRenderState` before anything else. */
     @JvmField
@@ -77,35 +81,22 @@ object ChestPrototype {
 
     // region availability
 
-    /** The translation key explaining why the prototype cannot run, or null if it can. */
-    fun unavailableReason(): String? = when {
-        !config.cache.prototype -> "mobium.prototype.unavailable.config"
-        Capabilities.current?.backend != GraphicsBackend.OPENGL -> "mobium.prototype.unavailable.backend"
-        shaderPackActive() -> "mobium.prototype.unavailable.shader_pack"
-        else -> null
-    }
-
-    /** Called once the GPU device exists: the prototype starts active when it is available. */
-    fun onClientStarted() {
-        active = unavailableReason() == null
-        if (config.cache.prototype) Mobium.LOGGER.info("Chest cache prototype: {}", if (active) "active" else unavailableReason())
-    }
-
+    /** Switched by [ModuleStates] (and directly by `/mobium gatea` and the gametests); off drops every cached chest. */
     fun setActive(value: Boolean) {
         if (!value) clear()
-        active = value && unavailableReason() == null
+        active = value
     }
 
-    /** Key binding: toggles the prototype and returns the message to show. */
-    fun toggle(): Component {
-        val reason = unavailableReason()
-        if (reason != null) return Component.translatable(reason)
-        setActive(!active)
-        Mobium.LOGGER.info("Chest cache prototype {}", if (active) "on" else "off")
-        return Component.translatable(if (active) "mobium.prototype.on" else "mobium.prototype.off")
-    }
+    /** The per-type switch for chests, and whether chests failed too often this session. */
+    fun chestsAllowed(): Boolean = config.cache.types.chests && !Fallback.isTypeDisabled(Module.STATIC_CACHE, TYPE)
 
     private fun shaderPackActive() = Compat.isLoaded(CompatMod.IRIS) && IrisCompat.isShaderPackInUse()
+
+    /** Any exception switches Module 1 off for the session; the caller then takes the vanilla path. */
+    private fun fail(error: Throwable) {
+        Fallback.moduleFailed(Module.STATIC_CACHE, error)
+        if (active) setActive(false)
+    }
 
     // endregion
 
@@ -129,6 +120,24 @@ object ChestPrototype {
         if (blockEntity !is ChestBlockEntity || breakProgress != null || isGloballyRendered) {
             return vanilla(original, blockEntity, partialTicks, breakProgress, isGloballyRendered, frustum)
         }
+        return try {
+            extractChest(dispatcher, blockEntity, partialTicks, frustum, cameraPos, original)
+        } catch (e: Exception) {
+            fail(e)
+            vanilla(original, blockEntity, partialTicks, breakProgress, isGloballyRendered, frustum)
+        }
+    }
+
+    private fun extractChest(
+        dispatcher: BlockEntityRenderDispatcher,
+        blockEntity: ChestBlockEntity,
+        partialTicks: Float,
+        frustum: Frustum?,
+        cameraPos: Vec3,
+        original: Operation<BlockEntityRenderState?>
+    ): BlockEntityRenderState? {
+        val breakProgress: ModelFeatureRenderer.CrumblingOverlay? = null
+        val isGloballyRendered = false
         val level = blockEntity.level
         val renderer = dispatcher.getRenderer<BlockEntity, BlockEntityRenderState>(blockEntity)
         if (level == null || renderer == null || !blockEntity.type.isValid(blockEntity.blockState)) {
@@ -249,7 +258,10 @@ object ChestPrototype {
             collectSubmits(dispatcher, vanilla, pos, originX, originY, originZ)
             if (collectedUnsupported || collected.isEmpty()) null else tessellate()
         } catch (e: Exception) {
+            // This chest stays on vanilla; repeated failures switch chests off for the session.
             Mobium.LOGGER.warn("Could not capture the chest at {}; it stays on the vanilla path", pos, e)
+            Fallback.typeFailed(Module.STATIC_CACHE, TYPE, e)
+            if (!chestsAllowed()) ModuleStates.refresh("chests failed")
             null
         } finally {
             collected.clear()
@@ -365,11 +377,17 @@ object ChestPrototype {
     fun prepare(cameraX: Double, cameraY: Double, cameraZ: Double) {
         if (!active) return
         if (shaderPackActive()) {
-            Mobium.LOGGER.info("Chest cache prototype off: a shader pack is active")
-            setActive(false)
+            ModuleStates.refresh("shader pack on")
             return
         }
+        try {
+            prepareBuckets(cameraX, cameraY, cameraZ)
+        } catch (e: Exception) {
+            fail(e)
+        }
+    }
 
+    private fun prepareBuckets(cameraX: Double, cameraY: Double, cameraZ: Double) {
         for (bucket in dirtyBuckets) {
             if (bucket.isEmpty) {
                 bucket.close()
@@ -384,7 +402,7 @@ object ChestPrototype {
         dirtyBuckets.clear()
 
         val modelView = RenderSystem.getModelViewStack()
-        var maxIndices = 0
+        var maxVertices = 0
         for (bucket in visibleBuckets) {
             if (bucket.isEmpty) continue
             modelView.pushMatrix()
@@ -395,9 +413,9 @@ object ChestPrototype {
             )
             bucket.prepared = bucket.renderType.prepare()
             modelView.popMatrix()
-            maxIndices = maxOf(maxIndices, bucket.vertexCount / 4 * 6)
+            maxVertices = maxOf(maxVertices, bucket.vertexCount)
         }
-        if (maxIndices > 0) RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS).requestIndexCount(maxIndices)
+        Gpu.backend.requestQuadIndices(maxVertices)
 
         if (frame % SWEEP_INTERVAL_FRAMES == 0L) evictUnseen()
     }
@@ -407,9 +425,13 @@ object ChestPrototype {
     fun draw(renderPass: RenderPass) {
         var drawn = 0
         if (active) {
-            for (bucket in visibleBuckets) {
-                drawn += bucket.draw(renderPass, frame)
-                bucket.prepared = null
+            try {
+                for (bucket in visibleBuckets) {
+                    drawn += bucket.draw(renderPass, frame)
+                    bucket.prepared = null
+                }
+            } catch (e: Exception) {
+                fail(e)
             }
         }
         visibleBuckets.clear()

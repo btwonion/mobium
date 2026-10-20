@@ -1,7 +1,8 @@
 package dev.nyon.mobium
 
 import com.mojang.blaze3d.platform.InputConstants
-import dev.nyon.mobium.cache.ChestPrototype
+import dev.nyon.mobium.core.ModuleStates
+import dev.nyon.mobium.debug.AbToggle
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.Identifier
@@ -11,16 +12,17 @@ object MobiumKeys {
     @JvmField
     val CATEGORY = KeyMapping.Category(Identifier.fromNamespaceAndPath(Mobium.MOD_ID, "main"))
 
-    /** Temporary (M3): toggles the chest cache prototype live, for A/B comparisons in the same spot. */
+    /** Switches all of Mobium to the vanilla path and back, for A/B comparisons in the same spot ([AbToggle]). */
     @JvmField
-    val TOGGLE_CHEST_PROTOTYPE = KeyMapping("key.mobium.toggle_chest_prototype", InputConstants.KEY_RBRACKET, CATEGORY)
+    val AB_TOGGLE = KeyMapping("key.mobium.ab_toggle", InputConstants.KEY_RBRACKET, CATEGORY)
 
-    val ALL: List<KeyMapping> = listOf(TOGGLE_CHEST_PROTOTYPE)
+    val ALL: List<KeyMapping> = listOf(AB_TOGGLE)
 
     @JvmStatic
     fun tick(minecraft: Minecraft) {
-        while (TOGGLE_CHEST_PROTOTYPE.consumeClick()) {
-            minecraft.gui.hud.setOverlayMessage(ChestPrototype.toggle(), false)
+        while (AB_TOGGLE.consumeClick()) {
+            minecraft.gui.hud.setOverlayMessage(AbToggle.toggle(), false)
         }
+        ModuleStates.tick()
     }
 }

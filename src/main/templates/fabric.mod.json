@@ -31,6 +31,18 @@
                 "adapter": "kotlin",
                 "value": "dev.nyon.mobium.MobiumEntrypoint"
             }
+        ],
+        "modmenu": [
+            {
+                "adapter": "kotlin",
+                "value": "dev.nyon.mobium.config.ModMenuImpl"
+            }
+        ],
+        "sodium:config_api_user": [
+            {
+                "adapter": "kotlin",
+                "value": "dev.nyon.mobium.config.SodiumOptions"
+            }
         ]
     },
     "custom": {

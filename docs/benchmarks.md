@@ -227,7 +227,7 @@ With the prototype on, extract and submit for block entities drop from 0.16 + 0.
 is the signs), tessellate from 0.34 ms to 0 and prepare from 1.68 to 1.15 ms. **Gate A passes on session 1, at the
 protocol's resolution, with 1.53×**; session 2 is ignored because its baseline is in the slow state. For "no visible
 difference", the `BenchmarkScenesGameTest` screenshot comparison of `storage_room` with the prototype off and on finds
-0 differing pixels, and no difference was reported from the runs; if one shows up in the live game (toggle with `]`),
+0 differing pixels, and no difference was reported from the runs; if one shows up in the live game (A/B key `]`),
 the gate is open again.
 
 ### Slow vanilla `storage_room`

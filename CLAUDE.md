@@ -34,8 +34,11 @@ python3 benchmark/prism_instances.py       # creates/updates the Prism instances
 In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium suite` runs every scene of a setup
 and `/mobium gatea` runs Gate A unattended (`/mobium stop` aborts), scenes come from the
 `benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
-shows the stage timers. Protocol and results: `docs/benchmarks.md`. The M3 chest prototype is enabled with
-`"cache": {"prototype": true}` in `config/mobium.json` and toggled live with `]`.
+shows the stage timers. Protocol and results: `docs/benchmarks.md`. Settings: Mod Menu (Fabric), the mod list
+(NeoForge) or Mobium's page in Sodium's video settings; the M3 chest prototype is the "Chest prototype" switch
+(`"cache": {"prototype": true}` in `config/mobium.json`). `]` switches all of Mobium off and on live (A/B), the F3
+entry `mobium:modules` shows each module's state and why it is off, and in dev environments
+`/mobium debug fail <module>` forces a module failure (one toast, module on vanilla until restart).
 
 On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game: locally a window opens and
 closes by itself, CI runs it under `xvfb-run`. Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);
@@ -70,7 +73,10 @@ screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`
 ## Architecture
 
 See `PLAN.md` §5 (hook points, package map, part-record layout) and §6 (runtime fallback and compat behaviour).
-Replace this paragraph with a short description of the real architecture once Modules 1 and 2 exist.
+Replace this paragraph with a short description of the real architecture once Modules 1 and 2 exist. Until then:
+every module asks `core/ModuleStates` whether it may run (resolved by the pure `ModuleRules` from config, backend,
+shader pack, A/B key, overlapping mods and failures), reports exceptions to `core/Fallback`, and allocates GPU memory
+through `gpu/Gpu.backend`.
 
 ## Config and translations
 
