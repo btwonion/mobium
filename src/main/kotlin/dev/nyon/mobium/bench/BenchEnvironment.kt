@@ -43,12 +43,14 @@ object BenchEnvironment {
 
     /**
      * The setup name for file names and `summary.csv`: base renderer, Iris with an active pack, EMF, Fresh Animations
-     * if selected, and the Mobium features that are on.
+     * if selected, and the Mobium features that are on (`nodraw` while the static cache skips its draw calls, Gate B's
+     * measurement of what the cached objects cost without drawing them).
      */
     fun detectSetup(): String {
         val parts = ArrayList<String>()
         parts += setupWithoutMobium()
         if (StaticCache.active) parts += "cache"
+        if (StaticCache.active && StaticCache.skipDraws) parts += "nodraw"
         return parts.joinToString("+")
     }
 

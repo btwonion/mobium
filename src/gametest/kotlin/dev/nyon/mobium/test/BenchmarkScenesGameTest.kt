@@ -213,16 +213,28 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
     private fun benchDirectory(context: ClientGameTestContext): Path =
         context.computeOnClient<Path, RuntimeException> { it.gameDirectory.toPath().resolve("mobium-bench") }
 
-    /** A short `/mobium gateb`: three setups and both of Gate B's ratios, and the cache state restored afterwards. */
+    /**
+     * A short `/mobium gateb`: four runs (`storage_room` with the cache, with its draw calls skipped, `control` with and
+     * without the cache), Gate B's numbers, and the cache state restored afterwards.
+     */
     private fun checkGateB(context: ClientGameTestContext) {
         val gate = runPlan(context, "mobium gateb $BENCH_SECONDS 1", "gateb-")
         val rows = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',').let { fields -> fields[0] to fields[1] } }
-        check(rows.size == 3 && rows.count { it.second.endsWith("+cache") } == 2) { "Unexpected Gate B rows: $gate" }
-        val storage = gate.single { it.startsWith("# gate_b_storage_over_control") }.substringAfter(',').toDouble()
-        val control = gate.single { it.startsWith("# gate_b_control_cache_over_vanilla") }.substringAfter(',').toDouble()
-        LOGGER.info("Gate B first look (/mobium gateb {} 1): storage_room {}x control, control {}x with the cache", BENCH_SECONDS, storage, control)
+        check(
+            rows.size == 4 && rows.count { it.second.endsWith("+cache") } == 2 &&
+                rows.single { it.second.endsWith("+cache+nodraw") }.first == "storage_room"
+        ) { "Unexpected Gate B rows: $gate" }
+        fun value(name: String) = gate.single { it.startsWith("# $name,") }.substringAfter(',').toDouble()
+        LOGGER.info(
+            "Gate B first look (/mobium gateb {} 1): cached objects {}x control, whole storage_room frame {}x control, " +
+                "drawing them {} ms, control {}x with the cache",
+            BENCH_SECONDS, value("gate_b_cost_over_control"), value("gate_b_storage_over_control"),
+            value("gate_b_drawing_ms"), value("gate_b_control_cache_over_vanilla")
+        )
         context.runOnClient<RuntimeException> {
-            check(!StaticCache.active && !config.cache.enabled) { "/mobium gateb did not restore the cache state" }
+            check(!StaticCache.active && !config.cache.enabled && !StaticCache.skipDraws) {
+                "/mobium gateb did not restore the cache state"
+            }
         }
     }
 

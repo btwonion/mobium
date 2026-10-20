@@ -29,12 +29,16 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
   on, alternating (defaults: 60 s, 3 runs each), then prints the speed-up against the 1.5× target and writes
   `mobium-bench/gatea-<timestamp>.csv`. Gate A was passed with the M3 chest prototype; since M5 the command compares
   the whole static cache (chests and signs) and stays useful as a before/after number.
-- **`/mobium gateb [seconds] [runs]`** — Gate B: records `storage_room` with the static cache, `control` with it and
-  `control` without it, in turn (defaults: 60 s, 3 rounds; about 12 minutes), then prints both of Gate B's numbers:
-  `storage_room` against `control` (target: at most 1.2×) and `control` with the cache against `control` without it
-  (must not be slower; up to 1.03× counts as noise), and writes `mobium-bench/gateb-<timestamp>.csv` with the medians
-  and the two ratios. Both gate commands switch the cache themselves for the plan, even when it is off in the settings
-  (which they do not save).
+- **`/mobium gateb [seconds] [runs]`** — Gate B: records `storage_room` with the static cache, the same with the
+  cache's draw calls skipped (setup `…+cache+nodraw`; the chests and signs vanish for that run), `control` with the
+  cache and `control` without it, in turn (defaults: 60 s, 3 rounds; about 16 minutes). Then it prints Gate B's
+  numbers (`bench/GateB.kt`): what the cached objects cost, i.e. `storage_room` without their draws plus the draw
+  calls' CPU time, against `control` (target: at most 1.2×); `control` with the cache against `control` without it
+  (must not be slower; up to 1.03× counts as noise); and, without a target, the whole `storage_room` frame against
+  `control` and what drawing the cached objects costs per frame. It writes `mobium-bench/gateb-<timestamp>.csv` with
+  the medians and those numbers, plus the run without draw calls over `control` before their CPU time is added back
+  (`gate_b_nodraw_over_control`). Both gate commands switch the cache themselves for the plan, even when it is off
+  in the settings (which they do not save).
 - **Setup names** get `+cache` while the static cache is active. Since M5 the cache is on by default, so a plain
   `/mobium suite` measures with it; switch Mobium off in the settings (or with the A/B key, the key right of P: `]` on US, `+` on German keyboards) for
   vanilla numbers.
@@ -136,7 +140,7 @@ the scene two seconds later in the same place (each scene replaces the previous 
    medians (about 22 minutes). The HUD stays hidden until the very end: the last scene, `control`, is an empty field
    and looks finished, but it records for another three minutes. The result for a scene and setup is the median of
    the three runs.
-3. Setup A only: `/mobium gateb` for Gate B (about 12 minutes); `/mobium gatea` gives the cache's speed-up in
+3. Setup A only: `/mobium gateb` for Gate B (about 16 minutes); `/mobium gatea` gives the cache's speed-up in
    `storage_room` (about 7 minutes).
 4. Do this for all four setups, then copy each instance's `minecraft/mobium-bench/` folder into
    `docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/` (per-run CSVs gzipped) and fill in the tables below, or
@@ -313,7 +317,7 @@ What the round shows:
   15 ms of the 30 ms difference (tessellation 8.7 ms); the rest is GPU work and Iris's shadow pass, whose entity
   drawing the timers do not count. M6 needs shadow-pass timers before it can promise 1.5×.
 
-### Gate B (20 Oct 2026): failed, 1.39×
+### Gate B (20 Oct 2026): first definition failed at 1.39×, redefined
 
 `/mobium gateb` in setup A ([`gateb-20261020-164524.csv`](benchmarks/results/2026-10-20-thinkpad-x9/A/gateb-20261020-164524.csv),
 three rounds of 60 s, medians):
@@ -345,7 +349,31 @@ cannot be reached through CPU work alone.
 - Fewer draw calls (bigger buckets or multi-draw): at most 0.03 ms of CPU, perhaps a little GPU state switching.
 - The GPU cost itself only shrinks with fewer pixels or vertices, which would change the picture.
 
-Gates are hard stops (`PLAN.md` §7): how to proceed is Anton's call, and the release waits for it.
+**Decision (Anton, 20 Oct 2026).** Gates are hard stops (`PLAN.md` §7), so the options went to Anton: keep 1.2× and do
+the CPU work above first (best case about 1.3×), gate against vanilla `storage_room`, waive the gate for the beta, or
+gate what the cached objects cost Mobium. He chose the last. Gate B is now:
+
+- **what the cached objects cost** — `storage_room` with the cache's draw calls skipped, plus the CPU time of those draw
+  calls (the draw timer's difference between the two `storage_room` runs), over `control` with the cache: at most
+  **1.2×**;
+- `control` with the cache over `control` without it: at most 1.03× (unchanged);
+- reported without a target: the whole `storage_room` frame over `control` (the first definition) and the cost of
+  drawing the cached objects in ms (CPU and GPU, the difference of the two `storage_room` runs).
+
+Adding the draw calls' CPU time back is stricter than measuring the run without draws alone; the CSV has both
+(`gate_b_cost_over_control`, the gate, and `gate_b_nodraw_over_control`). First look in the dev client's 1423×800
+window (`self_check.py fabric --mode gateb`, `/mobium gateb 20 2`, 20 Oct):
+
+| Run | Frame | Extract BE | Draw |
+| --- | --- | --- | --- |
+| `storage_room`, cache on | 0.851 ms | 0.126 ms | 0.066 ms |
+| `storage_room`, cache on, draw calls skipped | 0.726 ms | 0.124 ms | 0.000 ms |
+| `control`, cache on / off | 0.665 / 0.674 ms | 0.000 ms | 0.000 ms |
+
+Cost **1.19×** (target 1.2×; without the draw calls' CPU time 1.09×), whole frame 1.28×, drawing the cached objects
+0.12 ms, `control` 0.99×. The laptop ran this session's `control` almost twice as fast as on 20 Oct afternoon (0.66
+against 1.13 ms in the same window), which makes Mobium's fixed CPU cost a larger share; the gate is close either way.
+Anton's `/mobium gateb` decides; the release waits for it.
 
 ### Measurement pitfalls
 

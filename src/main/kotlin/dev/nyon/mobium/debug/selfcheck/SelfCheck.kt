@@ -299,7 +299,8 @@ object SelfCheck {
 
     /**
      * `--mode gateb`: `/mobium gateb 20 2` in the dev client's window (not the protocol's 1920×1080 or Anton's
-     * hardware, so only a hint); the medians file is copied into `mobium-selfcheck/`.
+     * hardware, so only a hint), including its run with the cache's draw calls skipped; the medians file is copied into
+     * `mobium-selfcheck/`.
      */
     private fun gateB(minecraft: Minecraft) = sequence {
         snapshotOptions(minecraft)
@@ -326,20 +327,6 @@ object SelfCheck {
             results += "NOTE window ${window.width}x${window.height}: " + lines.filter { it.startsWith("#") }.joinToString("; ")
             for (line in lines.drop(1).filter { !it.startsWith("#") }) results += "NOTE " + line.split(',').take(4).joinToString(" ")
             check("gateb medians written", true, file.toString())
-        }
-        // The same storage_room with the cache's draw calls skipped: what drawing the cached objects costs.
-        if (buildScene(minecraft, SCENE)) {
-            for (skip in listOf(false, true, false, true)) {
-                StaticCache.skipDraws = skip
-                yield(ticks(3 * TICKS_PER_SECOND))
-                val summary = bench.resolve("summary.csv")
-                val rowsBefore = if (Files.exists(summary)) Files.readAllLines(summary).size else 0
-                checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium bench $SCENE 15", null)
-                yield(until("bench $SCENE (draws skipped: $skip)", 60) { Files.exists(summary) && Files.readAllLines(summary).size > rowsBefore })
-                val row = Files.readAllLines(summary).let { lines -> lines.first().split(',').zip(lines.last().split(',')).toMap() }
-                results += "NOTE $SCENE, cache draws ${if (skip) "skipped" else "on"}: ${row["avg_ms"]} ms"
-            }
-            StaticCache.skipDraws = false
         }
         applyConfig(saved)
         minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
