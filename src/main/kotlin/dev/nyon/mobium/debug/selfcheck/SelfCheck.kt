@@ -261,6 +261,7 @@ object SelfCheck {
             screen is TitleScreen
         })
         yield(ticks(40))
+        results += "NOTE the A/B key reads \"${AbToggle.keyName().string}\" on this keyboard layout"
     }
 
     /**

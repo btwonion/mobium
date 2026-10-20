@@ -36,7 +36,8 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
   and the two ratios. Both gate commands switch the cache themselves for the plan, even when it is off in the settings
   (which they do not save).
 - **Setup names** get `+cache` while the static cache is active. Since M5 the cache is on by default, so a plain
-  `/mobium suite` measures with it; switch Mobium off in the settings (or with the A/B key `]`) for vanilla numbers.
+  `/mobium suite` measures with it; switch Mobium off in the settings (or with the A/B key, the key right of P: `]` on US, `+` on German keyboards) for
+  vanilla numbers.
 - **F3 entry `mobium:timings`** — the same timers averaged over the last 64 frames. Enable it in the debug options
   screen (the timers only run while it is shown or a benchmark records).
 - **Prism instances** — `./gradlew :26.3-fabric:benchKit` collects the mods of the four setups and the datapack,
@@ -237,7 +238,7 @@ With the prototype on, extract and submit for block entities drop from 0.16 + 0.
 is the signs), tessellate from 0.34 ms to 0 and prepare from 1.68 to 1.15 ms. **Gate A passes on session 1, at the
 protocol's resolution, with 1.53×**; session 2 is ignored because its baseline is in the slow state. For "no visible
 difference", the `BenchmarkScenesGameTest` screenshot comparison of `storage_room` with the prototype off and on finds
-0 differing pixels, and no difference was reported from the runs; if one shows up in the live game (A/B key `]`),
+0 differing pixels, and no difference was reported from the runs; if one shows up in the live game (A/B key: `]` on US, `+` on German keyboards),
 the gate is open again.
 
 ### Slow vanilla `storage_room`

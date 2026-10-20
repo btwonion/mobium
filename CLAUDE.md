@@ -42,10 +42,12 @@ In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium
 and `/mobium gatea` runs Gate A unattended (`/mobium stop` aborts), scenes come from the
 `benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
 shows the stage timers. Protocol and results: `docs/benchmarks.md`. Settings: Mod Menu (Fabric), the mod list
-(NeoForge) or Mobium's page in Sodium's video settings; the M3 chest prototype is the "Chest prototype" switch
-(`"cache": {"prototype": true}` in `config/mobium.json`). `]` switches all of Mobium off and on live (A/B), the F3
-entry `mobium:modules` shows each module's state and why it is off, and in dev environments
-`/mobium debug fail <module>` forces a module failure (one toast, module on vanilla until restart).
+(NeoForge) or Mobium's page in Sodium's video settings. The A/B key switches all of Mobium off and on live; key
+bindings are physical key positions (SDL scancodes), and its default is the key right of P: `]` on a US keyboard,
+`+` on a German one (the action bar names the bound key; rebind under Controls → Key Binds → Mobium). The F3 entry
+`mobium:modules` shows each module's state and why it is off, and in dev environments `/mobium debug fail <module>`
+forces a module failure (one toast, module on vanilla until restart) and `/mobium debug validate` compares a frame
+with Mobium against the next with vanilla.
 
 On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game: locally a window opens and
 closes by itself, CI runs it under `xvfb-run`. Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);
