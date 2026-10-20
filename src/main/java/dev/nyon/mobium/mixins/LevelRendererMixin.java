@@ -5,7 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.renderpearl.api.commands.RenderPass;
-import dev.nyon.mobium.cache.ChestPrototype;
+import dev.nyon.mobium.cache.StaticCache;
 import dev.nyon.mobium.debug.Sections;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -23,9 +23,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Times the level's submit stage (split by entities and block entities) and its prepare stage, and marks both so that
- * model submits and prepares can be attributed; with timers off the wrappers only call through. Also runs the chest
- * prototype's prepare after the level's prepare stage and draws its cached chests in the solid pass (both no-ops while
- * the prototype is off).
+ * model submits and prepares can be attributed; with timers off the wrappers only call through. Also runs the static
+ * cache's prepare after the level's prepare stage and draws its cached objects in the solid pass (both no-ops while
+ * the cache is off).
  */
 @Mixin(LevelRenderer.class)
 public class LevelRendererMixin {
@@ -84,7 +84,7 @@ public class LevelRendererMixin {
         try {
             FeatureRenderDispatcher.PreparedFrame frame = original.call(dispatcher, storage);
             Vec3 camera = this.levelRenderState.cameraRenderState.pos;
-            ChestPrototype.prepare(camera.x, camera.y, camera.z);
+            StaticCache.prepare(camera.x, camera.y, camera.z);
             return frame;
         } finally {
             Sections.inLevelPrepare = false;
@@ -92,8 +92,9 @@ public class LevelRendererMixin {
         }
     }
 
-    // Chest prototype (M3): draws the cached chests right after vanilla's solid features, in the same render pass.
-    // Draws nothing while the prototype is off.
+    // Static cache (Module 1): draws the cached objects right after vanilla's solid features, in the same render pass,
+    // where vanilla would have drawn them (sign text included: it is opaque and vanilla puts it into the solid phase).
+    // Draws nothing while the cache is off.
     @Inject(
         method = "executeSolid",
         at = @At(
@@ -102,14 +103,14 @@ public class LevelRendererMixin {
             shift = At.Shift.AFTER
         )
     )
-    private void mobium$drawCachedChests(
+    private void mobium$drawCachedObjects(
         ChunkSectionsToRender chunkSectionsToRender,
         FeatureRenderDispatcher.PreparedFrame featureFrame,
         RenderPass renderPass,
         CallbackInfo ci
     ) {
         long start = Sections.begin();
-        ChestPrototype.draw(renderPass);
+        StaticCache.draw(renderPass);
         Sections.end(Sections.DRAW, start);
     }
 }

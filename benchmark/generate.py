@@ -260,6 +260,72 @@ def display_build() -> list[str]:
     return lines
 
 
+GALLERY_SKULLS = [
+    "skeleton_skull", "wither_skeleton_skull", "zombie_head", "creeper_head", "dragon_head", "piglin_head",
+    "player_head",
+]
+GALLERY_CHESTS = [
+    # (x offset, block state)
+    (-8, "chest[facing=north,type=single]"),
+    # facing north: the left half connects east (ChestBlock.getConnectedDirection)
+    (-6, "chest[facing=north,type=left]"),
+    (-5, "chest[facing=north,type=right]"),
+    (-3, "trapped_chest[facing=north,type=single]"),
+    (-1, "ender_chest[facing=north]"),
+    (1, "copper_chest[facing=north,type=single]"),
+    (2, "oxidized_copper_chest[facing=north,type=single]"),
+    (4, "shulker_box[facing=up]"),
+    (5, "red_shulker_box[facing=north]"),
+    (6, "blue_shulker_box[facing=up]"),
+]
+GALLERY_SIGNS = [
+    # (x offset, front text messages, extra front_text fields); obfuscated and sprite text stay on vanilla
+    (-8, '"Plain","oak","wall","sign"', ""),
+    (-6, '"Black","glow","ink",""', ',color:"black",has_glowing_text:1b'),
+    (-4, '"Yellow","glow","ink","outline"', ',color:"yellow",has_glowing_text:1b'),
+    (-2, '{text:"Bold",bold:1b},{text:"Italic",italic:1b},{text:"Under",underlined:1b},{text:"Strike",strikethrough:1b}', ""),
+    (0, '{text:"Red",color:"red"},{text:"Green",color:"green"},{text:"Blue",color:"blue"},"Mixed"', ""),
+    (2, '"Obfuscated",{text:"xxxx",obfuscated:1b},"stays","vanilla"', ""),
+    (4, '"Sprite",{type:"object",object:"atlas",sprite:"block/stone"},"stays","vanilla"', ""),
+    (6, '"Light","blue","dye",""', ',color:"light_blue"'),
+]
+
+
+def cache_gallery() -> list[str]:
+    """Every type the static cache handles, with the variants its rules tell apart, close to the camera."""
+    lines = []
+    # Row 1: skulls (one dragon head powered by a redstone block below, so its mouth moves) and decorated pots.
+    for index, skull in enumerate(GALLERY_SKULLS):
+        lines.append(f"setblock {X0 - 8 + index} {GROUND} {Z0 + 6} minecraft:{skull}[rotation=8] strict")
+    lines.append(f"setblock {X0} {FLOOR} {Z0 + 6} minecraft:redstone_block strict")
+    lines.append(f"setblock {X0} {GROUND} {Z0 + 6} minecraft:dragon_head[rotation=8,powered=true] strict")
+    lines.append(f"setblock {X0 + 2} {GROUND} {Z0 + 6} minecraft:decorated_pot[facing=north] strict")
+    lines.append(
+        f"setblock {X0 + 4} {GROUND} {Z0 + 6} minecraft:decorated_pot[facing=north]"
+        '{sherds:{front:"minecraft:angler_pottery_sherd",left:"minecraft:heart_pottery_sherd",'
+        'right:"minecraft:skull_pottery_sherd",back:"minecraft:brick"}} strict'
+    )
+    # Row 2: chests of every kind and shulker boxes.
+    for offset, state in GALLERY_CHESTS:
+        lines.append(f"setblock {X0 + offset} {GROUND} {Z0 + 9} minecraft:{state} strict")
+    # Row 3: a wall with wall signs, and hanging signs from a beam above them.
+    lines.append(f"fill {X0 - 9} {GROUND} {Z0 + 13} {X0 + 7} {GROUND + 4} {Z0 + 13} minecraft:stone_bricks strict")
+    lines.append(f"fill {X0 - 9} {GROUND + 4} {Z0 + 12} {X0 + 7} {GROUND + 4} {Z0 + 12} minecraft:stone_bricks strict")
+    for offset, messages, extra in GALLERY_SIGNS:
+        lines.append(
+            f"setblock {X0 + offset} {GROUND + 1} {Z0 + 12} minecraft:oak_wall_sign[facing=north]"
+            f"{{front_text:{{messages:[{messages}]{extra}}}}} strict"
+        )
+    for index, offset in enumerate(range(-7, 8, 4)):
+        glowing = ',color:"lime",has_glowing_text:1b' if index % 2 else ""
+        lines.append(
+            f"setblock {X0 + offset} {GROUND + 3} {Z0 + 12} minecraft:spruce_hanging_sign[rotation=8,attached=true]"
+            f'{{front_text:{{messages:["Hanging","sign","{index}",""]{glowing}}},'
+            f'back_text:{{messages:["Back","text","",""]}}}} strict'
+        )
+    return lines
+
+
 def main() -> None:
     write("pack.mcmeta", [
         "{",
@@ -312,6 +378,9 @@ def main() -> None:
     scene("display_build", "A decoration built from 400 block displays and 100 item displays",
           wall_camera, display_build())
     scene("control", "Empty superflat, nothing to accelerate", wall_camera, [])
+    # Not a benchmark scene: the self-check compares vanilla and Mobium on every cached type here.
+    scene("cache_gallery", "Every type the static cache handles, for pixel comparisons",
+          (X0 + 0.5, GROUND + 2.6, Z0 + 0.5, 0, 12), cache_gallery())
 
 
 if __name__ == "__main__":

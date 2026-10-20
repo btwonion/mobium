@@ -577,8 +577,13 @@ group had no heading.
 - [ ] `CaptureConsumer`: records what the vanilla renderer emits, per render type, in block-local space, in the
       vertex format active at capture time (Iris-extended when a shader pack is on).
 - [ ] `SectionBucket`: one buffer per (chunk section, render type); rebuilt on the next frame after any member
-      changes; drawn through vanilla's pipeline with the section offset in the model-view matrix (no shader edits).
-      If M1 shows Iris needs per-draw IDs, split buckets by ID.
+      changes; drawn through vanilla's pipeline (no shader edits). If M1 shows Iris needs per-draw IDs, split buckets
+      by ID.
+      *Changed in M5:* not with the section offset in the model-view matrix. Vanilla's entity and text shaders take
+      the fog distance from the raw `Position` attribute (`docs/vanilla-notes.md` §15), so the M3 prototype drew
+      cached chests with the fog of a closer object (max channel difference 6 in `storage_room`, under the tests'
+      threshold of 16). The CPU keeps section-local vertices and writes camera-relative ones into the bucket's buffer
+      when it is drawn after the camera moved or a member changed; with a still camera nothing is written.
 - [ ] `CachePolicy`:
 
       | Object | Cached while | Vanilla path while |
@@ -597,6 +602,11 @@ group had no heading.
       left is the signs' text. Gate B (1.2×) is out of reach unless sign text is cached too; decide early in M5
       whether text quads can be drawn from a cached buffer in the translucent phase (they need no sorting among
       themselves) or whether Gate B's target changes.
+      *Settled (20 Oct 2026): sign text is cached, Gate B unchanged.* Sign text is opaque with no background, so
+      vanilla draws it in the **solid** phase (`SubmitNodeCollection.canRenderAsSolid`), and the cache draws it there
+      too. The self-check compares Mobium with vanilla in `storage_room` (1,000 chests, 300 signs, glow ink with and
+      without outline) from the default view, a moved camera and at render distance 2 with the chests in the fog band:
+      0 changed pixels, max channel difference 0, on Fabric and NeoForge.
 - [ ] `Invalidation` for data, block state, section light, resource reload, shader-pack change, level change.
 - [ ] `MemoryBudget`: 128 MB default, evict farthest first.
 - [ ] Screenshot tests per scene and per effect (Fabric client gametests); Validation mode diff = 0.

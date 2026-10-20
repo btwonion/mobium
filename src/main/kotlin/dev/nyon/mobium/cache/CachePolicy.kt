@@ -1,0 +1,233 @@
+package dev.nyon.mobium.cache
+
+import dev.nyon.mobium.config.CacheTypes
+import dev.nyon.mobium.mixins.AbstractSignEditScreenAccessor
+import dev.nyon.mobium.mixins.AbstractSignRendererInvoker
+import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen
+import net.minecraft.core.BlockPos
+import net.minecraft.network.chat.FontDescription
+import net.minecraft.network.chat.FormattedText
+import net.minecraft.network.chat.Style
+import net.minecraft.world.item.DyeColor
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.ChestBlock
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityType
+import net.minecraft.world.level.block.entity.BlockEntityTypes
+import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity
+import net.minecraft.world.level.block.entity.LidBlockEntity
+import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity
+import net.minecraft.world.level.block.entity.SignBlockEntity
+import net.minecraft.world.level.block.entity.SignText
+import net.minecraft.world.level.block.entity.SignTextSlot
+import net.minecraft.world.level.block.entity.SkullBlockEntity
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.properties.ChestType
+import java.util.IdentityHashMap
+import java.util.Optional
+
+/**
+ * One row of Module 1's policy table (PLAN.md M5): which vanilla block entity types it covers, while which states they
+ * are drawn from the cache, and which inputs besides block state and light their picture depends on. Rules are asked
+ * per object per frame, so they must not allocate. Anything a rule does not accept takes the vanilla path for that
+ * frame.
+ *
+ * @param key names the per-type switch (`mobium.settings.type.<key>`) and the type in failure reports.
+ */
+abstract class CacheRule(@JvmField val key: String) {
+    /** Set by [StaticCache.refreshTypes] from the per-type switch and the type's failures. */
+    @JvmField
+    var allowed = false
+
+    /** The per-type switch in [CacheTypes]. */
+    abstract fun enabled(types: CacheTypes): Boolean
+
+    /** False while the object animates or is being edited; vanilla draws it this frame. */
+    abstract fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float): Boolean
+
+    /** Inputs of the picture besides block state and light, compared every frame with what [storeInputs] kept. */
+    open fun sameInputs(entry: CacheEntry, blockEntity: BlockEntity): Boolean = true
+
+    open fun storeInputs(entry: CacheEntry, blockEntity: BlockEntity) {}
+
+    /**
+     * Whether the captured picture may be cached at all: checked once per capture, after the inputs are stored. A
+     * rejected object takes the vanilla path until its inputs change.
+     */
+    open fun canCache(entry: CacheEntry, blockEntity: BlockEntity): Boolean = true
+
+    /** Points [out] at a second block whose light and state belong to this object's picture (double chests). */
+    open fun neighbour(pos: BlockPos, state: BlockState, out: BlockPos.MutableBlockPos): Boolean = false
+}
+
+/** The per-type rules by vanilla block entity type; modded block entities, even subclasses, stay on vanilla. */
+object CachePolicy {
+    private val rules = IdentityHashMap<BlockEntityType<*>, CacheRule>()
+
+    init {
+        rules[BlockEntityTypes.CHEST] = Lids
+        rules[BlockEntityTypes.TRAPPED_CHEST] = Lids
+        rules[BlockEntityTypes.ENDER_CHEST] = Lids
+        rules[BlockEntityTypes.SHULKER_BOX] = Lids
+        rules[BlockEntityTypes.SIGN] = Signs
+        rules[BlockEntityTypes.HANGING_SIGN] = Signs
+        rules[BlockEntityTypes.SKULL] = Skulls
+        rules[BlockEntityTypes.DECORATED_POT] = Pots
+    }
+
+    /** All rules once each, for the per-type switches and the F3 counts. */
+    val all: List<CacheRule> = listOf(Lids, Signs, Skulls, Pots)
+
+    @JvmStatic
+    fun ruleFor(blockEntity: BlockEntity): CacheRule? = rules[blockEntity.type]
+}
+
+/**
+ * Chests (also trapped, copper and ender chests) and shulker boxes: cached while closed, vanilla while the lid opens,
+ * is open or closes. A double chest is two block entities, each drawing its own half; the lid and the light of the
+ * other half count too (`ChestRenderer.extractRenderState` combines both).
+ */
+object Lids : CacheRule("chests") {
+    override fun enabled(types: CacheTypes) = types.chests
+
+    override fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float): Boolean {
+        if (blockEntity is ShulkerBoxBlockEntity) return blockEntity.getProgress(partialTicks) == 0f
+        if (blockEntity !is LidBlockEntity || blockEntity.getOpenNess(partialTicks) != 0f) return false
+        if (!state.hasProperty(ChestBlock.TYPE) || state.getValue(ChestBlock.TYPE) == ChestType.SINGLE) return true
+        val other = level.getBlockEntity(neighbourOf(blockEntity.blockPos, state)) as? LidBlockEntity ?: return true
+        return other.getOpenNess(partialTicks) == 0f
+    }
+
+    override fun neighbour(pos: BlockPos, state: BlockState, out: BlockPos.MutableBlockPos): Boolean {
+        if (!state.hasProperty(ChestBlock.TYPE) || state.getValue(ChestBlock.TYPE) == ChestType.SINGLE) return false
+        out.setWithOffset(pos, ChestBlock.getConnectedDirection(state))
+        return true
+    }
+
+    private val scratch = BlockPos.MutableBlockPos()
+
+    private fun neighbourOf(pos: BlockPos, state: BlockState): BlockPos =
+        scratch.setWithOffset(pos, ChestBlock.getConnectedDirection(state))
+}
+
+/**
+ * Signs and hanging signs. In 26.3 the board is part of the terrain mesh and the block entity only draws the text
+ * (`AbstractSignRenderer.submit`), which vanilla puts into the solid phase: sign text is opaque and has no background
+ * (`SubmitNodeCollection.canRenderAsSolid`). The picture depends on both sides' [SignText] (immutable, replaced on every
+ * change), the text filter and, for glowing text, whether the camera is close enough for the outline
+ * (`AbstractSignRenderer.isOutlineVisible`). Vanilla while the sign is being edited; obfuscated text, sprites and
+ * player heads always stay vanilla.
+ */
+object Signs : CacheRule("signs") {
+    private const val FILTERED = 1
+    private const val OUTLINE = 2
+
+    override fun enabled(types: CacheTypes) = types.signs
+
+    override fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float): Boolean {
+        val screen = Minecraft.getInstance().gui.screen()
+        return screen !is AbstractSignEditScreen || (screen as AbstractSignEditScreenAccessor).`mobium$sign`() !== blockEntity
+    }
+
+    override fun sameInputs(entry: CacheEntry, blockEntity: BlockEntity): Boolean {
+        val sign = blockEntity as SignBlockEntity
+        val front = sign.getText(SignTextSlot.FRONT)
+        val back = sign.getText(SignTextSlot.BACK)
+        return entry.inputA === front && entry.inputB === back && entry.inputFlags == flags(sign, front, back)
+    }
+
+    override fun storeInputs(entry: CacheEntry, blockEntity: BlockEntity) {
+        val sign = blockEntity as SignBlockEntity
+        val front = sign.getText(SignTextSlot.FRONT)
+        val back = sign.getText(SignTextSlot.BACK)
+        entry.inputA = front
+        entry.inputB = back
+        entry.inputFlags = flags(sign, front, back)
+    }
+
+    override fun canCache(entry: CacheEntry, blockEntity: BlockEntity): Boolean {
+        val filtered = entry.inputFlags and FILTERED != 0
+        return isPlain(entry.inputA as SignText, filtered) && isPlain(entry.inputB as SignText, filtered)
+    }
+
+    private fun flags(sign: SignBlockEntity, front: SignText, back: SignText): Int {
+        var flags = if (Minecraft.getInstance().isTextFilteringEnabled) FILTERED else 0
+        // The outline of glowing text depends on the camera; black glowing text always has one.
+        if (needsOutlineCheck(front) || needsOutlineCheck(back)) {
+            if (AbstractSignRendererInvoker.`mobium$isOutlineVisible`(sign.blockPos)) flags = flags or OUTLINE
+        }
+        return flags
+    }
+
+    private fun needsOutlineCheck(text: SignText) =
+        text.hasGlowingText() && text.color.textColor != DyeColor.BLACK.textColor
+
+    /**
+     * No obfuscated glyphs (random every frame) and no sprite or player-head glyphs (`ObjectContents` switch the style's
+     * font; skins load later). Visits the components instead of `getRenderMessages`, which caches the first caller's
+     * line splitting.
+     */
+    private fun isPlain(text: SignText, filtered: Boolean): Boolean {
+        for (message in text.getMessages(filtered)) {
+            if (message.visit(PlainCheck, Style.EMPTY).isPresent) return false
+        }
+        return true
+    }
+
+    private object PlainCheck : FormattedText.StyledContentConsumer<Unit> {
+        override fun accept(style: Style, contents: String): Optional<Unit> =
+            if (style.isObfuscated || style.font !is FontDescription.Resource) Optional.of(Unit) else Optional.empty()
+    }
+}
+
+/**
+ * Skulls and heads. The mouth of a powered dragon or piglin head moves every tick (`SkullBlockEntity.animation`), so
+ * those take the vanilla path while they animate (`getAnimation` then depends on the partial tick), and the mouth
+ * position they stopped at is an input. Player heads with an owner stay vanilla: their skin loads later and changes
+ * the render type (`PlayerSkinRenderCache.getOrDefault`).
+ */
+object Skulls : CacheRule("skulls") {
+    override fun enabled(types: CacheTypes) = types.skulls
+
+    override fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float): Boolean {
+        val skull = blockEntity as SkullBlockEntity
+        return skull.getAnimation(0f) == skull.getAnimation(1f)
+    }
+
+    override fun sameInputs(entry: CacheEntry, blockEntity: BlockEntity): Boolean {
+        val skull = blockEntity as SkullBlockEntity
+        return entry.inputA === skull.ownerProfile && entry.inputFlags == skull.getAnimation(0f).toRawBits()
+    }
+
+    override fun storeInputs(entry: CacheEntry, blockEntity: BlockEntity) {
+        val skull = blockEntity as SkullBlockEntity
+        entry.inputA = skull.ownerProfile
+        entry.inputFlags = skull.getAnimation(0f).toRawBits()
+    }
+
+    override fun canCache(entry: CacheEntry, blockEntity: BlockEntity): Boolean = entry.inputA == null
+}
+
+/**
+ * Decorated pots: vanilla while they wobble after being hit (`DecoratedPotRenderer.extractRenderState`: progress
+ * from `wobbleStartedAtTick` over the style's duration). The sherds ([DecoratedPotBlockEntity.getDecorations], replaced
+ * when the block entity's data is loaded) are an input.
+ */
+object Pots : CacheRule("decorated_pots") {
+    override fun enabled(types: CacheTypes) = types.decoratedPots
+
+    override fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float): Boolean {
+        val pot = blockEntity as DecoratedPotBlockEntity
+        val style = pot.lastWobbleStyle ?: return true
+        val progress = ((level.gameTime - pot.wobbleStartedAtTick).toFloat() + partialTicks) / style.duration
+        return progress < 0f || progress > 1f
+    }
+
+    override fun sameInputs(entry: CacheEntry, blockEntity: BlockEntity): Boolean =
+        entry.inputA === (blockEntity as DecoratedPotBlockEntity).decorations
+
+    override fun storeInputs(entry: CacheEntry, blockEntity: BlockEntity) {
+        entry.inputA = (blockEntity as DecoratedPotBlockEntity).decorations
+    }
+}

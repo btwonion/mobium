@@ -5,7 +5,9 @@ import dev.nyon.konfig.config.loadConfig
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.MobiumKeys
 import dev.nyon.mobium.bench.SceneBuilder
-import dev.nyon.mobium.cache.ChestPrototype
+import dev.nyon.mobium.cache.Lids
+import dev.nyon.mobium.cache.Signs
+import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.CacheConfig
 import dev.nyon.mobium.config.Config
 import dev.nyon.mobium.config.applyConfig
@@ -39,6 +41,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Locale
 
 /*? if fabric {*/
 import dev.nyon.mobium.config.ModMenuImpl
@@ -66,6 +69,8 @@ object SelfCheck {
     private const val WORLD = "Mobium Bench"
     private const val SCENE = "storage_room"
     private const val TICKS_PER_SECOND = 20
+    private const val CHESTS = 1000
+    private const val SIGNS = 300
 
     private var steps: Iterator<Wait>? = null
     private var current: Wait? = null
@@ -73,6 +78,7 @@ object SelfCheck {
     private val results = ArrayList<String>()
     private var failures = 0
     private var restoreOptions: (() -> Unit)? = null
+    private var renderDistanceBefore = 12
 
     /** One thing the scenario waits for; checked once per client tick. A timeout fails the check if [required]. */
     private class Wait(val description: String, val timeoutTicks: Int, val required: Boolean, val condition: () -> Boolean) {
@@ -140,13 +146,16 @@ object SelfCheck {
         val clouds = options.cloudStatus().get()
         val preset = options.graphicsPreset().get()
         val language = options.languageCode
+        renderDistanceBefore = options.renderDistance().get()
         // A window that loses focus would otherwise open the pause menu in the middle of the world checks.
         options.pauseOnLostFocus = false
         restoreOptions = {
             options.pauseOnLostFocus = pause
             options.onboardAccessibility = onboarding
             options.cloudStatus().set(clouds)
-            // Changing the clouds turns the preset to "custom"; setting the old preset again restores it.
+            options.renderDistance().set(renderDistanceBefore)
+            // Changing the clouds or the render distance turns the preset to "custom"; setting the old preset again
+            // restores it.
             options.graphicsPreset().set(preset)
             if (options.languageCode != language) {
                 minecraft.languageManager.setSelected(language)
@@ -346,7 +355,12 @@ object SelfCheck {
         if (!hud.isHidden) hud.toggle()
         yield(ticks(TICKS_PER_SECOND))
 
-        check("chest prototype active", ChestPrototype.active && ModuleStates.isActive(Module.STATIC_CACHE), ModuleStates.status(Module.STATIC_CACHE).describe())
+        check("static cache active", StaticCache.active && ModuleStates.isActive(Module.STATIC_CACHE), ModuleStates.status(Module.STATIC_CACHE).describe())
+        check(
+            "chests and signs cached",
+            StaticCache.cachedCount(Lids.key) == CHESTS && StaticCache.cachedCount(Signs.key) == SIGNS,
+            StaticCache.debugLine()
+        )
         capture(minecraft)
         yield(until("capture Mobium picture", 10) { captured != null })
         val mobiumImage = takeCapture("capture-mobium")
@@ -356,7 +370,7 @@ object SelfCheck {
         yield(ticks(TICKS_PER_SECOND))
         check(
             "A/B key switches to vanilla",
-            AbToggle.mobiumOff && !ChestPrototype.active && ModuleStates.status(Module.STATIC_CACHE).reason == OffReason.AB_TOGGLE,
+            AbToggle.mobiumOff && !StaticCache.active && ModuleStates.status(Module.STATIC_CACHE).reason == OffReason.AB_TOGGLE,
             ModuleStates.status(Module.STATIC_CACHE).describe()
         )
         capture(minecraft)
@@ -371,11 +385,27 @@ object SelfCheck {
 
         KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
         yield(ticks(TICKS_PER_SECOND))
-        check("A/B key switches back", !AbToggle.mobiumOff && ChestPrototype.active, ModuleStates.status(Module.STATIC_CACHE).describe())
+        check("A/B key switches back", !AbToggle.mobiumOff && StaticCache.active, ModuleStates.status(Module.STATIC_CACHE).describe())
         yield(ticks(2 * TICKS_PER_SECOND))
         capture(minecraft)
         yield(until("capture Mobium picture again", 10) { captured != null })
         compare("Mobium picture after A/B matches vanilla", takeCapture("capture-mobium-again"), vanillaImage)
+
+        // Cached objects are drawn from camera-relative vertices: a moved camera rewrites every visible bucket, and at
+        // render distance 2 the chest wall stands in the fog band at the end of the render distance, where fog taken
+        // from section-local positions (as in M3) would be visibly off.
+        val scenePlayer = checkNotNull(minecraft.player)
+        val x = scenePlayer.x
+        val y = scenePlayer.y
+        val z = scenePlayer.z
+        compareView(minecraft, "moved camera") { teleport(minecraft, x - 0.13, y + 1.25, z - 4.21, -12.5f, 14f) }
+        compareView(minecraft, "render distance fog") {
+            teleport(minecraft, x, y, z, 0f, 10f)
+            minecraft.options.renderDistance().set(2)
+        }
+        minecraft.options.renderDistance().set(renderDistanceBefore)
+        yield(until("world settled again", 120) { SceneBuilder.isQuiet(minecraft) })
+        yield(ticks(TICKS_PER_SECOND))
 
         minecraft.debugEntries.setStatus(ModuleLines.ID, DebugScreenEntryStatus.ALWAYS_ON)
         hud.toggle()
@@ -392,7 +422,7 @@ object SelfCheck {
         player?.connection?.sendUnattendedCommand("mobium debug fail static_cache", null)
         yield(ticks(5))
         val status = ModuleStates.status(Module.STATIC_CACHE)
-        check("debug fail switches the static cache off", status.reason == OffReason.FAILED && !ChestPrototype.active, status.describe())
+        check("debug fail switches the static cache off", status.reason == OffReason.FAILED && !StaticCache.active, status.describe())
         check("exactly one failure toast", failureToasts(minecraft.gui.toastManager()) == 1, "${failureToasts(minecraft.gui.toastManager())} toasts")
         yield(ticks(TICKS_PER_SECOND))
         val failedLines = debugLines()
@@ -417,6 +447,40 @@ object SelfCheck {
         minecraft.debugEntries.setStatus(ModuleLines.ID, DebugScreenEntryStatus.NEVER)
         mobiumImage.close()
         vanillaImage.close()
+    }
+
+    /**
+     * Sets up a view, lets it settle and compares vanilla's picture with Mobium's (both through the A/B key, which
+     * drops the cache and captures everything again).
+     */
+    private suspend fun SequenceScope<Wait>.compareView(minecraft: Minecraft, name: String, setUp: () -> Unit) {
+        setUp()
+        yield(ticks(2 * TICKS_PER_SECOND))
+        yield(until("world settled ($name)", 120) { SceneBuilder.isQuiet(minecraft) })
+        yield(ticks(TICKS_PER_SECOND))
+        val file = name.replace(' ', '-')
+        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
+        yield(ticks(TICKS_PER_SECOND))
+        capture(minecraft)
+        yield(until("capture vanilla picture ($name)", 10) { captured != null })
+        val vanilla = takeCapture("capture-$file-vanilla")
+        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
+        yield(ticks(TICKS_PER_SECOND))
+        check("cache draws ($name)", StaticCache.active && StaticCache.lastDrawn > 0, StaticCache.debugLine())
+        capture(minecraft)
+        yield(until("capture Mobium picture ($name)", 10) { captured != null })
+        val mobium = takeCapture("capture-$file-mobium")
+        compare("$name: Mobium and vanilla pictures match", mobium, vanilla)
+        mobium.close()
+        vanilla.close()
+    }
+
+    /** Moves the player through the integrated server, as `/tp` does (the benchmark world needs no cheats). */
+    private fun teleport(minecraft: Minecraft, x: Double, y: Double, z: Double, yaw: Float, pitch: Float) {
+        val server = minecraft.singleplayerServer ?: return
+        val uuid = checkNotNull(minecraft.player).uuid
+        val command = String.format(Locale.ROOT, "execute as %s run tp @s %.4f %.4f %.4f %.2f %.2f", uuid, x, y, z, yaw, pitch)
+        server.execute { server.commands.performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), command) }
     }
 
     private fun debugLines(): List<String> {
@@ -478,9 +542,10 @@ object SelfCheck {
         return image
     }
 
+    /** Pixel comparison by [Validation.FrameDiff.identical]: only isolated edge pixels may change at all. */
     private fun compare(name: String, a: NativeImage, b: NativeImage) {
         val diff = Validation.compare(a, b)
-        check(name, diff.passes, "$diff")
+        check(name, diff.identical, "$diff")
     }
 
     // endregion
