@@ -621,7 +621,7 @@ group had no heading.
       cached chests with the fog of a closer object (max channel difference 6 in `storage_room`, under the tests'
       threshold of 16). The CPU keeps section-local vertices and writes camera-relative ones into the bucket's buffer
       when it is drawn after the camera moved or a member changed; with a still camera nothing is written.
-- [ ] `CachePolicy` (block entities done, entities open):
+- [x] `CachePolicy`:
 
       | Object | Cached while | Vanilla path while |
       | --- | --- | --- |
@@ -629,8 +629,8 @@ group had no heading.
       | Signs and hanging signs, incl. text and glow ink | Always | Being edited |
       | Beds, skulls and heads, decorated pots | Always | Pot wobbling; dragon head powered |
       | Shelves and their items | Always | An item is animated (e.g. a compass) |
-      | Item frames and glow item frames | Item and rotation unchanged | Item changes or rotates |
-      | Armor stands, item and block display entities | Pose and transform unchanged | Interpolating or moving |
+      | Item frames and glow item frames | Item and rotation unchanged | Item changes or rotates; a map; name tag, glowing |
+      | Armor stands, item and block display entities | Pose and transform unchanged | Interpolating or moving; armor; name tag, glowing; billboard displays |
 
       Banners, bells, conduits and lecterns animate every frame and wait for Module 2.
       Done (`cache/CachePolicy.kt`): chests (also trapped, copper, ender) and shulker boxes; signs and hanging signs
@@ -638,9 +638,19 @@ group had no heading.
       vanilla: their skin loads later); decorated pots; shelves (vanilla extracts every frame and the shelf is drawn
       from the cache while every item still draws the same, `ItemFingerprint`; items whose model changes right after a
       capture, such as a spinning compass, pause on vanilla). **Beds have no block entity in 26.3** (terrain, like sign
-      boards); their switch is gone (config 4). Models EMF animates stay vanilla. Open: item frames (frames with maps
-      are translucent custom geometry and stay vanilla), armor stands, item and block displays, through a hook on
-      `renderer.submit` in `EntityRenderDispatcher.submit` (entities are always extracted).
+      boards); their switch is gone (config 4). Models EMF animates stay vanilla.
+      Entities (`cache/EntityPolicy.kt`, 20 Oct 2026): entities are always extracted, so the hook wraps the renderer's
+      submit inside `EntityRenderDispatcher.submit` (flame and shadow stay vanilla) and skips it while the freshly
+      extracted state still matches the captured one: position exactly, light, and per rule its inputs
+      (`ItemFingerprint` for items, `BlockModelFingerprint` for block models). The entry lives on the entity; render
+      states get a reference to their entity. Captures go through `EntityRenderDispatcher.submit` at 0, 0, 0, because
+      Iris records the entity id there. Item frames and glow item frames (maps stay vanilla: translucent custom
+      geometry); armor stands (vanilla while wobbling, hurt, with an owned player head, and **with armor**: equipment
+      layers are drawn in submit orders one after another, which the cache does not keep); block and item displays
+      with the `FIXED` billboard and finished interpolation. Everything with a name tag, an outline (glowing), a leash
+      or riding a minecart stays vanilla. On Fabric, block models come as Fabric renderer API submits
+      (`ExtendedBlockModelSubmit`, drawn by Sodium's or Indigo's feature renderer), which the capture lets that
+      renderer write.
 - [x] Only solid and cutout geometry is cached; translucent parts stay vanilla unless OIT is on. Any object with
       the breaking overlay uses vanilla for that frame.
       *Conflict found at Gate A:* with the chests cached, `storage_room` is still about 1.9× `control`, and what is
@@ -661,9 +671,11 @@ group had no heading.
       vanilla until usage is below 75 %).
 - [x] Screenshot tests per scene and per effect (Fabric client gametests); Validation mode diff = 0.
       Gametest: every static scene compared with the cache off and on, plus the gallery, `/mobium gatea` and
-      `/mobium gateb`. Self-check (both loaders): `storage_room` from three views, the `cache_gallery` scene and seven
-      effects (lid, breaking overlay, light, sign text, block state), Complementary (Fabric) and Fresh Animations, and
-      `/mobium debug validate`, all compared from two frames of one client tick. Every comparison: 0 changed pixels.
+      `/mobium gateb`. Self-check (both loaders): `storage_room` from three views, the `cache_gallery` scene (with
+      item frames, armor stands and displays) and eleven effects (lid, breaking overlay, light, sign text, block
+      state, item frame turned, frame item swapped, display moved, armor stand pose), Complementary (Fabric) and Fresh
+      Animations, and `/mobium debug validate`, all compared from two frames of one client tick. Every comparison: 0
+      changed pixels (`--mode gallery` runs only the gallery part).
 - [x] `docs/compat.md` filled for Sodium, Iris (+ named packs), EMF/ETF + Fresh Animations, EntityCulling, on
       both loaders. (Entity Culling is not in the dev environment; NeoForge + Complementary crashes inside Iris, also
       with Mobium off.)

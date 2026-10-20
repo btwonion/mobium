@@ -30,21 +30,25 @@ import java.util.IdentityHashMap
 import java.util.Optional
 
 /**
- * One row of Module 1's policy table (PLAN.md M5): which vanilla block entity types it covers, while which states they
- * are drawn from the cache, and which inputs besides block state and light their picture depends on. Rules are asked
- * per object per frame, so they must not allocate. Anything a rule does not accept takes the vanilla path for that
- * frame.
+ * One row of Module 1's policy table (PLAN.md M5), for block entities ([CacheRule]) or entities ([EntityRule]).
  *
  * @param key names the per-type switch (`mobium.settings.type.<key>`) and the type in failure reports.
  */
-abstract class CacheRule(@JvmField val key: String) {
+abstract class TypeRule(@JvmField val key: String) {
     /** Set by [StaticCache.refreshTypes] from the per-type switch and the type's failures. */
     @JvmField
     var allowed = false
 
     /** The per-type switch in [CacheTypes]. */
     abstract fun enabled(types: CacheTypes): Boolean
+}
 
+/**
+ * A block entity row of the policy table: which vanilla block entity types it covers, while which states they are drawn
+ * from the cache, and which inputs besides block state and light their picture depends on. Rules are asked per object
+ * per frame, so they must not allocate. Anything a rule does not accept takes the vanilla path for that frame.
+ */
+abstract class CacheRule(key: String) : TypeRule(key) {
     /** False while the object animates or is being edited; vanilla draws it this frame. */
     abstract fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float): Boolean
 
@@ -99,8 +103,8 @@ object CachePolicy {
         rules[BlockEntityTypes.SHELF] = Shelves
     }
 
-    /** All rules once each, for the per-type switches and the F3 counts. */
-    val all: List<CacheRule> = listOf(Lids, Signs, Skulls, Pots, Shelves)
+    /** All rules once each, block entities and entities, for the per-type switches and the F3 counts. */
+    val all: List<TypeRule> = listOf(Lids, Signs, Skulls, Pots, Shelves, ItemFrames, ArmorStands, Displays)
 
     @JvmStatic
     fun ruleFor(blockEntity: BlockEntity): CacheRule? = rules[blockEntity.type]

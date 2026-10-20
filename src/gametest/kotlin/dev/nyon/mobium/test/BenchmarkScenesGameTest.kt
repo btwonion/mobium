@@ -4,6 +4,9 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext
 import dev.nyon.mobium.bench.BenchSuite
+import dev.nyon.mobium.cache.ArmorStands
+import dev.nyon.mobium.cache.Displays
+import dev.nyon.mobium.cache.ItemFrames
 import dev.nyon.mobium.cache.Lids
 import dev.nyon.mobium.cache.Pots
 import dev.nyon.mobium.cache.Shelves
@@ -136,6 +139,16 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                     val counts = listOf(Lids, Skulls, Pots, Signs).map { rule -> StaticCache.cachedCount(rule.key) }
                     check(counts == listOf(10, 7, 2, 10)) { "Unexpected gallery counts $counts: ${StaticCache.debugLine()}" }
                     check(StaticCache.cachedCount(Shelves.key) >= 2) { "Shelves not cached: ${StaticCache.debugLine()}" }
+                    // 7 frames (the map stays vanilla; the compass may pause while its needle settles), 6 armor
+                    // stands (armor, name tag and glowing stay vanilla), 6 displays (billboard and stained glass stay
+                    // vanilla).
+                    check(StaticCache.cachedCount(ItemFrames.key) >= 5) { "Item frames not cached: ${StaticCache.debugLine()}" }
+                    check(StaticCache.cachedCount(ArmorStands.key) == 3) { "Expected 3 cached armor stands: ${StaticCache.debugLine()}" }
+                    check(StaticCache.cachedCount(Displays.key) == 4) { "Expected 4 cached displays: ${StaticCache.debugLine()}" }
+                }
+                // 400 block displays and 100 item displays; shields (a special item renderer) stay vanilla.
+                "display_build" -> {
+                    check(StaticCache.cachedCount(Displays.key) >= 400) { "Displays not cached: ${StaticCache.debugLine()}" }
                 }
             }
         }

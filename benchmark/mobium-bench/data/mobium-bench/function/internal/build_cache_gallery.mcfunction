@@ -43,5 +43,27 @@ setblock -3847 -57 -2804 minecraft:spruce_hanging_sign[rotation=8,attached=true]
 setblock -3843 -57 -2804 minecraft:spruce_hanging_sign[rotation=8,attached=true]{front_text:{messages:["Hanging","sign","1",""],color:"lime",has_glowing_text:1b},back_text:{messages:["Back","text","",""]}} strict
 setblock -3839 -57 -2804 minecraft:spruce_hanging_sign[rotation=8,attached=true]{front_text:{messages:["Hanging","sign","2",""]},back_text:{messages:["Back","text","",""]}} strict
 setblock -3835 -57 -2804 minecraft:spruce_hanging_sign[rotation=8,attached=true]{front_text:{messages:["Hanging","sign","3",""],color:"lime",has_glowing_text:1b},back_text:{messages:["Back","text","",""]}} strict
+fill -3832 -60 -2803 -3827 -57 -2803 minecraft:stone_bricks strict
+summon minecraft:item_frame -3830.5 -57.5 -2803.5 {Pos:[-3830.5d,-57.5d,-2803.5d],Facing:2b,Fixed:1b,block_pos:[I;-3831,-58,-2804],Tags:["mobium_bench","mobium_gallery","mobium_gallery_frame_plain"],Item:{id:"minecraft:diamond",count:1}}
+summon minecraft:item_frame -3829.5 -57.5 -2803.5 {Pos:[-3829.5d,-57.5d,-2803.5d],Facing:2b,Fixed:1b,block_pos:[I;-3830,-58,-2804],Tags:["mobium_bench","mobium_gallery","mobium_gallery_frame_compass"],Item:{id:"minecraft:compass",count:1}}
+summon minecraft:item_frame -3828.5 -57.5 -2803.5 {Pos:[-3828.5d,-57.5d,-2803.5d],Facing:2b,Fixed:1b,block_pos:[I;-3829,-58,-2804],Tags:["mobium_bench","mobium_gallery","mobium_gallery_frame_map"]}
+summon minecraft:item_frame -3827.5 -57.5 -2803.5 {Pos:[-3827.5d,-57.5d,-2803.5d],Facing:2b,Fixed:1b,block_pos:[I;-3828,-58,-2804],Tags:["mobium_bench","mobium_gallery","mobium_gallery_frame_rotated"],Item:{id:"minecraft:iron_sword",count:1},ItemRotation:3b}
+summon minecraft:item_frame -3830.5 -58.5 -2803.5 {Pos:[-3830.5d,-58.5d,-2803.5d],Facing:2b,Fixed:1b,block_pos:[I;-3831,-59,-2804],Tags:["mobium_bench","mobium_gallery","mobium_gallery_frame_invisible"],Item:{id:"minecraft:emerald",count:1},Invisible:1b}
+summon minecraft:item_frame -3829.5 -58.5 -2803.5 {Pos:[-3829.5d,-58.5d,-2803.5d],Facing:2b,Fixed:1b,block_pos:[I;-3830,-59,-2804],Tags:["mobium_bench","mobium_gallery","mobium_gallery_frame_empty"]}
+summon minecraft:glow_item_frame -3828.5 -58.5 -2803.5 {Pos:[-3828.5d,-58.5d,-2803.5d],Facing:2b,Fixed:1b,block_pos:[I;-3829,-59,-2804],Tags:["mobium_bench","mobium_gallery","mobium_gallery_frame_glow"],Item:{id:"minecraft:apple",count:1}}
+execute as @e[type=minecraft:item_frame,tag=mobium_gallery_frame_map] run loot replace entity @s contents loot mobium-bench:map
+fill -3854 -60 -2803 -3850 -57 -2803 minecraft:stone_bricks strict
+summon minecraft:armor_stand -3853.5 -60 -2803.5 {Rotation:[180f,0f],Tags:["mobium_bench","mobium_gallery","mobium_gallery_stand_plain"],ShowArms:1b}
+summon minecraft:armor_stand -3852.5 -60 -2803.5 {Rotation:[180f,0f],Tags:["mobium_bench","mobium_gallery","mobium_gallery_stand_holding"],ShowArms:1b,Pose:{Head:[0f,20f,0f],RightArm:[-60f,0f,10f]},equipment:{mainhand:{id:"minecraft:iron_sword",count:1}}}
+summon minecraft:armor_stand -3851.5 -60 -2803.5 {Rotation:[180f,0f],Tags:["mobium_bench","mobium_gallery","mobium_gallery_stand_small"],Small:1b,equipment:{head:{id:"minecraft:skeleton_skull",count:1}}}
+summon minecraft:armor_stand -3850.5 -60 -2803.5 {Rotation:[180f,0f],Tags:["mobium_bench","mobium_gallery","mobium_gallery_stand_armored"],ShowArms:1b,equipment:{head:{id:"minecraft:diamond_helmet",count:1},chest:{id:"minecraft:iron_chestplate",count:1},feet:{id:"minecraft:leather_boots",count:1,components:{"minecraft:dyed_color":11546150}}}}
+summon minecraft:armor_stand -3849.5 -60 -2803.5 {Rotation:[180f,0f],Tags:["mobium_bench","mobium_gallery","mobium_gallery_stand_named"],CustomName:"Stand",CustomNameVisible:1b}
+summon minecraft:armor_stand -3848.5 -60 -2803.5 {Rotation:[180f,0f],Tags:["mobium_bench","mobium_gallery","mobium_gallery_stand_glowing"],Glowing:1b}
+summon minecraft:block_display -3846 -55.5 -2807 {Tags:["mobium_bench","mobium_gallery","mobium_gallery_display_block"],block_state:"minecraft:stone_bricks",transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],scale:[0.9f,0.9f,0.9f]}}
+summon minecraft:block_display -3844 -55.5 -2807 {Tags:["mobium_bench","mobium_gallery","mobium_gallery_display_turned"],block_state:"minecraft:oak_planks",transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0.38268343f,0f,0.9238795f],translation:[0f,0f,0f],scale:[0.9f,0.9f,0.9f]}}
+summon minecraft:item_display -3842 -55.5 -2807 {Tags:["mobium_bench","mobium_gallery","mobium_gallery_display_sword"],item:{id:"minecraft:diamond_sword",count:1}}
+summon minecraft:item_display -3840 -55.5 -2807 {Tags:["mobium_bench","mobium_gallery","mobium_gallery_display_billboard"],item:{id:"minecraft:apple",count:1},billboard:"center"}
+summon minecraft:block_display -3838 -55.5 -2807 {Tags:["mobium_bench","mobium_gallery","mobium_gallery_display_glass"],block_state:"minecraft:white_stained_glass"}
+summon minecraft:item_display -3836 -55.5 -2807 {Tags:["mobium_bench","mobium_gallery","mobium_gallery_display_bread"],item:{id:"minecraft:bread",count:1}}
 scoreboard players set #ready mobium_bench 1
 tellraw @a {"text":"Scene cache_gallery is ready","color":"green"}

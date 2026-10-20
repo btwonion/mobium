@@ -13,6 +13,7 @@ import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.gpu.Gpu
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import net.minecraft.client.Minecraft
@@ -21,12 +22,17 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState
 import net.minecraft.client.renderer.culling.Frustum
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher
+import net.minecraft.client.renderer.entity.state.DisplayEntityRenderState
+import net.minecraft.client.renderer.entity.state.EntityRenderState
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer
 import net.minecraft.client.renderer.rendertype.RenderType
 import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.core.BlockPos
 import net.minecraft.core.SectionPos
 import net.minecraft.util.LightCoordsUtil
+import net.minecraft.util.Mth
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
@@ -35,14 +41,15 @@ import java.nio.ByteBuffer
 import java.util.Locale
 
 /**
- * Module 1: block entities that do not change are captured once through vanilla's own submit and prepare code
- * ([Capture]) and then drawn from per-section GPU buffers ([SectionBucket]) instead of being extracted, submitted,
- * posed and tessellated every frame. [CachePolicy] decides per type what is cached and while which states.
+ * Module 1: block entities and entities that do not change are captured once through vanilla's own submit and prepare
+ * code ([Capture]) and then drawn from per-section GPU buffers ([SectionBucket]) instead of being submitted, posed and
+ * tessellated every frame. [CachePolicy] and [EntityPolicy] decide per type what is cached and while which states.
  *
- * Per frame: the extract hook returns no render state for cached objects (vanilla then neither submits nor
- * tessellates them) and marks them visible; after the level's prepare stage [prepare] rewrites the buckets that
- * changed or that the camera moved away from, and [draw] draws the visible ones at the end of the level's solid
- * features, where vanilla draws them too.
+ * Per frame: the block entity extract hook returns no render state for cached block entities (vanilla then neither
+ * submits nor tessellates them); entities are always extracted, and the hook around their renderer's submit skips it
+ * for cached ones ([entity]). Both mark the cached object visible; after the level's prepare stage [prepare] rewrites
+ * the buckets that changed or that the camera moved away from, and [draw] draws the visible ones at the end of the
+ * level's solid features, where vanilla draws them too.
  *
  * Fallback: everything a rule does not accept goes through vanilla unchanged, an object whose capture cannot be drawn
  * stays on vanilla until its inputs change, repeated capture failures switch the type off and an exception switches
@@ -64,8 +71,8 @@ object StaticCache {
     var active = false
 
     /**
-     * Measurements only (`/mobium gateb`, the dev self-check): skips the cache's draw calls, so the cached objects vanish
-     * and the GPU has nothing to draw for them; everything else the cache does per frame still runs.
+     * Measurements only (`/mobium gateb`, the dev self-check): skips the cache's draw calls, so the cached objects
+     * vanish and the GPU has nothing to draw for them; everything else the cache does per frame still runs.
      */
     @JvmField
     var skipDraws = false
@@ -73,6 +80,9 @@ object StaticCache {
     private var frame = 1L
     private var irisLoaded = false
     private val entries = Long2ObjectOpenHashMap<CacheEntry>()
+
+    /** Entity entries by entity id (the entry itself is kept on the entity, [CachedEntity]). */
+    private val entityEntries = Int2ObjectOpenHashMap<EntityEntry>()
 
     /** Light-change counter per section, bumped by `ClientChunkCache.onLightUpdate`; 0 for untouched sections. */
     private val lightVersions = Long2IntOpenHashMap()
@@ -82,8 +92,10 @@ object StaticCache {
     private val visibleBuckets = ArrayList<SectionBucket>()
     private val neighbour = BlockPos.MutableBlockPos()
     private val pending = ArrayList<CacheEntry>()
+    private val pendingEntities = ArrayList<EntityEntry>()
     private val budget = MemoryBudget(config.cache.memoryBudgetMb * MemoryBudget.BYTES_PER_MB)
     private var captureDispatcher: BlockEntityRenderDispatcher? = null
+    private var entityDispatcher: EntityRenderDispatcher? = null
     private var irisPipeline: Any? = null
 
     /** Bumped by every client light update; an entry that saw the current value needs no light check. */
@@ -362,18 +374,158 @@ object StaticCache {
 
     // endregion
 
+    // region entities
+
+    /**
+     * Called from the wrapper around the renderer's submit inside `EntityRenderDispatcher.submit` while [active]. True
+     * when the entity is drawn from the cache this frame (the renderer's submit is then skipped); false lets vanilla
+     * submit it, and an entity seen for the first time in a cacheable state is captured in [prepare].
+     */
+    @JvmStatic
+    fun entity(dispatcher: EntityRenderDispatcher, state: EntityRenderState): Boolean {
+        // Captures submit through the dispatcher themselves; GUI and picture-in-picture entities and Iris's shadow
+        // pass stay vanilla.
+        if (Capture.capturingEntity || !RenderSystem.isRenderingLevel || shadowPass()) return false
+        val entity = (state as EntityStateSource).`mobium$entity`() ?: return false
+        val rule = EntityPolicy.ruleFor(entity)
+        if (rule == null || !rule.allowed || entity.isRemoved) return false
+        return try {
+            entityCached(rule, dispatcher, entity, state)
+        } catch (e: Exception) {
+            fail(e)
+            false
+        }
+    }
+
+    private fun entityCached(
+        rule: EntityRule,
+        dispatcher: EntityRenderDispatcher,
+        entity: Entity,
+        state: EntityRenderState
+    ): Boolean {
+        // Not still this frame (wobbling, interpolating, a name tag, glowing, ...): vanilla, the entry is kept.
+        if (!EntityPolicy.isPlain(state) || !rule.isStatic(state)) return false
+        var entry = (entity as CachedEntity).`mobium$cacheEntry`() as? EntityEntry
+        if (entry != null) {
+            entry.seenFrame = frame
+            if (entry.volatileUntil != 0L) {
+                if (entry.volatileUntil >= frame) return false
+                removeEntity(entry)
+                entry = null
+            } else if (entry.evicted) {
+                return false
+            } else if (entry.matches(state)) {
+                if (!entry.cacheable) {
+                    slowChecks++
+                    return false
+                }
+                entry.markVisible(frame)
+                fastHits++
+                return true
+            } else {
+                // Changed: captured again from this frame's state, unless it changed right after its capture.
+                val stale = entry
+                removeEntity(stale)
+                entry = null
+                if (stale.cacheable && frame - stale.capturedFrame < VOLATILE_FRAMES) {
+                    pauseEntity(rule, entity, state)
+                    return false
+                }
+            }
+        }
+        slowChecks++
+
+        entry = EntityEntry(rule, entity, state.x, state.y, state.z, state.lightCoords)
+        entry.seenFrame = frame
+        entityEntries.put(entity.id, entry)?.let { previous -> if (previous !== entry) dropEntityEntry(previous) }
+        entity.`mobium$setCacheEntry`(entry)
+        if (rule.store(entry, state)) {
+            // Vanilla draws the entity this frame; it is captured in prepare and drawn from the cache from the next.
+            entry.pendingState = state
+            pendingEntities += entry
+            entityDispatcher = dispatcher
+        } else {
+            // Something the cache cannot take (a special item renderer): vanilla for a while, then tried again.
+            entry.volatileUntil = frame + VOLATILE_PAUSE_FRAMES
+        }
+        return false
+    }
+
+    /** An entity whose picture changed right after its capture takes the vanilla path for a while (a compass). */
+    private fun pauseEntity(rule: EntityRule, entity: Entity, state: EntityRenderState) {
+        val paused = EntityEntry(rule, entity, state.x, state.y, state.z, state.lightCoords)
+        paused.volatileUntil = frame + VOLATILE_PAUSE_FRAMES
+        paused.seenFrame = frame
+        entityEntries.put(entity.id, paused)
+        (entity as CachedEntity).`mobium$setCacheEntry`(paused)
+    }
+
+    private fun removeEntity(entry: EntityEntry) {
+        dropParts(entry)
+        entry.pendingState = null
+        if (entityEntries.get(entry.entity.id) === entry) entityEntries.remove(entry.entity.id)
+        val holder = entry.entity as CachedEntity
+        if (holder.`mobium$cacheEntry`() === entry) holder.`mobium$setCacheEntry`(null)
+    }
+
+    /** An entry replaced in the map by a new entity with the same id (the old one left tracking range). */
+    private fun dropEntityEntry(entry: EntityEntry) {
+        dropParts(entry)
+        entry.pendingState = null
+        val holder = entry.entity as CachedEntity
+        if (holder.`mobium$cacheEntry`() === entry) holder.`mobium$setCacheEntry`(null)
+    }
+
+    // endregion
+
     // region capture
 
     /** Captures the objects that were first seen this frame; their entries become cacheable when this succeeds. */
     private fun capturePending() {
-        val dispatcher = captureDispatcher ?: return
-        for (i in pending.indices) {
-            val entry = pending[i]
-            val state = entry.pendingState ?: continue
-            entry.pendingState = null
-            if (entries.get(entry.blockEntity.blockPos.asLong()) === entry) capture(entry, dispatcher, state)
+        val dispatcher = captureDispatcher
+        if (dispatcher != null) {
+            for (i in pending.indices) {
+                val entry = pending[i]
+                val state = entry.pendingState ?: continue
+                entry.pendingState = null
+                if (entries.get(entry.blockEntity.blockPos.asLong()) === entry) capture(entry, dispatcher, state)
+            }
         }
         pending.clear()
+        val entityDispatcher = entityDispatcher
+        if (entityDispatcher != null) {
+            for (i in pendingEntities.indices) {
+                val entry = pendingEntities[i]
+                val state = entry.pendingState ?: continue
+                entry.pendingState = null
+                val current = (entry.entity as CachedEntity).`mobium$cacheEntry`()
+                if (current === entry) captureEntity(entry, entityDispatcher, state)
+            }
+        }
+        pendingEntities.clear()
+    }
+
+    private fun captureEntity(entry: EntityEntry, dispatcher: EntityRenderDispatcher, state: EntityRenderState) {
+        val rule = entry.rule
+        val meshes = try {
+            Capture.entity(dispatcher, state)
+        } catch (e: Exception) {
+            Mobium.LOGGER.warn("Could not capture the {} {}; it stays on the vanilla path", rule.key, entry.entity, e)
+            Fallback.typeFailed(Module.STATIC_CACHE, rule.key, e)
+            if (Fallback.isTypeDisabled(Module.STATIC_CACHE, rule.key)) ModuleStates.refresh("${rule.key} failed")
+            null
+        }
+        if (meshes.isNullOrEmpty()) {
+            entry.rejection = "${Capture.lastRejection}, ${state.javaClass.simpleName}" +
+                if (state is DisplayEntityRenderState) " sub state ${state.hasSubState()}" else ""
+            return
+        }
+        val sectionKey = SectionPos.asLong(
+            SectionPos.blockToSectionCoord(Mth.floor(entry.x)),
+            SectionPos.blockToSectionCoord(Mth.floor(entry.y)),
+            SectionPos.blockToSectionCoord(Mth.floor(entry.z))
+        )
+        addParts(entry, sectionKey, meshes, entry.x, entry.y, entry.z)
     }
 
     private fun capture(entry: CacheEntry, dispatcher: BlockEntityRenderDispatcher, vanilla: BlockEntityRenderState) {
@@ -391,10 +543,22 @@ object StaticCache {
         if (meshes.isNullOrEmpty()) return
 
         val sectionKey = SectionPos.asLong(pos.x shr 4, pos.y shr 4, pos.z shr 4)
+        addParts(entry, sectionKey, meshes, pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+    }
+
+    /** Puts a captured object's meshes into its section's buckets; its local space starts at x, y, z. */
+    private fun addParts(
+        entry: CachedObject,
+        sectionKey: Long,
+        meshes: List<CapturedMesh>,
+        x: Double,
+        y: Double,
+        z: Double
+    ) {
         val parts = arrayOfNulls<EntryPart>(meshes.size)
         for (i in meshes.indices) {
             val bucket = bucket(sectionKey, meshes[i].renderType)
-            val member = BucketMember(meshes[i], pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+            val member = BucketMember(meshes[i], x, y, z)
             bucket.add(member)
             markDirty(bucket)
             parts[i] = EntryPart(bucket, member)
@@ -435,7 +599,7 @@ object StaticCache {
     }
 
     /** Frees an entry's meshes and takes them out of their buckets. */
-    private fun dropParts(entry: CacheEntry) {
+    private fun dropParts(entry: CachedObject) {
         for (part in entry.parts) {
             part.bucket.remove(part.member)
             part.member.mesh.free()
@@ -451,16 +615,18 @@ object StaticCache {
      * evicted, and take the vanilla path until the sweep lets them be captured again.
      */
     private fun enforceBudget(cameraX: Double, cameraY: Double, cameraZ: Double) {
-        val candidates = entries.values.filter { it.bytes > 0L }
+        val candidates = ArrayList<CachedObject>()
+        entries.values.filterTo(candidates) { it.bytes > 0L }
+        entityEntries.values.filterTo(candidates) { it.bytes > 0L }
         val distances = DoubleArray(candidates.size)
         val bytes = LongArray(candidates.size)
         for (i in candidates.indices) {
-            val pos = candidates[i].blockEntity.blockPos
-            val dx = pos.x + 0.5 - cameraX
-            val dy = pos.y + 0.5 - cameraY
-            val dz = pos.z + 0.5 - cameraZ
+            val candidate = candidates[i]
+            val dx = candidate.centerX() - cameraX
+            val dy = candidate.centerY() - cameraY
+            val dz = candidate.centerZ() - cameraZ
             distances[i] = dx * dx + dy * dy + dz * dz
-            bytes[i] = candidates[i].bytes
+            bytes[i] = candidate.bytes
         }
         val evicted = budget.selectEvictions(distances, bytes, candidates.size)
         for (index in evicted) {
@@ -474,9 +640,9 @@ object StaticCache {
         }
     }
 
-    private fun removeType(rule: CacheRule) {
-        val stale = entries.values.filter { it.rule === rule }
-        stale.forEach(::remove)
+    private fun removeType(rule: TypeRule) {
+        entries.values.filter { it.rule === rule }.forEach(::remove)
+        entityEntries.values.filter { it.rule === rule }.forEach(::removeEntity)
     }
 
     internal fun markVisible(bucket: SectionBucket) {
@@ -582,10 +748,14 @@ object StaticCache {
 
     private fun evictUnseen() {
         val resume = !budget.isTight
-        val stale = entries.values.filter {
+        entries.values.filter {
             frame - it.seenFrame > EVICT_AFTER_FRAMES || it.blockEntity.isRemoved || (resume && it.evicted)
-        }
-        stale.forEach(::remove)
+        }.forEach(::remove)
+        // Removed entities are no longer extracted, so their entries are only found here.
+        entityEntries.values.filter {
+            frame - it.seenFrame > EVICT_AFTER_FRAMES || it.entity.isRemoved ||
+                (resume && it.evicted)
+        }.forEach(::removeEntity)
     }
 
     /** Drops every cached object and GPU buffer (level change, reload, render distance change, switched off). */
@@ -596,8 +766,16 @@ object StaticCache {
             (entry.blockEntity as CachedBlockEntity).`mobium$setCacheEntry`(null)
         }
         entries.clear()
+        for (entry in entityEntries.values) {
+            for (part in entry.parts) part.member.mesh.free()
+            entry.pendingState = null
+            val holder = entry.entity as CachedEntity
+            if (holder.`mobium$cacheEntry`() === entry) holder.`mobium$setCacheEntry`(null)
+        }
+        entityEntries.clear()
         for (entry in pending) entry.pendingState = null
         pending.clear()
+        pendingEntities.clear()
         lightVersions.clear()
         for (byType in buckets.values) for (bucket in byType.values) bucket.close()
         buckets.clear()
@@ -615,19 +793,30 @@ object StaticCache {
 
     /** Cached objects per rule key (debug screen, tests). */
     fun cachedCount(key: String? = null): Int =
-        entries.values.count { it.cacheable && (key == null || it.rule.key == key) }
+        entries.values.count { it.cacheable && (key == null || it.rule.key == key) } +
+            entityEntries.values.count { it.cacheable && (key == null || it.rule.key == key) }
 
     /** The vertex sizes of the cached meshes (36 and 28 bytes for vanilla's entity and text formats). */
     fun vertexSizes(): Set<Int> {
         val sizes = HashSet<Int>()
         for (entry in entries.values) for (part in entry.parts) sizes += part.member.mesh.vertexSize
+        for (entry in entityEntries.values) for (part in entry.parts) sizes += part.member.mesh.vertexSize
         return sizes
     }
 
     /** A few entries of one rule, for failure reports of the dev self-check. */
-    fun describeEntries(key: String, limit: Int): String = entries.values.filter { it.rule.key == key }.take(limit)
-        .joinToString { "${it.blockEntity.blockPos.toShortString()} removed=${it.blockEntity.isRemoved} " +
-            "unseen=${frame - it.seenFrame} cacheable=${it.cacheable}" }
+    fun describeEntries(key: String, limit: Int): String {
+        val blockEntities = entries.values.filter { it.rule.key == key }.take(limit).map {
+            "${it.blockEntity.blockPos.toShortString()} removed=${it.blockEntity.isRemoved} " +
+                "unseen=${frame - it.seenFrame} cacheable=${it.cacheable}"
+        }
+        val entities = entityEntries.values.filter { it.rule.key == key }.take(limit).map {
+            "${it.entity.type.toShortString()}@${it.entity.blockPosition().toShortString()} removed=${it.entity.isRemoved} " +
+                "unseen=${frame - it.seenFrame} cacheable=${it.cacheable} paused=${it.volatileUntil != 0L}" +
+                (it.rejection?.let { reason -> " ($reason)" } ?: "")
+        }
+        return (blockEntities + entities).joinToString()
+    }
 
     val bucketCount: Int
         get() = buckets.values.sumOf { it.size }
@@ -660,33 +849,16 @@ private val NO_RENDERER = object : BlockEntityRenderer<BlockEntity, BlockEntityR
 }
 
 /**
- * One cached object: the inputs its capture depends on and its meshes in the section buckets. Objects whose capture
- * cannot be drawn keep an entry with [cacheable] false, so that they are not captured again every frame.
+ * What block entity and entity entries share: the meshes in the section buckets and the state of the capture.
+ * Objects whose capture cannot be drawn keep an entry with [cacheable] false, so that they are not captured again
+ * every frame.
  */
-class CacheEntry(
-    @JvmField val rule: CacheRule,
-    @JvmField val blockEntity: BlockEntity,
-    @JvmField val blockState: BlockState,
-    @JvmField val light: Int,
-    @JvmField val neighbourLight: Int
-) {
+abstract class CachedObject {
     @JvmField
     var parts: Array<EntryPart> = NO_PARTS
 
     @JvmField
     var cacheable = false
-
-    /** The renderer vanilla used for the object when the entry was made (renderers change only on reload). */
-    @JvmField
-    var renderer: BlockEntityRenderer<BlockEntity, BlockEntityRenderState> = NO_RENDERER
-
-    /** The other half of a double chest, when the entry was made. */
-    @JvmField
-    var neighbourEntity: BlockEntity? = null
-
-    /** The [StaticCache] light epoch the entry's light was last checked at. */
-    @JvmField
-    var lightEpoch = 0
 
     /** Bytes of cached vertex data, counted by the memory budget; 0 while nothing is cached. */
     @JvmField
@@ -704,6 +876,45 @@ class CacheEntry(
     @JvmField
     var evicted = false
 
+    @JvmField
+    var seenFrame = 0L
+
+    /** The object's centre, for the memory budget's distances. */
+    abstract fun centerX(): Double
+
+    abstract fun centerY(): Double
+
+    abstract fun centerZ(): Double
+
+    fun markVisible(frame: Long) {
+        for (i in parts.indices) {
+            val part = parts[i]
+            part.member.visibleFrame = frame
+            StaticCache.markVisible(part.bucket)
+        }
+    }
+}
+
+/** One cached block entity: the inputs its capture depends on and its meshes in the section buckets. */
+class CacheEntry(
+    @JvmField val rule: CacheRule,
+    @JvmField val blockEntity: BlockEntity,
+    @JvmField val blockState: BlockState,
+    @JvmField val light: Int,
+    @JvmField val neighbourLight: Int
+) : CachedObject() {
+    /** The renderer vanilla used for the object when the entry was made (renderers change only on reload). */
+    @JvmField
+    var renderer: BlockEntityRenderer<BlockEntity, BlockEntityRenderState> = NO_RENDERER
+
+    /** The other half of a double chest, when the entry was made. */
+    @JvmField
+    var neighbourEntity: BlockEntity? = null
+
+    /** The [StaticCache] light epoch the entry's light was last checked at. */
+    @JvmField
+    var lightEpoch = 0
+
     /** What vanilla extracted in the frame this object was first seen; captured in [StaticCache.prepare]. */
     @JvmField
     var pendingState: BlockEntityRenderState? = null
@@ -718,9 +929,6 @@ class CacheEntry(
     @JvmField
     var inputFlags = 0
 
-    @JvmField
-    var seenFrame = 0L
-
     /** The section light versions the stored [light] values were last checked against. */
     @JvmField
     var lightVersion = 0
@@ -732,13 +940,46 @@ class CacheEntry(
     fun matches(rule: CacheRule, blockEntity: BlockEntity, state: BlockState): Boolean = this.rule === rule &&
         this.blockEntity === blockEntity && blockState === state && rule.sameInputs(this, blockEntity)
 
-    fun markVisible(frame: Long) {
-        for (i in parts.indices) {
-            val part = parts[i]
-            part.member.visibleFrame = frame
-            StaticCache.markVisible(part.bucket)
-        }
-    }
+    override fun centerX() = blockEntity.blockPos.x + 0.5
+
+    override fun centerY() = blockEntity.blockPos.y + 0.5
+
+    override fun centerZ() = blockEntity.blockPos.z + 0.5
+}
+
+/**
+ * One cached entity: where and in which light it was captured, the rule's inputs, and its meshes, in entity-local space
+ * starting at the render state's [x], [y], [z].
+ */
+class EntityEntry(
+    @JvmField val rule: EntityRule,
+    @JvmField val entity: Entity,
+    @JvmField val x: Double,
+    @JvmField val y: Double,
+    @JvmField val z: Double,
+    @JvmField val light: Int
+) : CachedObject() {
+    /** What the rule keeps of the render state ([EntityRule.store]). */
+    @JvmField
+    var inputs: Any? = null
+
+    /** The state vanilla extracted in the frame this entity was first seen; captured in [StaticCache.prepare]. */
+    @JvmField
+    var pendingState: EntityRenderState? = null
+
+    /** Why the capture could not be cached (debug output). */
+    @JvmField
+    var rejection: String? = null
+
+    /** True when [state] draws what this entry holds: same position (exactly), light and rule inputs. */
+    fun matches(state: EntityRenderState): Boolean =
+        state.x == x && state.y == y && state.z == z && state.lightCoords == light && rule.same(this, state)
+
+    override fun centerX() = x
+
+    override fun centerY() = y
+
+    override fun centerZ() = z
 }
 
 class EntryPart(@JvmField val bucket: SectionBucket, @JvmField val member: BucketMember)
