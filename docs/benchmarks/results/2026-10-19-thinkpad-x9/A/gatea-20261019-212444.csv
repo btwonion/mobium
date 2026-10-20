@@ -1,0 +1,4 @@
+scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms,extract_entities_ms,extract_block_entities_ms,submit_entities_ms,submit_block_entities_ms,pose_entities_ms,pose_block_entities_ms,tessellate_entities_ms,tessellate_block_entities_ms,prepare_ms,draw_ms
+storage_room,sodium,3,3.3282,300.46,205.77,3.7519,0.0010,0.1550,0.0000,0.2638,0.0000,0.0324,0.0000,0.3448,1.6764,0.2208
+storage_room,sodium+chestcache,3,2.1760,459.55,310.77,2.3151,0.0007,0.0850,0.0000,0.1988,0.0000,0.0000,0.0000,0.0000,1.1477,0.2407
+# gate_a_speedup,1.529
