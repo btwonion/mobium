@@ -33,9 +33,12 @@ setblock -3846 -59 -2804 minecraft:oak_wall_sign[facing=north]{front_text:{messa
 setblock -3844 -59 -2804 minecraft:oak_wall_sign[facing=north]{front_text:{messages:["Yellow","glow","ink","outline"],color:"yellow",has_glowing_text:1b}} strict
 setblock -3842 -59 -2804 minecraft:oak_wall_sign[facing=north]{front_text:{messages:[{text:"Bold",bold:1b},{text:"Italic",italic:1b},{text:"Under",underlined:1b},{text:"Strike",strikethrough:1b}]}} strict
 setblock -3840 -59 -2804 minecraft:oak_wall_sign[facing=north]{front_text:{messages:[{text:"Red",color:"red"},{text:"Green",color:"green"},{text:"Blue",color:"blue"},"Mixed"]}} strict
-setblock -3838 -59 -2804 minecraft:oak_wall_sign[facing=north]{front_text:{messages:["Obfuscated",{text:"xxxx",obfuscated:1b},"stays","vanilla"]}} strict
+setblock -3838 -59 -2804 minecraft:oak_wall_sign[facing=north]{front_text:{messages:["Obfuscated",{text:"    ",obfuscated:1b},"stays","vanilla"]}} strict
 setblock -3836 -59 -2804 minecraft:oak_wall_sign[facing=north]{front_text:{messages:["Sprite",{type:"object",object:"atlas",sprite:"block/stone"},"stays","vanilla"]}} strict
 setblock -3834 -59 -2804 minecraft:oak_wall_sign[facing=north]{front_text:{messages:["Light","blue","dye",""],color:"light_blue"}} strict
+setblock -3845 -58 -2804 minecraft:oak_shelf[facing=north]{Items:[{Slot:0b,id:"minecraft:diamond",count:1},{Slot:1b,id:"minecraft:apple",count:1},{Slot:2b,id:"minecraft:book",count:1}]} strict
+setblock -3841 -58 -2804 minecraft:oak_shelf[facing=north]{Items:[{Slot:0b,id:"minecraft:iron_ingot",count:1},{Slot:1b,id:"minecraft:clock",count:1},{Slot:2b,id:"minecraft:emerald",count:1}]} strict
+setblock -3837 -58 -2804 minecraft:oak_shelf[facing=north]{Items:[{Slot:0b,id:"minecraft:compass",count:1},{Slot:1b,id:"minecraft:bread",count:1},{Slot:2b,id:"minecraft:gold_ingot",count:1}]} strict
 setblock -3847 -57 -2804 minecraft:spruce_hanging_sign[rotation=8,attached=true]{front_text:{messages:["Hanging","sign","0",""]},back_text:{messages:["Back","text","",""]}} strict
 setblock -3843 -57 -2804 minecraft:spruce_hanging_sign[rotation=8,attached=true]{front_text:{messages:["Hanging","sign","1",""],color:"lime",has_glowing_text:1b},back_text:{messages:["Back","text","",""]}} strict
 setblock -3839 -57 -2804 minecraft:spruce_hanging_sign[rotation=8,attached=true]{front_text:{messages:["Hanging","sign","2",""]},back_text:{messages:["Back","text","",""]}} strict

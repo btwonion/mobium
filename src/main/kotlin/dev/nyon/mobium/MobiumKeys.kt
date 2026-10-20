@@ -3,6 +3,7 @@ package dev.nyon.mobium
 import com.mojang.blaze3d.platform.InputConstants
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.debug.AbToggle
+import dev.nyon.mobium.debug.Validation
 import dev.nyon.mobium.debug.selfcheck.SelfCheck
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
@@ -25,6 +26,7 @@ object MobiumKeys {
             minecraft.gui.hud.setOverlayMessage(AbToggle.toggle(), false)
         }
         ModuleStates.tick()
+        Validation.tick()
         SelfCheck.tick()
     }
 }

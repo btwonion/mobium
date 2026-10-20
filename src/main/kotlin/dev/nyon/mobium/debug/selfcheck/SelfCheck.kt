@@ -6,7 +6,10 @@ import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.MobiumKeys
 import dev.nyon.mobium.bench.SceneBuilder
 import dev.nyon.mobium.cache.Lids
+import dev.nyon.mobium.cache.Pots
+import dev.nyon.mobium.cache.Shelves
 import dev.nyon.mobium.cache.Signs
+import dev.nyon.mobium.cache.Skulls
 import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.CacheConfig
 import dev.nyon.mobium.config.Config
@@ -16,6 +19,7 @@ import dev.nyon.mobium.config.screen.MobiumSettingsScreen
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
 import dev.nyon.mobium.core.Fallback
+import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.core.OffReason
@@ -37,8 +41,12 @@ import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.screens.TitleScreen
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
+import net.minecraft.server.level.ParticleStatus
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.block.Blocks
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
@@ -69,8 +77,18 @@ object SelfCheck {
     private const val WORLD = "Mobium Bench"
     private const val SCENE = "storage_room"
     private const val TICKS_PER_SECOND = 20
+    private const val GALLERY = "cache_gallery"
+    private const val IRIS_WITHOUT_MOBIUM = "iris-without-mobium"
     private const val CHESTS = 1000
     private const val SIGNS = 300
+
+    // Must match X0 / Z0 / GROUND in benchmark/generate.py.
+    private const val X0 = -3840
+    private const val Z0 = -2816
+    private const val GROUND = -60
+
+    /** A made-up entity id for the breaking overlay, so that the server sends it to the player. */
+    private const val BREAKER_ID = 0x7FFF0000
 
     private var steps: Iterator<Wait>? = null
     private var current: Wait? = null
@@ -91,11 +109,12 @@ object SelfCheck {
         val directory = minecraft.gameDirectory.toPath().resolve("mobium-selfcheck")
         val request = directory.resolve("request")
         if (!Files.exists(request)) return
+        val mode = Files.readString(request).trim()
         Files.delete(request)
         this.directory = directory
         Files.createDirectories(directory.resolve("screenshots"))
-        Mobium.LOGGER.info("Mobium self-check started ({} on {})", Compat.LOADER, minecraft.gameDirectory)
-        steps = scenario(minecraft).iterator()
+        Mobium.LOGGER.info("Mobium self-check started ({} on {}{})", Compat.LOADER, minecraft.gameDirectory, if (mode.isEmpty()) "" else ", $mode")
+        steps = (if (mode == IRIS_WITHOUT_MOBIUM) irisWithoutMobium(minecraft) else scenario(minecraft)).iterator()
     }
 
     /** Advances the scenario; called at the end of every client tick. */
@@ -142,6 +161,7 @@ object SelfCheck {
     private fun snapshotOptions(minecraft: Minecraft) {
         val options = minecraft.options
         val pause = options.pauseOnLostFocus
+        val particles = options.particles().get()
         val onboarding = options.onboardAccessibility
         val clouds = options.cloudStatus().get()
         val preset = options.graphicsPreset().get()
@@ -153,6 +173,7 @@ object SelfCheck {
             options.pauseOnLostFocus = pause
             options.onboardAccessibility = onboarding
             options.cloudStatus().set(clouds)
+            options.particles().set(particles)
             options.renderDistance().set(renderDistanceBefore)
             // Changing the clouds or the render distance turns the preset to "custom"; setting the old preset again
             // restores it.
@@ -167,26 +188,9 @@ object SelfCheck {
 
     private fun scenario(minecraft: Minecraft) = sequence {
         snapshotOptions(minecraft)
-        var handled: Screen? = null
-        yield(until("title screen", 120) {
-            val screen = minecraft.gui.screen()
-            // Each start screen is handled once; closing it takes a few ticks.
-            if (screen != null && screen !== handled) {
-                if (screen.javaClass.simpleName == "LoadingErrorScreen") {
-                    handled = screen
-                    continueAfterLoadingWarnings(screen)
-                } else if (screen is AccessibilityOnboardingScreen) {
-                    handled = screen
-                    results += "NOTE the first-start accessibility screen was skipped (restored afterwards)"
-                    minecraft.options.onboardAccessibility = false
-                    screen.onClose()
-                }
-            }
-            screen is TitleScreen
-        })
-        yield(ticks(40))
+        titleScreen(minecraft)
         val saved = config.deepCopy()
-        applyConfig(Config(cache = CacheConfig(prototype = true)))
+        applyConfig(Config())
         check("startup state", ModuleStates.isActive(Module.STATIC_CACHE), ModuleStates.status(Module.STATIC_CACHE).describe())
 
         openSettingsThroughLoader(minecraft)
@@ -217,6 +221,61 @@ object SelfCheck {
             minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
             yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
         }
+        finish(minecraft)
+    }
+
+    /** Waits for the title screen, past the loader's warning screen and the first-start accessibility screen. */
+    private suspend fun SequenceScope<Wait>.titleScreen(minecraft: Minecraft) {
+        var handled: Screen? = null
+        yield(until("title screen", 120) {
+            val screen = minecraft.gui.screen()
+            // Each start screen is handled once; closing it takes a few ticks.
+            if (screen != null && screen !== handled) {
+                if (screen.javaClass.simpleName == "LoadingErrorScreen") {
+                    handled = screen
+                    continueAfterLoadingWarnings(screen)
+                } else if (screen is AccessibilityOnboardingScreen) {
+                    handled = screen
+                    results += "NOTE the first-start accessibility screen was skipped (restored afterwards)"
+                    minecraft.options.onboardAccessibility = false
+                    screen.onClose()
+                }
+            }
+            screen is TitleScreen
+        })
+        yield(ticks(40))
+    }
+
+    /**
+     * `--mode iris-without-mobium`: Mobium switched off, the gallery with the first shader pack for 20 seconds. Tells
+     * whether a crash with a shader pack happens without Mobium too.
+     */
+    private fun irisWithoutMobium(minecraft: Minecraft) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config(enabled = false))
+        minecraft.createWorldOpenFlows().openWorld(WORLD) { }
+        yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        if (buildScene(minecraft, GALLERY) && Compat.isLoaded(CompatMod.IRIS)) {
+            val pack = IrisCheck.firstPack()
+            if (pack == null) {
+                check("shader pack present", false, "no zip in shaderpacks/")
+            } else {
+                val restore = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                yield(ticks(20 * TICKS_PER_SECOND))
+                check("shader pack $pack rendered for 20 s with Mobium off", !StaticCache.active, ModuleStates.status(Module.STATIC_CACHE).describe())
+                screenshot(minecraft, "iris-without-mobium")
+                yield(until("screenshot iris-without-mobium", 10) { shotDone })
+                restore()
+                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+            }
+        }
+        applyConfig(saved)
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
         finish(minecraft)
     }
 
@@ -337,29 +396,26 @@ object SelfCheck {
         minecraft.createWorldOpenFlows().openWorld(WORLD) { }
         yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
         yield(ticks(40))
-        val scenes = SceneBuilder()
-        check("scene build started", scenes.build(minecraft, SCENE))
-        var nextPoll = 0
-        yield(until("scene $SCENE ready", 120) {
-            if (++nextPoll % 10 == 0) scenes.poll(minecraft)
-            scenes.ready.get() || scenes.missingPack.get()
-        })
-        check("benchmark datapack present", !scenes.missingPack.get())
-        yield(ticks(10 * TICKS_PER_SECOND))
-        yield(until("world settled", 120) { SceneBuilder.isQuiet(minecraft) })
-        minecraft.gui.hud.chat.clearMessages(false)
-        // Drifting clouds are the only thing that moves in the scene; without them two pictures of the same frame
-        // state match. Restored with the other options at the end.
+        // Drifting clouds move in every scene; without them two pictures of the same frame state match. Restored with
+        // the other options at the end.
         minecraft.options.cloudStatus().set(CloudStatus.OFF)
+        // Particles (the ender chest's) move between two pictures; restored at the end too.
+        minecraft.options.particles().set(ParticleStatus.MINIMAL)
         val hud = minecraft.gui.hud
         if (!hud.isHidden) hud.toggle()
+
+        if (!buildScene(minecraft, GALLERY)) return
+        gallery(minecraft)
+
+        if (!buildScene(minecraft, SCENE)) return
+        minecraft.gui.hud.chat.clearMessages(false)
         yield(ticks(TICKS_PER_SECOND))
 
         check("static cache active", StaticCache.active && ModuleStates.isActive(Module.STATIC_CACHE), ModuleStates.status(Module.STATIC_CACHE).describe())
         check(
             "chests and signs cached",
             StaticCache.cachedCount(Lids.key) == CHESTS && StaticCache.cachedCount(Signs.key) == SIGNS,
-            StaticCache.debugLine()
+            StaticCache.debugLine() + if (StaticCache.cachedCount(Lids.key) == CHESTS) "" else "; " + StaticCache.describeEntries(Pots.key, 2)
         )
         capture(minecraft)
         yield(until("capture Mobium picture", 10) { captured != null })
@@ -407,6 +463,19 @@ object SelfCheck {
         yield(until("world settled again", 120) { SceneBuilder.isQuiet(minecraft) })
         yield(ticks(TICKS_PER_SECOND))
 
+        // The dev command Anton can use in any still scene: the same frame pair, reported in chat. Sky and fog keep
+        // easing for a few seconds after the render distance changed, so wait for that first.
+        yield(ticks(5 * TICKS_PER_SECOND))
+        serverCommand(minecraft, "tick freeze")
+        yield(ticks(TICKS_PER_SECOND / 2))
+        val before = Validation.lastResult
+        checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium debug validate", null)
+        yield(until("/mobium debug validate reports", 10) { Validation.lastResult !== before })
+        val validated = Validation.lastResult
+        check("/mobium debug validate: identical", validated?.identical == true, "$validated")
+        serverCommand(minecraft, "tick unfreeze")
+        yield(ticks(TICKS_PER_SECOND))
+
         minecraft.debugEntries.setStatus(ModuleLines.ID, DebugScreenEntryStatus.ALWAYS_ON)
         hud.toggle()
         yield(ticks(TICKS_PER_SECOND))
@@ -449,30 +518,213 @@ object SelfCheck {
         vanillaImage.close()
     }
 
+    /** Builds a scene of the benchmark datapack and waits until the world has settled; false if that failed. */
+    private suspend fun SequenceScope<Wait>.buildScene(minecraft: Minecraft, scene: String): Boolean {
+        val scenes = SceneBuilder()
+        check("scene $scene build started", scenes.build(minecraft, scene))
+        var nextPoll = 0
+        yield(until("scene $scene ready", 120) {
+            if (++nextPoll % 10 == 0) scenes.poll(minecraft)
+            scenes.ready.get() || scenes.missingPack.get()
+        })
+        if (scenes.missingPack.get() || !scenes.ready.get()) {
+            check("benchmark datapack has $scene", false, "copy benchmark/mobium-bench into the world (scripts/self_check.py does)")
+            return false
+        }
+        yield(ticks(10 * TICKS_PER_SECOND))
+        yield(until("world settled ($scene)", 120) { SceneBuilder.isQuiet(minecraft) })
+        return true
+    }
+
     /**
-     * Sets up a view, lets it settle and compares vanilla's picture with Mobium's (both through the A/B key, which
-     * drops the cache and captures everything again).
+     * The gallery: every type the cache handles and the variants its rules tell apart. Checks what is cached, then
+     * compares vanilla and Mobium on the whole gallery and after each change the cache has to notice. For the changes
+     * the cache stays warm while they happen (the A/B key alone would capture everything from scratch).
      */
+    private suspend fun SequenceScope<Wait>.gallery(minecraft: Minecraft) {
+        yield(ticks(TICKS_PER_SECOND))
+        // 10 lid blocks; 7 skulls (the powered dragon head moves and stays vanilla); 2 pots; 12 signs of which the
+        // obfuscated and the sprite one stay vanilla; 3 shelves, of which the compass one may pause while its needle
+        // settles.
+        val counts = "${StaticCache.cachedCount(Lids.key)} ${StaticCache.cachedCount(Skulls.key)} " +
+            "${StaticCache.cachedCount(Pots.key)} ${StaticCache.cachedCount(Signs.key)}"
+        check("gallery: chests, skulls, pots, signs cached", counts == "10 7 2 10", "$counts; ${StaticCache.debugLine()}")
+        check("gallery: shelves cached", StaticCache.cachedCount(Shelves.key) >= 2, StaticCache.debugLine())
+        compareView(minecraft, "gallery") { }
+
+        val singleChest = BlockPos(X0 - 8, GROUND, Z0 + 9)
+        val enderChest = BlockPos(X0 - 1, GROUND, Z0 + 9)
+        effect(minecraft, "gallery: chest opened", 2) { level -> level.blockEvent(singleChest, Blocks.CHEST, 1, 1) }
+        effect(minecraft, "gallery: chest closed", 3) { level -> level.blockEvent(singleChest, Blocks.CHEST, 1, 0) }
+        effect(minecraft, "gallery: breaking overlay", 1) { level -> level.destroyBlockProgress(BREAKER_ID, enderChest, 5) }
+        effect(minecraft, "gallery: breaking overlay gone", 1) { level -> level.destroyBlockProgress(BREAKER_ID, enderChest, -1) }
+        // A roof over the single and the double chest cuts their sky light. Block light would not do: vanilla's
+        // lightmap flickers block light randomly every client tick (LightmapRenderStateExtractor), so two pictures
+        // of block-lit surfaces never match.
+        effect(minecraft, "gallery: light changed", 2) {
+            serverCommand(minecraft, "fill ${X0 - 9} ${GROUND + 1} ${Z0 + 8} ${X0 - 4} ${GROUND + 1} ${Z0 + 10} minecraft:smooth_stone_slab")
+        }
+        effect(minecraft, "gallery: sign text changed", 1) {
+            serverCommand(minecraft, "data merge block ${X0 - 8} ${GROUND + 1} ${Z0 + 12} {front_text:{messages:[\"Changed\",\"text\",\"\",\"\"]}}")
+        }
+        effect(minecraft, "gallery: chest turned", 1) {
+            serverCommand(minecraft, "setblock ${X0 - 3} $GROUND ${Z0 + 9} minecraft:trapped_chest[facing=east]")
+        }
+
+        if (Compat.isLoaded(CompatMod.IRIS)) {
+            /*? if fabric {*/
+            shaderPack(minecraft)
+            /*?} else {*/
+            /*// Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in CenterDepthSampler ("Missing
+            // uniform InSampler"), with Mobium switched off as well (`--mode iris-without-mobium`).
+            results += "NOTE the shader pack checks are skipped on NeoForge (Iris 1.11.7 crashes there with Complementary, Mobium off or on)"
+            *//*?}*/
+        }
+        if (Compat.isLoaded(CompatMod.EMF)) freshAnimations(minecraft)
+    }
+
+    /**
+     * With a Fresh Animations zip in `resourcepacks/`: EMF replaces head models with the pack's, the cache captures
+     * them through EMF (models EMF animates stay vanilla), and the picture matches vanilla's.
+     */
+    private suspend fun SequenceScope<Wait>.freshAnimations(minecraft: Minecraft) {
+        val repository = minecraft.resourcePackRepository
+        repository.reload()
+        val pack = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
+        if (pack == null) {
+            results += "NOTE no Fresh Animations zip in resourcepacks/, the Fresh Animations checks were skipped"
+            return
+        }
+        repository.addPack(pack)
+        minecraft.options.updateResourcePacks(repository)
+        yield(ticks(10))
+        yield(until("resource pack $pack loaded", 120) { minecraft.gui.overlay() == null })
+        yield(ticks(3 * TICKS_PER_SECOND))
+        yield(until("world settled (Fresh Animations)", 60) { SceneBuilder.isQuiet(minecraft) })
+        val counts = "${StaticCache.cachedCount(Lids.key)} ${StaticCache.cachedCount(Skulls.key)} " +
+            "${StaticCache.cachedCount(Pots.key)} ${StaticCache.cachedCount(Signs.key)}"
+        check("Fresh Animations: cache active", StaticCache.active && StaticCache.lastDrawn > 0, "$pack; $counts; ${StaticCache.debugLine()}")
+        comparePair(minecraft, "Fresh Animations: gallery", "fresh-gallery")
+        repository.removePack(pack)
+        minecraft.options.updateResourcePacks(repository)
+        yield(ticks(10))
+        yield(until("resource pack $pack removed", 120) { minecraft.gui.overlay() == null })
+        yield(ticks(2 * TICKS_PER_SECOND))
+    }
+
+    /**
+     * With the first shader pack in `shaderpacks/`: the cache captures in Iris's extended vertex formats and its
+     * picture matches vanilla's. The pack's temporal anti-aliasing and cloud movement would make two frames differ on
+     * their own, so they are switched off in the pack's options for the check (restored afterwards).
+     */
+    private suspend fun SequenceScope<Wait>.shaderPack(minecraft: Minecraft) {
+        val pack = IrisCheck.firstPack()
+        if (pack == null) {
+            results += "NOTE no shader pack in shaderpacks/, the shader pack checks were skipped"
+            return
+        }
+        val restore = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+        yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+        yield(ticks(5 * TICKS_PER_SECOND))
+        yield(until("world settled (shader pack)", 120) { SceneBuilder.isQuiet(minecraft) })
+        yield(ticks(TICKS_PER_SECOND))
+        val counts = "${StaticCache.cachedCount(Lids.key)} ${StaticCache.cachedCount(Skulls.key)} " +
+            "${StaticCache.cachedCount(Pots.key)} ${StaticCache.cachedCount(Signs.key)}"
+        check("shader pack: cache active", StaticCache.active && counts == "10 7 2 10", "$pack; $counts; ${StaticCache.debugLine()}")
+        val sizes = StaticCache.vertexSizes()
+        check("shader pack: captures use Iris's vertex formats", sizes.isNotEmpty() && 36 !in sizes && 28 !in sizes, "vertex sizes $sizes")
+        comparePair(minecraft, "shader pack: gallery", "shaderpack-gallery")
+        // Shader packs add noise of their own from frame to frame (dithering); two vanilla frames show how much.
+        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
+        yield(ticks(TICKS_PER_SECOND))
+        val floor = Validation.capturePair(toggle = false)
+        yield(until("noise pictures (shader pack)", 10) { floor.done })
+        val first = floor.first
+        val second = floor.second
+        if (first != null && second != null) {
+            results += "NOTE shader pack noise between two vanilla frames: ${Validation.compare(first, second)}"
+            first.close()
+            second.close()
+        }
+        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
+        yield(ticks(TICKS_PER_SECOND))
+        restore()
+        yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+        yield(ticks(2 * TICKS_PER_SECOND))
+        check("cache back on vanilla formats", StaticCache.active && StaticCache.vertexSizes().all { it == 36 || it == 28 }, "vertex sizes ${StaticCache.vertexSizes()}")
+    }
+
+    /**
+     * Applies a change on the server while the cache is warm, waits [seconds], then compares Mobium's picture with
+     * vanilla's. Ticks are frozen for the two pictures, so that anything vanilla animates (the powered dragon head)
+     * stands still between them.
+     */
+    private suspend fun SequenceScope<Wait>.effect(
+        minecraft: Minecraft,
+        name: String,
+        seconds: Int,
+        change: (ServerLevel) -> Unit
+    ) {
+        val server = minecraft.singleplayerServer ?: return
+        server.execute { change(server.overworld()) }
+        yield(ticks(seconds * TICKS_PER_SECOND))
+        yield(until("world settled ($name)", 60) { SceneBuilder.isQuiet(minecraft) })
+        comparePair(minecraft, name, "gallery-" + name.removePrefix("gallery: ").replace(' ', '-'))
+    }
+
+    /**
+     * Compares Mobium's picture with vanilla's from two consecutive frames: at the start of one frame the last frame
+     * (Mobium, cache warm) is captured and Mobium is switched to vanilla, at the start of the next that vanilla frame is
+     * captured and Mobium is switched back. Both frames belong to one client tick (else it is tried again), because
+     * vanilla's lightmap flickers block light randomly every tick (`LightmapRenderStateExtractor`). Ticks are frozen
+     * as well, so that what vanilla animates (the powered dragon head) stands still.
+     */
+    private suspend fun SequenceScope<Wait>.comparePair(minecraft: Minecraft, name: String, file: String) {
+        serverCommand(minecraft, "tick freeze")
+        yield(ticks(TICKS_PER_SECOND / 2))
+        check("cache draws ($name)", StaticCache.active && StaticCache.lastDrawn > 0, StaticCache.debugLine())
+        var attempt = 1
+        while (true) {
+            val pair = Validation.capturePair()
+            yield(until("pictures ($name)", 10) { pair.done })
+            val mobium = pair.first
+            val vanilla = pair.second
+            if (mobium == null || vanilla == null) {
+                check("$name: pictures taken", false)
+                break
+            }
+            if (!pair.sameTick && attempt < Validation.PAIR_ATTEMPTS) {
+                mobium.close()
+                vanilla.close()
+                attempt++
+                yield(ticks(TICKS_PER_SECOND))
+                continue
+            }
+            mobium.writeToFile(directory.resolve("screenshots").resolve("$file-mobium.png"))
+            vanilla.writeToFile(directory.resolve("screenshots").resolve("$file-vanilla.png"))
+            val note = if (pair.sameTick) "" else " (a client tick between the frames)"
+            compare("$name: Mobium and vanilla pictures match$note", mobium, vanilla)
+            mobium.close()
+            vanilla.close()
+            break
+        }
+        serverCommand(minecraft, "tick unfreeze")
+        yield(ticks(TICKS_PER_SECOND))
+    }
+
+
+    private fun serverCommand(minecraft: Minecraft, command: String) {
+        val server = minecraft.singleplayerServer ?: return
+        server.execute { server.commands.performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), command) }
+    }
+
+    /** Sets up a view, lets it settle and compares Mobium's picture with vanilla's ([comparePair]). */
     private suspend fun SequenceScope<Wait>.compareView(minecraft: Minecraft, name: String, setUp: () -> Unit) {
         setUp()
         yield(ticks(2 * TICKS_PER_SECOND))
         yield(until("world settled ($name)", 120) { SceneBuilder.isQuiet(minecraft) })
         yield(ticks(TICKS_PER_SECOND))
-        val file = name.replace(' ', '-')
-        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
-        yield(ticks(TICKS_PER_SECOND))
-        capture(minecraft)
-        yield(until("capture vanilla picture ($name)", 10) { captured != null })
-        val vanilla = takeCapture("capture-$file-vanilla")
-        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
-        yield(ticks(TICKS_PER_SECOND))
-        check("cache draws ($name)", StaticCache.active && StaticCache.lastDrawn > 0, StaticCache.debugLine())
-        capture(minecraft)
-        yield(until("capture Mobium picture ($name)", 10) { captured != null })
-        val mobium = takeCapture("capture-$file-mobium")
-        compare("$name: Mobium and vanilla pictures match", mobium, vanilla)
-        mobium.close()
-        vanilla.close()
+        comparePair(minecraft, name, "capture-" + name.replace(' ', '-'))
     }
 
     /** Moves the player through the integrated server, as `/tp` does (the benchmark world needs no cheats). */

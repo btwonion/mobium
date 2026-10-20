@@ -21,8 +21,11 @@ import java.util.Locale
  * - `/mobium suite [seconds] [runs] [scenes…]`: every scene (default all six), each built with the benchmark datapack,
  *   settled for at least [SETTLE_SECONDS] and until section rebuilds, light updates and server ticks have calmed down,
  *   then recorded `runs` times;
- * - `/mobium gatea [seconds] [runs]`: `storage_room` with the M3 chest prototype off and on, alternating, then the
- *   speed-up against the 1.5× target of Gate A.
+ * - `/mobium gatea [seconds] [runs]`: `storage_room` with the static cache off and on, alternating, then the
+ *   speed-up against the 1.5× target of Gate A (passed with the M3 chest prototype; kept for comparisons);
+ * - `/mobium gateb [seconds] [runs]`: `storage_room` with the cache, `control` with the cache and `control` without
+ *   it, in turn, then Gate B's two numbers: `storage_room` against `control` (target at most 1.2×) and `control` with
+ *   the cache against `control` without it (must not be slower).
  *
  * Scenes are built through the integrated server (singleplayer only), so the world does not need commands enabled.
  * The medians per scene and setup are rewritten to `mobium-bench/suite-<timestamp>.csv` after every run, so quitting
@@ -35,6 +38,10 @@ object BenchSuite {
     const val DEFAULT_RUNS = 3
     const val SETTLE_SECONDS = 10
     const val GATE_A_TARGET = 1.5
+    const val GATE_B_TARGET = 1.2
+
+    /** `control` with the cache may be this much slower than without it and still count as not slower (noise). */
+    const val GATE_B_CONTROL_TOLERANCE = 1.03
     val SCENES = listOf("mob_pen_static", "mob_pen_live", "storage_room", "map_wall", "display_build", "control")
 
     private const val BUILD_TIMEOUT_SECONDS = 120L
@@ -43,10 +50,13 @@ object BenchSuite {
     private const val QUIET_TIMEOUT_SECONDS = 120L
     private const val NANOS_PER_SECOND = 1_000_000_000L
 
-    /** One benchmark run of the plan; [prototype] null leaves the chest prototype as it is. */
-    private class Step(val scene: String, val prototype: Boolean?)
+    /** One benchmark run of the plan; [cache] null leaves the static cache as it is. */
+    private class Step(val scene: String, val cache: Boolean?)
 
     private enum class State { IDLE, BUILDING, SETTLING, RECORDING }
+
+    /** What a plan is for: medians only, or one of the gates' verdicts. */
+    private enum class Kind(val filePrefix: String) { SUITE("suite"), GATE_A("gatea"), GATE_B("gateb") }
 
     private var state = State.IDLE
     private val steps = ArrayList<Step>()
@@ -56,8 +66,8 @@ object BenchSuite {
     private var deadline = 0L
     private var nextPoll = 0L
     private var runsBefore = 0
-    private var gateA = false
-    private var prototypeConfigBefore = false
+    private var kind = Kind.SUITE
+    private var cacheConfigBefore = true
     private var waitForQuiet = false
     private var quietSince = 0L
     private var settleTimeout = 0L
@@ -73,7 +83,7 @@ object BenchSuite {
         val unknown = scenes.firstOrNull { it !in SCENES }
         if (unknown != null) return Component.translatable("mobium.suite.unknown_scene", unknown)
         val plan = scenes.flatMap { scene -> List(runs) { Step(scene, null) } }
-        start(plan, seconds, gateA = false)?.let { return it }
+        start(plan, seconds, Kind.SUITE)?.let { return it }
         chat(Component.translatable("mobium.suite.started", scenes.size, runs, seconds, minutes(plan.size, scenes.size)))
         return null
     }
@@ -81,24 +91,40 @@ object BenchSuite {
     /** Starts `/mobium gatea`; returns an error message or null. */
     fun startGateA(seconds: Int, runs: Int): Component? {
         val plan = (1..runs).flatMap { listOf(Step("storage_room", false), Step("storage_room", true)) }
-        // The prototype is opt-in; enable it for the plan (not in the saved settings). The A/B key does not count.
-        prototypeConfigBefore = config.cache.prototype
-        config.cache.prototype = true
-        ModuleStates.refresh("Gate A")
-        val status = ModuleStates.status(Module.STATIC_CACHE)
-        if (!status.active && status.reason != OffReason.AB_TOGGLE) {
-            restorePrototype()
-            return Component.translatable("mobium.suite.gatea_unavailable", Component.translatable(status.reason!!.translationKey))
-        }
-        start(plan, seconds, gateA = true)?.let { error ->
-            restorePrototype()
-            return error
-        }
+        startGate(plan, seconds, Kind.GATE_A, "mobium.suite.gatea_unavailable")?.let { return it }
         chat(Component.translatable("mobium.suite.gatea_started", runs, seconds, minutes(plan.size, 1)))
         return null
     }
 
-    private fun start(plan: List<Step>, seconds: Int, gateA: Boolean): Component? {
+    /** Starts `/mobium gateb`; returns an error message or null. */
+    fun startGateB(seconds: Int, runs: Int): Component? {
+        val plan = (1..runs).flatMap { listOf(Step("storage_room", true), Step("control", true), Step("control", false)) }
+        startGate(plan, seconds, Kind.GATE_B, "mobium.suite.gateb_unavailable")?.let { return it }
+        chat(Component.translatable("mobium.suite.gateb_started", runs, seconds, minutes(plan.size, plan.size * 2 / 3)))
+        return null
+    }
+
+    /**
+     * A gate's plan switches the cache itself, even if it is off in the settings (which are not saved); the A/B key
+     * does not count.
+     */
+    private fun startGate(plan: List<Step>, seconds: Int, kind: Kind, unavailableKey: String): Component? {
+        cacheConfigBefore = config.cache.enabled
+        config.cache.enabled = true
+        ModuleStates.refresh(kind.name)
+        val status = ModuleStates.status(Module.STATIC_CACHE)
+        if (!status.active && status.reason != OffReason.AB_TOGGLE) {
+            restoreCache()
+            return Component.translatable(unavailableKey, Component.translatable(status.reason!!.translationKey))
+        }
+        start(plan, seconds, kind)?.let { error ->
+            restoreCache()
+            return error
+        }
+        return null
+    }
+
+    private fun start(plan: List<Step>, seconds: Int, kind: Kind): Component? {
         if (isActive || FrameRecorder.isActive) return Component.translatable("mobium.bench.busy")
         if (Minecraft.getInstance().singleplayerServer == null) return Component.translatable("mobium.suite.singleplayer")
         BenchEnvironment.setupMismatch()?.let { return it }
@@ -110,7 +136,7 @@ object BenchSuite {
         results.clear()
         index = 0
         this.seconds = seconds
-        this.gateA = gateA
+        this.kind = kind
         builtScene = null
         beginStep()
         return null
@@ -169,8 +195,8 @@ object BenchSuite {
     private fun beginStep() {
         val step = steps[index]
         var toggled = false
-        if (step.prototype != null && step.prototype != StaticCache.active) {
-            StaticCache.setActive(step.prototype)
+        if (step.cache != null && step.cache != StaticCache.active) {
+            StaticCache.setActive(step.cache)
             toggled = true
         }
         if (step.scene != builtScene) {
@@ -216,9 +242,9 @@ object BenchSuite {
     private fun finishPlan(aborted: Boolean) {
         state = State.IDLE
         if (FrameRecorder.isActive) FrameRecorder.stop()
-        if (gateA) {
+        if (kind != Kind.SUITE) {
             StaticCache.setActive(false)
-            restorePrototype()
+            restoreCache()
         }
         if (aborted) {
             chat(Component.translatable("mobium.suite.stopped"))
@@ -243,6 +269,18 @@ object BenchSuite {
                 FrameStats.median(DoubleArray(runs.size) { runs[it].summary.low1Fps })
             )
         }
+    }
+
+    /**
+     * Gate B's two ratios from the medians (`storage_room` over `control`, both with the cache; `control` with over
+     * without the cache), or null while a side has no run yet.
+     */
+    private fun gateBRatios(medians: List<Medians>): Pair<Double, Double>? {
+        val storage = medians.firstOrNull { it.scene == "storage_room" && it.setup.endsWith("+cache") }?.avgMs
+        val control = medians.firstOrNull { it.scene == "control" && it.setup.endsWith("+cache") }?.avgMs
+        val baseline = medians.firstOrNull { it.scene == "control" && !it.setup.endsWith("+cache") }?.avgMs
+        if (storage == null || control == null || baseline == null || control <= 0.0 || baseline <= 0.0) return null
+        return storage / control to control / baseline
     }
 
     /** Gate A's speed-up from the medians, or null while one of the two sides has no run yet. */
@@ -271,12 +309,16 @@ object BenchSuite {
             }
             rows.append('\n')
         }
-        if (gateA) gateASpeedUp(medians())?.let { rows.append("# gate_a_speedup,${fmt(it, 3)}\n") }
+        if (kind == Kind.GATE_A) gateASpeedUp(medians())?.let { rows.append("# gate_a_speedup,${fmt(it, 3)}\n") }
+        if (kind == Kind.GATE_B) gateBRatios(medians())?.let { (storage, control) ->
+            rows.append("# gate_b_storage_over_control,${fmt(storage, 3)}\n")
+            rows.append("# gate_b_control_cache_over_vanilla,${fmt(control, 3)}\n")
+        }
 
         return try {
             val directory = Minecraft.getInstance().gameDirectory.toPath().resolve("mobium-bench")
             Files.createDirectories(directory)
-            val file = directory.resolve(if (gateA) "gatea-$stamp.csv" else "suite-$stamp.csv")
+            val file = directory.resolve("${kind.filePrefix}-$stamp.csv")
             Files.writeString(file, rows)
             file
         } catch (e: IOException) {
@@ -297,19 +339,32 @@ object BenchSuite {
             )
         }
 
-        if (gateA) {
+        if (kind == Kind.GATE_B) {
+            gateBRatios(medians)?.let { (storage, control) ->
+                val storageVerdict = if (storage <= GATE_B_TARGET) "mobium.suite.gatea_pass" else "mobium.suite.gatea_below"
+                val controlVerdict = if (control <= GATE_B_CONTROL_TOLERANCE) "mobium.suite.gatea_pass" else "mobium.suite.gateb_slower"
+                chat(
+                    Component.translatable(
+                        "mobium.suite.gateb_result", fmt(storage, 2), fmt(GATE_B_TARGET, 1), Component.translatable(storageVerdict),
+                        fmt(control, 2), Component.translatable(controlVerdict)
+                    )
+                )
+                Mobium.LOGGER.info("Gate B: storage_room {}x control (target {}x), control with the cache {}x without", fmt(storage, 2), GATE_B_TARGET, fmt(control, 2))
+            }
+        }
+        if (kind == Kind.GATE_A) {
             gateASpeedUp(medians)?.let { speedUp ->
                 val verdict = if (speedUp >= GATE_A_TARGET) "mobium.suite.gatea_pass" else "mobium.suite.gatea_below"
                 chat(Component.translatable("mobium.suite.gatea_result", fmt(speedUp, 2), fmt(GATE_A_TARGET, 1), Component.translatable(verdict)))
-                Mobium.LOGGER.info("Gate A: {}x faster with the chest prototype (target {}x)", fmt(speedUp, 2), GATE_A_TARGET)
+                Mobium.LOGGER.info("Gate A: {}x faster with the static cache (target {}x)", fmt(speedUp, 2), GATE_A_TARGET)
             }
         }
 
         writeMedians()?.let { chat(Component.translatable("mobium.suite.saved", it.toString())) }
     }
 
-    private fun restorePrototype() {
-        config.cache.prototype = prototypeConfigBefore
+    private fun restoreCache() {
+        config.cache.enabled = cacheConfigBefore
         ModuleStates.refresh("Gate A finished")
     }
 

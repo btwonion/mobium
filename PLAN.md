@@ -21,16 +21,31 @@ Read this first when picking the work up in a new session.
   (`SDL_VIDEO_FORCE_EGL=1`, `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual; see the
   comments in `.github/workflows/build-commit.yml`. If CI hangs or fails again, read the job log first
   (`gh run view --log`).
-- **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`. The M4 check on both loaders was done
-  with the self-check (`python3 scripts/self_check.py`: Fabric 26/26, NeoForge 27/27); nothing from M4 waits for
-  Anton.
-- **Waiting for Anton (not blocking M5):** before Gate B, refresh the instances (below; the script downloads the
-  shader pack and Fresh Animations) and record a full round, `/mobium suite` in setups A–D plus `/mobium gatea` in
-  A, on the external 1920×1080 monitor, on mains power.
-- **Next:** M5 (static cache) on branch `m5-static-cache`. Settle the sign-text question first (§M5, *Conflict found
-  at Gate A*); then `CaptureConsumer`/`SectionBucket` grow out of the prototype, `CachePolicy` uses the per-type
-  switches, and `ModuleRules` drops `PROTOTYPE_OFF` and `SHADER_PACK` for Module 1. Extend the self-check scenario
-  for every new behaviour and run it on both loaders.
+- **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`. M5 is in progress on branch
+  `m5-static-cache` (draft PR against `main`): the static cache for block entities is complete and checked, Gate B's
+  measurement exists (`/mobium gateb`), the entity types are open (below).
+- **M5 so far** (details in §M5): sign text is cached, Gate B keeps its target; buckets draw camera-relative vertices
+  (the M3 prototype's fog was off); captures run inside the level render, in Iris's formats with a shader pack;
+  chests, signs, skulls, decorated pots and shelves are cached; memory budget, invalidation, config 4 (drops
+  `cache.prototype` and the `beds` switch), `/mobium debug validate`, the `cache_gallery` scene. `ModuleRules` no
+  longer has `PROTOTYPE_OFF` or `SHADER_PACK`: Module 1 is on by default. Self-check: Fabric 58/58, NeoForge 49/49
+  (before shelves), every Mobium-vs-vanilla comparison 0 changed pixels except under Complementary, where the
+  difference equals the pack's own noise between two vanilla frames.
+- **Known issue (not Mobium):** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
+  `CenterDepthSampler` ("Missing uniform InSampler"), also with Mobium switched off
+  (`python3 scripts/self_check.py neoforge --mode iris-without-mobium`); the self-check skips the shader pack there.
+- **Waiting for Anton:** refresh the instances (below; the script downloads the shader pack and Fresh Animations),
+  then in setup A on the external 1920×1080 monitor, on mains power: `/mobium gateb` (Gate B, about 12 minutes) and
+  `/mobium suite`, and the visual checks in the PR's *How to verify* (shader pack in B, Fresh Animations in C/D).
+- **Next:** finish M5's `CachePolicy` with entities: item frames with items (frames with maps stay vanilla; maps are
+  translucent custom geometry), armor stands, item and block displays. Hook `renderer.submit` inside
+  `EntityRenderDispatcher.submit` (entities are always extracted; flame, shadow, name tags and leashes stay
+  vanilla), key entries by entity, compare the extracted state each frame (`ItemFingerprint` for items), capture
+  `BlockModelFeatureRenderer` submits (frames, block displays). Extend the gallery and the self-check, run both
+  loaders, update the PR. Then Gate B with Anton's numbers, and the release steps.
+- **Local test assets (gitignored dev run folders):** `shaderpacks/ComplementaryReimagined_r5.9.3.zip` (copied from
+  Prism instance B) and `resourcepacks/FreshAnimations_v1.10.3.zip` (from Anton's "Simply Crafted" instance) in
+  `versions/26.3-fabric/run/` and `run/`; the self-check uses them when present.
 - **Rebuilding the benchmark instances after code changes:**
   `./gradlew :26.3-fabric:benchKit && python3 benchmark/prism_instances.py`. The script also refreshes the datapack in
   the instances' worlds, downloads and selects Complementary Reimagined r5.9.3 (B, D) and Fresh Animations 1.11.1
@@ -574,9 +589,12 @@ group had no heading.
   starts and logs the module states.
 
 ### M5 · Module 1, static cache (Phase 1) → Gate B → first release
-- [ ] `CaptureConsumer`: records what the vanilla renderer emits, per render type, in block-local space, in the
+- [x] `CaptureConsumer`: records what the vanilla renderer emits, per render type, in block-local space, in the
       vertex format active at capture time (Iris-extended when a shader pack is on).
-- [ ] `SectionBucket`: one buffer per (chunk section, render type); rebuilt on the next frame after any member
+      Captures run in the cache's prepare step inside `LevelRenderer.render` (`cache/Capture.kt`), where vanilla and
+      Iris submit too: an object is drawn by vanilla in the frame it is first seen and from the cache from the next.
+      With Complementary on, captures are 56-byte entity and 52-byte glyph vertices (Iris's formats).
+- [x] `SectionBucket`: one buffer per (chunk section, render type); rebuilt on the next frame after any member
       changes; drawn through vanilla's pipeline (no shader edits). If M1 shows Iris needs per-draw IDs, split buckets
       by ID.
       *Changed in M5:* not with the section offset in the model-view matrix. Vanilla's entity and text shaders take
@@ -584,7 +602,7 @@ group had no heading.
       cached chests with the fog of a closer object (max channel difference 6 in `storage_room`, under the tests'
       threshold of 16). The CPU keeps section-local vertices and writes camera-relative ones into the bucket's buffer
       when it is drawn after the camera moved or a member changed; with a still camera nothing is written.
-- [ ] `CachePolicy`:
+- [ ] `CachePolicy` (block entities done, entities open):
 
       | Object | Cached while | Vanilla path while |
       | --- | --- | --- |
@@ -596,7 +614,15 @@ group had no heading.
       | Armor stands, item and block display entities | Pose and transform unchanged | Interpolating or moving |
 
       Banners, bells, conduits and lecterns animate every frame and wait for Module 2.
-- [ ] Only solid and cutout geometry is cached; translucent parts stay vanilla unless OIT is on. Any object with
+      Done (`cache/CachePolicy.kt`): chests (also trapped, copper, ender) and shulker boxes; signs and hanging signs
+      (vanilla while edited; obfuscated, sprite and player-head text never); skulls (player heads with an owner stay
+      vanilla: their skin loads later); decorated pots; shelves (vanilla extracts every frame and the shelf is drawn
+      from the cache while every item still draws the same, `ItemFingerprint`; items whose model changes right after a
+      capture, such as a spinning compass, pause on vanilla). **Beds have no block entity in 26.3** (terrain, like sign
+      boards); their switch is gone (config 4). Models EMF animates stay vanilla. Open: item frames (frames with maps
+      are translucent custom geometry and stay vanilla), armor stands, item and block displays, through a hook on
+      `renderer.submit` in `EntityRenderDispatcher.submit` (entities are always extracted).
+- [x] Only solid and cutout geometry is cached; translucent parts stay vanilla unless OIT is on. Any object with
       the breaking overlay uses vanilla for that frame.
       *Conflict found at Gate A:* with the chests cached, `storage_room` is still about 1.9× `control`, and what is
       left is the signs' text. Gate B (1.2×) is out of reach unless sign text is cached too; decide early in M5
@@ -607,11 +633,21 @@ group had no heading.
       too. The self-check compares Mobium with vanilla in `storage_room` (1,000 chests, 300 signs, glow ink with and
       without outline) from the default view, a moved camera and at render distance 2 with the chests in the fog band:
       0 changed pixels, max channel difference 0, on Fabric and NeoForge.
-- [ ] `Invalidation` for data, block state, section light, resource reload, shader-pack change, level change.
-- [ ] `MemoryBudget`: 128 MB default, evict farthest first.
-- [ ] Screenshot tests per scene and per effect (Fabric client gametests); Validation mode diff = 0.
-- [ ] `docs/compat.md` filled for Sodium, Iris (+ named packs), EMF/ETF + Fresh Animations, EntityCulling, on
-      both loaders.
+- [x] `Invalidation` for data, block state, section light, resource reload, shader-pack change, level change.
+      Data: each rule's inputs are compared every frame (sign text, pot sherds, skull owner and mouth, items).
+      Block state: identity. Light: section light versions plus a re-read every 128 frames. Reload, render distance,
+      level: `LevelExtractor.allChanged` / `setLevel`. Shader pack: Iris's pipeline identity, checked at the start of
+      each frame's extraction. Removed block entities: `BlockEntity.setRemoved`, and never cached when removed.
+- [x] `MemoryBudget`: 128 MB default, evict farthest first (`cache/MemoryBudget.kt`, unit-tested; evicted objects stay
+      vanilla until usage is below 75 %).
+- [x] Screenshot tests per scene and per effect (Fabric client gametests); Validation mode diff = 0.
+      Gametest: every static scene compared with the cache off and on, plus the gallery, `/mobium gatea` and
+      `/mobium gateb`. Self-check (both loaders): `storage_room` from three views, the `cache_gallery` scene and seven
+      effects (lid, breaking overlay, light, sign text, block state), Complementary (Fabric) and Fresh Animations, and
+      `/mobium debug validate`, all compared from two frames of one client tick. Every comparison: 0 changed pixels.
+- [x] `docs/compat.md` filled for Sodium, Iris (+ named packs), EMF/ETF + Fresh Animations, EntityCulling, on
+      both loaders. (Entity Culling is not in the dev environment; NeoForge + Complementary crashes inside Iris, also
+      with Mobium off.)
 
 **Gate B:** zero screenshot differences; `storage_room` within 1.2× of `control`; `control` not slower than
 baseline; works with the full compat stack on Fabric and NeoForge.

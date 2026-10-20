@@ -5,6 +5,8 @@ import dev.nyon.mobium.mixins.AbstractSignEditScreenAccessor
 import dev.nyon.mobium.mixins.AbstractSignRendererInvoker
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen
+import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState
+import net.minecraft.client.renderer.blockentity.state.ShelfRenderState
 import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.FontDescription
 import net.minecraft.network.chat.FormattedText
@@ -57,6 +59,20 @@ abstract class CacheRule(@JvmField val key: String) {
      */
     open fun canCache(entry: CacheEntry, blockEntity: BlockEntity): Boolean = true
 
+    /**
+     * True when the picture can only be told from the state vanilla extracts (items, whose model is resolved again
+     * every frame): vanilla's extraction then runs every frame and only submit and tessellation are skipped while
+     * [sameState] holds.
+     */
+    open val checksState: Boolean
+        get() = false
+
+    /** Keeps what [state] draws, when the object is first seen; false when it cannot be cached. */
+    open fun storeState(entry: CacheEntry, state: BlockEntityRenderState): Boolean = true
+
+    /** Compares this frame's extracted state with what [storeState] kept. */
+    open fun sameState(entry: CacheEntry, state: BlockEntityRenderState): Boolean = true
+
     /** Points [out] at a second block whose light and state belong to this object's picture (double chests). */
     open fun neighbour(pos: BlockPos, state: BlockState, out: BlockPos.MutableBlockPos): Boolean = false
 }
@@ -74,10 +90,11 @@ object CachePolicy {
         rules[BlockEntityTypes.HANGING_SIGN] = Signs
         rules[BlockEntityTypes.SKULL] = Skulls
         rules[BlockEntityTypes.DECORATED_POT] = Pots
+        rules[BlockEntityTypes.SHELF] = Shelves
     }
 
     /** All rules once each, for the per-type switches and the F3 counts. */
-    val all: List<CacheRule> = listOf(Lids, Signs, Skulls, Pots)
+    val all: List<CacheRule> = listOf(Lids, Signs, Skulls, Pots, Shelves)
 
     @JvmStatic
     fun ruleFor(blockEntity: BlockEntity): CacheRule? = rules[blockEntity.type]
@@ -114,8 +131,8 @@ object Lids : CacheRule("chests") {
 /**
  * Signs and hanging signs. In 26.3 the board is part of the terrain mesh and the block entity only draws the text
  * (`AbstractSignRenderer.submit`), which vanilla puts into the solid phase: sign text is opaque and has no background
- * (`SubmitNodeCollection.canRenderAsSolid`). The picture depends on both sides' [SignText] (immutable, replaced on every
- * change), the text filter and, for glowing text, whether the camera is close enough for the outline
+ * (`SubmitNodeCollection.canRenderAsSolid`). The picture depends on both sides' [SignText] (immutable, replaced on
+ * every change), the text filter and, for glowing text, whether the camera is close enough for the outline
  * (`AbstractSignRenderer.isOutlineVisible`). Vanilla while the sign is being edited; obfuscated text, sprites and
  * player heads always stay vanilla.
  */
@@ -126,8 +143,8 @@ object Signs : CacheRule("signs") {
     override fun enabled(types: CacheTypes) = types.signs
 
     override fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float): Boolean {
-        val screen = Minecraft.getInstance().gui.screen()
-        return screen !is AbstractSignEditScreen || (screen as AbstractSignEditScreenAccessor).`mobium$sign`() !== blockEntity
+        val screen = Minecraft.getInstance().gui.screen() as? AbstractSignEditScreen ?: return true
+        return (screen as AbstractSignEditScreenAccessor).`mobium$sign`() !== blockEntity
     }
 
     override fun sameInputs(entry: CacheEntry, blockEntity: BlockEntity): Boolean {
@@ -164,9 +181,9 @@ object Signs : CacheRule("signs") {
         text.hasGlowingText() && text.color.textColor != DyeColor.BLACK.textColor
 
     /**
-     * No obfuscated glyphs (random every frame) and no sprite or player-head glyphs (`ObjectContents` switch the style's
-     * font; skins load later). Visits the components instead of `getRenderMessages`, which caches the first caller's
-     * line splitting.
+     * No obfuscated glyphs (random every frame) and no sprite or player-head glyphs (`ObjectContents` switch the
+     * style's font; skins load later). Visits the components instead of `getRenderMessages`, which caches the first
+     * caller's line splitting.
      */
     private fun isPlain(text: SignText, filtered: Boolean): Boolean {
         for (message in text.getMessages(filtered)) {
@@ -229,5 +246,51 @@ object Pots : CacheRule("decorated_pots") {
 
     override fun storeInputs(entry: CacheEntry, blockEntity: BlockEntity) {
         entry.inputA = (blockEntity as DecoratedPotBlockEntity).decorations
+    }
+}
+
+/**
+ * Shelves and the items on them. The items are resolved again every frame (`ShelfRenderer.extractRenderState`), and an
+ * item may pick another model each time (a compass), so vanilla extracts every frame and the shelf is drawn from the
+ * cache while every item still draws the same ([ItemFingerprint]); a change is captured again. Items with translucent
+ * quads (glass) or a special renderer (heads, banners) keep the shelf on vanilla.
+ */
+object Shelves : CacheRule("shelves") {
+    override fun enabled(types: CacheTypes) = types.shelves
+
+    override fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float) = true
+
+    override val checksState: Boolean
+        get() = true
+
+    override fun storeState(entry: CacheEntry, state: BlockEntityRenderState): Boolean {
+        val shelf = state as ShelfRenderState
+        val prints = arrayOfNulls<ItemFingerprint>(shelf.items.size)
+        for (i in shelf.items.indices) {
+            val item = shelf.items[i] ?: continue
+            val print = ItemFingerprint()
+            if (!print.store(item)) return false
+            prints[i] = print
+        }
+        entry.inputA = prints
+        entry.inputFlags = if (shelf.alignToBottom) 1 else 0
+        return true
+    }
+
+    override fun sameState(entry: CacheEntry, state: BlockEntityRenderState): Boolean {
+        val shelf = state as ShelfRenderState
+        @Suppress("UNCHECKED_CAST")
+        val prints = entry.inputA as Array<ItemFingerprint?>
+        if ((entry.inputFlags == 1) != shelf.alignToBottom || prints.size != shelf.items.size) return false
+        for (i in shelf.items.indices) {
+            val item = shelf.items[i]
+            val print = prints[i]
+            if (item == null || print == null) {
+                if (item != null || print != null) return false
+            } else if (!print.matches(item)) {
+                return false
+            }
+        }
+        return true
     }
 }

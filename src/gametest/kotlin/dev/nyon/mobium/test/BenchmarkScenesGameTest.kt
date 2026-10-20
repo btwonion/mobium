@@ -5,7 +5,10 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext
 import dev.nyon.mobium.bench.BenchSuite
 import dev.nyon.mobium.cache.Lids
+import dev.nyon.mobium.cache.Pots
+import dev.nyon.mobium.cache.Shelves
 import dev.nyon.mobium.cache.Signs
+import dev.nyon.mobium.cache.Skulls
 import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.core.Module
@@ -20,6 +23,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.Registries
 import net.minecraft.resources.Identifier
+import net.minecraft.server.level.ParticleStatus
 import net.minecraft.tags.TagKey
 import net.minecraft.world.entity.decoration.ItemFrame
 import net.minecraft.world.level.Level
@@ -57,21 +61,41 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 // As in the protocol: benchmarks must not stop at vanilla's default 120 FPS cap.
                 it.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
                 it.options.enableVsync().set(false)
+                // Particles (the smoke of the mobs a scene reset removes, the ender chest's) differ between two
+                // screenshots on their own.
+                it.options.particles().set(ParticleStatus.MINIMAL)
             }
+            // The baselines are vanilla's pictures; each static scene is then compared with the cache on.
+            setCache(context, false)
 
-            for (scene in SCENES) {
+            // The gallery comes before the mob pens: the smoke of 500 removed mobs would still be in its pictures.
+            for (scene in SCENES.take(4) + GALLERY + SCENES.drop(4)) {
                 singleplayer.server.runCommand("execute as @a at @s run function $NAMESPACE:$scene")
                 singleplayer.server.waitFor({ server -> isReady(server) }, SCENE_TIMEOUT_TICKS)
                 singleplayer.connection.waitForChunksRender()
                 if (scene == "map_wall") context.waitFor({ mapsSynced(it) }, MAP_SYNC_TIMEOUT_TICKS)
                 context.waitTicks(SETTLE_TICKS)
+                // The gallery's powered dragon head moves its mouth every tick; frozen ticks keep it still.
+                if (scene == GALLERY) singleplayer.server.runCommand("tick freeze")
                 val vanilla = context.takeScreenshot("scene_$scene")
-                if (scene == "storage_room") checkStaticCache(context, vanilla)
+                if (scene in COMPARED_SCENES) compareWithCache(context, scene, vanilla)
+                if (scene == GALLERY) singleplayer.server.runCommand("tick unfreeze")
+                if (scene == "storage_room") checkGateA(context)
             }
 
             checkBenchCommand(context)
             checkDebugEntry(context)
             checkSuiteCommand(context)
+            checkGateB(context)
+            setCache(context, true)
+        }
+    }
+
+    /** The same path as the settings screen: change the config, then re-resolve the module states. */
+    private fun setCache(context: ClientGameTestContext, enabled: Boolean) {
+        context.runOnClient<RuntimeException> {
+            config.cache.enabled = enabled
+            ModuleStates.refresh("gametest")
         }
     }
 
@@ -91,45 +115,48 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
     }
 
     /**
-     * Switches the static cache on in `storage_room`, checks that it caches and draws all chests and signs, and
-     * compares the picture with the vanilla screenshot taken just before: no pixel may change beyond isolated edge
-     * pixels. Also logs a short benchmark with and without it.
+     * Switches the static cache on, checks what it caches in `storage_room` and the gallery, and compares the picture
+     * with the vanilla screenshot taken just before: no pixel may change beyond isolated edge pixels. The gallery's
+     * ender chest lights its surroundings, and vanilla flickers block light every client tick, so there only pixels
+     * that differ by more than [ScreenshotDiff.THRESHOLD] count (the self-check compares it exactly, from two frames
+     * of one tick).
      */
-    private fun checkStaticCache(context: ClientGameTestContext, vanilla: Path) {
-        // The same path as the settings screen: change the config, then re-resolve the module states.
-        context.runOnClient<RuntimeException> {
-            config.cache.prototype = true
-            ModuleStates.refresh("gametest")
-        }
+    private fun compareWithCache(context: ClientGameTestContext, scene: String, vanilla: Path) {
+        setCache(context, true)
         context.waitTicks(SETTLE_TICKS)
         context.runOnClient<RuntimeException> {
-            check(StaticCache.active) {
-                "The chest prototype did not start: ${ModuleStates.status(Module.STATIC_CACHE).describe()}"
+            check(StaticCache.active) { "The static cache did not start: ${ModuleStates.status(Module.STATIC_CACHE).describe()}" }
+            when (scene) {
+                "storage_room" -> {
+                    check(StaticCache.cachedCount(Lids.key) == CHESTS) { "Expected $CHESTS cached chests: ${StaticCache.debugLine()}" }
+                    check(StaticCache.cachedCount(Signs.key) == SIGNS) { "Expected $SIGNS cached signs: ${StaticCache.debugLine()}" }
+                    check(StaticCache.lastDrawn >= CHESTS) { "Expected at least $CHESTS drawn objects: ${StaticCache.debugLine()}" }
+                }
+                GALLERY -> {
+                    val counts = listOf(Lids, Skulls, Pots, Signs).map { rule -> StaticCache.cachedCount(rule.key) }
+                    check(counts == listOf(10, 7, 2, 10)) { "Unexpected gallery counts $counts: ${StaticCache.debugLine()}" }
+                    check(StaticCache.cachedCount(Shelves.key) >= 2) { "Shelves not cached: ${StaticCache.debugLine()}" }
+                }
             }
-            check(StaticCache.cachedCount(Lids.key) == CHESTS) { "Expected $CHESTS cached chests: ${StaticCache.debugLine()}" }
-            check(StaticCache.cachedCount(Signs.key) == SIGNS) { "Expected $SIGNS cached signs: ${StaticCache.debugLine()}" }
-            check(StaticCache.lastDrawn >= CHESTS) { "Expected at least $CHESTS drawn objects, got ${StaticCache.lastDrawn}" }
         }
-        val cached = context.takeScreenshot("scene_storage_room_static_cache")
+        val cached = context.takeScreenshot("scene_${scene}_static_cache")
+        setCache(context, false)
         ScreenshotDiff.compare(vanilla, cached).also { diff ->
-            LOGGER.info("Static cache screenshot diff: {}", diff)
-            check(diff.changedFraction <= MAX_DIFFERING_FRACTION) {
-                "The static cache changes the picture: $diff (see ${diff.diffImage})"
-            }
+            LOGGER.info("Static cache screenshot diff ({}): {}", scene, diff)
+            val fraction = if (scene == GALLERY) diff.differingFraction else diff.changedFraction
+            check(fraction <= MAX_DIFFERING_FRACTION) { "The static cache changes $scene: $diff (see ${diff.diffImage})" }
         }
+    }
 
-        // Back to the default state; /mobium gatea enables and restores the prototype itself.
-        context.runOnClient<RuntimeException> {
-            config.cache.prototype = false
-            ModuleStates.refresh("gametest")
-        }
+    /** A short `/mobium gatea` in `storage_room`, which switches the cache itself and restores it afterwards. */
+    private fun checkGateA(context: ClientGameTestContext) {
         val gate = runPlan(context, "mobium gatea $BENCH_SECONDS 1", "gatea-")
         val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
         check(setups.size == 2 && setups.count { it.endsWith("+cache") } == 1) { "Unexpected Gate A rows: $gate" }
         val speedUp = gate.single { it.startsWith("# gate_a_speedup") }.substringAfter(',').toDouble()
         LOGGER.info("storage_room first look (/mobium gatea {} 1): {}x faster with the static cache", BENCH_SECONDS, speedUp)
         context.runOnClient<RuntimeException> {
-            check(!StaticCache.active && !config.cache.prototype) { "/mobium gatea did not restore the prototype state" }
+            check(!StaticCache.active && !config.cache.enabled) { "/mobium gatea did not restore the cache state" }
         }
     }
 
@@ -185,6 +212,19 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
     private fun benchDirectory(context: ClientGameTestContext): Path =
         context.computeOnClient<Path, RuntimeException> { it.gameDirectory.toPath().resolve("mobium-bench") }
+
+    /** A short `/mobium gateb`: three setups and both of Gate B's ratios, and the cache state restored afterwards. */
+    private fun checkGateB(context: ClientGameTestContext) {
+        val gate = runPlan(context, "mobium gateb $BENCH_SECONDS 1", "gateb-")
+        val rows = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',').let { fields -> fields[0] to fields[1] } }
+        check(rows.size == 3 && rows.count { it.second.endsWith("+cache") } == 2) { "Unexpected Gate B rows: $gate" }
+        val storage = gate.single { it.startsWith("# gate_b_storage_over_control") }.substringAfter(',').toDouble()
+        val control = gate.single { it.startsWith("# gate_b_control_cache_over_vanilla") }.substringAfter(',').toDouble()
+        LOGGER.info("Gate B first look (/mobium gateb {} 1): storage_room {}x control, control {}x with the cache", BENCH_SECONDS, storage, control)
+        context.runOnClient<RuntimeException> {
+            check(!StaticCache.active && !config.cache.enabled) { "/mobium gateb did not restore the cache state" }
+        }
+    }
 
     /** Runs `/mobium suite` on the control scene and checks its medians file. */
     private fun checkSuiteCommand(context: ClientGameTestContext) {
@@ -284,5 +324,11 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         // Must match X0 / Z0 in benchmark/generate.py.
         val ORIGIN = BlockPos(-3840, -60, -2816)
         val SCENES = listOf("control", "storage_room", "map_wall", "display_build", "mob_pen_static", "mob_pen_live")
+
+        /** Not a benchmark scene: every cached type side by side (benchmark/generate.py). */
+        const val GALLERY = "cache_gallery"
+
+        /** The scenes where nothing moves, so vanilla's and the cache's pictures can be compared. */
+        val COMPARED_SCENES = setOf("control", "storage_room", "map_wall", "display_build", GALLERY)
     }
 }

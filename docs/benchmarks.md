@@ -25,9 +25,18 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
   records `runs` runs. It rewrites `mobium-bench/suite-<timestamp>.csv` with the medians after every run (quitting
   halfway keeps what was measured) and prints them at the end. It refuses to start when the instance was made for
   another setup than the active one (see *Prism instances*).
-- **`/mobium gatea [seconds] [runs]`** — Gate A: builds `storage_room` and records it with the M3 chest prototype off
-  and on, alternating (defaults: 60 s, 3 runs each), then prints the speed-up against the 1.5× target and writes
-  `mobium-bench/gatea-<timestamp>.csv`. It enables the prototype for the run only; `cache.prototype` stays as it is.
+- **`/mobium gatea [seconds] [runs]`** — Gate A: builds `storage_room` and records it with the static cache off and
+  on, alternating (defaults: 60 s, 3 runs each), then prints the speed-up against the 1.5× target and writes
+  `mobium-bench/gatea-<timestamp>.csv`. Gate A was passed with the M3 chest prototype; since M5 the command compares
+  the whole static cache (chests and signs) and stays useful as a before/after number.
+- **`/mobium gateb [seconds] [runs]`** — Gate B: records `storage_room` with the static cache, `control` with it and
+  `control` without it, in turn (defaults: 60 s, 3 rounds; about 12 minutes), then prints both of Gate B's numbers:
+  `storage_room` against `control` (target: at most 1.2×) and `control` with the cache against `control` without it
+  (must not be slower; up to 1.03× counts as noise), and writes `mobium-bench/gateb-<timestamp>.csv` with the medians
+  and the two ratios. Both gate commands switch the cache themselves for the plan, even when it is off in the settings
+  (which they do not save).
+- **Setup names** get `+cache` while the static cache is active. Since M5 the cache is on by default, so a plain
+  `/mobium suite` measures with it; switch Mobium off in the settings (or with the A/B key `]`) for vanilla numbers.
 - **F3 entry `mobium:timings`** — the same timers averaged over the last 64 frames. Enable it in the debug options
   screen (the timers only run while it is shown or a benchmark records).
 - **Prism instances** — `./gradlew :26.3-fabric:benchKit` collects the mods of the four setups and the datapack,
@@ -126,7 +135,8 @@ the scene two seconds later in the same place (each scene replaces the previous 
    medians (about 22 minutes). The HUD stays hidden until the very end: the last scene, `control`, is an empty field
    and looks finished, but it records for another three minutes. The result for a scene and setup is the median of
    the three runs.
-3. Setup A only: `/mobium gatea` for Gate A (about 7 minutes).
+3. Setup A only: `/mobium gateb` for Gate B (about 12 minutes); `/mobium gatea` gives the cache's speed-up in
+   `storage_room` (about 7 minutes).
 4. Do this for all four setups, then copy each instance's `minecraft/mobium-bench/` folder into
    `docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/` (per-run CSVs gzipped) and fill in the tables below, or
    hand the folders to Claude Code.

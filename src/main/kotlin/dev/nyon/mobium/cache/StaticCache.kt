@@ -1,6 +1,7 @@
 package dev.nyon.mobium.cache
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
+import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.renderpearl.api.commands.RenderPass
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.config.config
@@ -26,6 +27,7 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
 import org.lwjgl.system.MemoryUtil
 import java.nio.ByteBuffer
+import java.util.Locale
 
 /**
  * Module 1: block entities that do not change are captured once through vanilla's own submit and prepare code
@@ -46,6 +48,12 @@ object StaticCache {
     private const val SWEEP_INTERVAL_FRAMES = 600L
     private const val REVALIDATE_MASK = 127L
 
+    /** An object whose picture changes this soon after its capture counts as volatile... */
+    private const val VOLATILE_FRAMES = 60L
+
+    /** ...and takes the vanilla path for this many frames before it is tried again (a spinning compass). */
+    private const val VOLATILE_PAUSE_FRAMES = 1200L
+
     /** Read by the mixin on `BlockEntityRenderDispatcher.tryExtractRenderState` before anything else. */
     @JvmField
     var active = false
@@ -62,7 +70,9 @@ object StaticCache {
     private val visibleBuckets = ArrayList<SectionBucket>()
     private val neighbour = BlockPos.MutableBlockPos()
     private val pending = ArrayList<CacheEntry>()
+    private val budget = MemoryBudget(config.cache.memoryBudgetMb * MemoryBudget.BYTES_PER_MB)
     private var captureDispatcher: BlockEntityRenderDispatcher? = null
+    private var irisPipeline: Any? = null
     private var scratch: ByteBuffer? = null
 
     var lastDrawn = 0
@@ -77,6 +87,7 @@ object StaticCache {
     /** Switched by [ModuleStates] (and directly by the benchmark plans and the gametests); off drops everything. */
     fun setActive(value: Boolean) {
         if (!value) clear()
+        budget.resize(config.cache.memoryBudgetMb * MemoryBudget.BYTES_PER_MB)
         refreshTypes()
         irisLoaded = Compat.isLoaded(CompatMod.IRIS)
         active = value
@@ -122,7 +133,11 @@ object StaticCache {
     ): BlockEntityRenderState? {
         val rule = CachePolicy.ruleFor(blockEntity)
         // The breaking overlay is drawn by vanilla for that frame; Iris's shadow pass extracts again and stays vanilla.
-        if (rule == null || !rule.allowed || breakProgress != null || isGloballyRendered || shadowPass()) {
+        // Removed block entities can still be handed in for a while (a section's block entity list is only rebuilt
+        // with its mesh); vanilla decides what to do with them.
+        if (rule == null || !rule.allowed || breakProgress != null || isGloballyRendered || blockEntity.isRemoved ||
+            shadowPass()
+        ) {
             return vanilla(original, blockEntity, partialTicks, breakProgress, isGloballyRendered, frustum)
         }
         return try {
@@ -164,7 +179,7 @@ object StaticCache {
         val hasNeighbour = rule.neighbour(pos, state, neighbour)
         val lightVersion = lightVersion(pos, hasNeighbour)
         var entry = entries.get(pos.asLong())
-        if (entry != null && !entry.matches(rule, blockEntity, state)) {
+        if (entry != null && (!entry.matches(rule, blockEntity, state) || entry.volatileUntil in 1..<frame)) {
             remove(entry)
             entry = null
         }
@@ -181,8 +196,26 @@ object StaticCache {
             }
         }
 
+        // Rules whose picture can only be told from vanilla's state (items) extract every frame and compare.
+        var extracted: BlockEntityRenderState? = null
+        if (entry != null && entry.cacheable && rule.checksState) {
+            extracted = vanilla(original, blockEntity, partialTicks, null, false, frustum) ?: return null
+            if (!rule.sameState(entry, extracted)) {
+                val stale = entry
+                remove(stale)
+                entry = null
+                if (frame - stale.capturedFrame < VOLATILE_FRAMES) {
+                    val paused = CacheEntry(rule, blockEntity, state, stale.light, stale.neighbourLight)
+                    paused.lightVersion = stale.lightVersion
+                    paused.volatileUntil = frame + VOLATILE_PAUSE_FRAMES
+                    entries.put(pos.asLong(), paused)
+                    return extracted
+                }
+            }
+        }
+
         if (entry == null) {
-            val vanilla = vanilla(original, blockEntity, partialTicks, null, false, frustum) ?: return null
+            val vanilla = extracted ?: vanilla(original, blockEntity, partialTicks, null, false, frustum) ?: return null
             val light = LightCoordsUtil.getLightCoords(level, pos)
             val neighbourLight = if (hasNeighbour) LightCoordsUtil.getLightCoords(level, neighbour) else 0
             entry = CacheEntry(rule, blockEntity, state, light, neighbourLight)
@@ -191,7 +224,7 @@ object StaticCache {
             entries.put(pos.asLong(), entry)
             // Vanilla draws the object this frame; it is captured in prepare, inside the level render like vanilla's
             // own submit (Iris only extends vertex formats and records entity ids there), and cached from the next.
-            if (rule.canCache(entry, blockEntity)) {
+            if (rule.canCache(entry, blockEntity) && rule.storeState(entry, vanilla)) {
                 entry.pendingState = vanilla
                 pending += entry
                 captureDispatcher = dispatcher
@@ -204,6 +237,21 @@ object StaticCache {
         entry.seenFrame = frame
         entry.markVisible(frame)
         return null
+    }
+
+    /**
+     * Called at the start of `LevelExtractor.extract`, before any object of the frame is extracted. Captures hold
+     * Iris's extended vertex format and entity ids while a shader pack is on, so a new Iris pipeline (reload, another
+     * pack, pack options, packs switched on or off) starts the cache over.
+     */
+    @JvmStatic
+    fun beginFrame() {
+        if (!active || !irisLoaded) return
+        val pipeline = IrisCompat.pipeline()
+        if (pipeline !== irisPipeline) {
+            if (irisPipeline != null) clear()
+            irisPipeline = pipeline
+        }
     }
 
     /** Calls the wrapped vanilla method; NeoForge's overload also takes the culling frustum. */
@@ -226,8 +274,18 @@ object StaticCache {
     private fun lightVersion(pos: BlockPos, hasNeighbour: Boolean): Int {
         if (lightVersions.isEmpty()) return 0
         var version = lightVersions.get(SectionPos.asLong(pos.x shr 4, pos.y shr 4, pos.z shr 4))
-        if (hasNeighbour) version += lightVersions.get(SectionPos.asLong(neighbour.x shr 4, neighbour.y shr 4, neighbour.z shr 4))
+        if (hasNeighbour) {
+            version += lightVersions.get(SectionPos.asLong(neighbour.x shr 4, neighbour.y shr 4, neighbour.z shr 4))
+        }
         return version
+    }
+
+    /** Called from `BlockEntity.setRemoved`: drops the object's cached picture (client block entities only). */
+    @JvmStatic
+    fun onRemoved(blockEntity: BlockEntity) {
+        if (!RenderSystem.isOnRenderThread() || blockEntity.level?.isClientSide != true) return
+        val entry = entries.get(blockEntity.blockPos.asLong()) ?: return
+        if (entry.blockEntity === blockEntity) remove(entry)
     }
 
     /** Called from `ClientChunkCache.onLightUpdate`: cached objects in the section re-read their light. */
@@ -279,6 +337,11 @@ object StaticCache {
         @Suppress("UNCHECKED_CAST")
         entry.parts = parts as Array<EntryPart>
         entry.cacheable = true
+        entry.capturedFrame = frame
+        var bytes = 0L
+        for (mesh in meshes) bytes += mesh.bytes
+        entry.bytes = bytes
+        budget.add(bytes)
     }
 
     // endregion
@@ -300,13 +363,48 @@ object StaticCache {
     }
 
     private fun remove(entry: CacheEntry) {
+        dropParts(entry)
+        entries.remove(entry.blockEntity.blockPos.asLong())
+    }
+
+    /** Frees an entry's meshes and takes them out of their buckets. */
+    private fun dropParts(entry: CacheEntry) {
         for (part in entry.parts) {
             part.bucket.remove(part.member)
             part.member.mesh.free()
             markDirty(part.bucket)
         }
         entry.parts = NO_PARTS
-        entries.remove(entry.blockEntity.blockPos.asLong())
+        budget.remove(entry.bytes)
+        entry.bytes = 0L
+    }
+
+    /**
+     * Above the memory budget: evicts the farthest cached objects ([MemoryBudget]). They keep their entry, marked
+     * evicted, and take the vanilla path until the sweep lets them be captured again.
+     */
+    private fun enforceBudget(cameraX: Double, cameraY: Double, cameraZ: Double) {
+        val candidates = entries.values.filter { it.bytes > 0L }
+        val distances = DoubleArray(candidates.size)
+        val bytes = LongArray(candidates.size)
+        for (i in candidates.indices) {
+            val pos = candidates[i].blockEntity.blockPos
+            val dx = pos.x + 0.5 - cameraX
+            val dy = pos.y + 0.5 - cameraY
+            val dz = pos.z + 0.5 - cameraZ
+            distances[i] = dx * dx + dy * dy + dz * dz
+            bytes[i] = candidates[i].bytes
+        }
+        val evicted = budget.selectEvictions(distances, bytes, candidates.size)
+        for (index in evicted) {
+            val entry = candidates[index]
+            dropParts(entry)
+            entry.cacheable = false
+            entry.evicted = true
+        }
+        if (evicted.isNotEmpty()) {
+            Mobium.LOGGER.debug("Mobium static cache over its memory budget: evicted {} objects", evicted.size)
+        }
     }
 
     private fun removeType(rule: CacheRule) {
@@ -333,10 +431,6 @@ object StaticCache {
     @JvmStatic
     fun prepare(cameraX: Double, cameraY: Double, cameraZ: Double) {
         if (!active) return
-        if (irisLoaded && IrisCompat.isShaderPackInUse()) {
-            ModuleStates.refresh("shader pack on")
-            return
-        }
         try {
             prepareBuckets(cameraX, cameraY, cameraZ)
         } catch (e: Exception) {
@@ -346,6 +440,7 @@ object StaticCache {
 
     private fun prepareBuckets(cameraX: Double, cameraY: Double, cameraZ: Double) {
         capturePending()
+        if (budget.isOver) enforceBudget(cameraX, cameraY, cameraZ)
         for (bucket in dirtyBuckets) {
             bucket.dirty = false
             if (bucket.isEmpty) {
@@ -409,7 +504,10 @@ object StaticCache {
     }
 
     private fun evictUnseen() {
-        val stale = entries.values.filter { frame - it.seenFrame > EVICT_AFTER_FRAMES }
+        val resume = !budget.isTight
+        val stale = entries.values.filter {
+            frame - it.seenFrame > EVICT_AFTER_FRAMES || it.blockEntity.isRemoved || (resume && it.evicted)
+        }
         stale.forEach(::remove)
     }
 
@@ -428,6 +526,7 @@ object StaticCache {
         visibleBuckets.clear()
         scratch?.let(MemoryUtil::memFree)
         scratch = null
+        budget.reset()
     }
 
     // endregion
@@ -435,7 +534,20 @@ object StaticCache {
     // region debug
 
     /** Cached objects per rule key (debug screen, tests). */
-    fun cachedCount(key: String? = null): Int = entries.values.count { it.cacheable && (key == null || it.rule.key == key) }
+    fun cachedCount(key: String? = null): Int =
+        entries.values.count { it.cacheable && (key == null || it.rule.key == key) }
+
+    /** The vertex sizes of the cached meshes (36 and 28 bytes for vanilla's entity and text formats). */
+    fun vertexSizes(): Set<Int> {
+        val sizes = HashSet<Int>()
+        for (entry in entries.values) for (part in entry.parts) sizes += part.member.mesh.vertexSize
+        return sizes
+    }
+
+    /** A few entries of one rule, for failure reports of the dev self-check. */
+    fun describeEntries(key: String, limit: Int): String = entries.values.filter { it.rule.key == key }.take(limit)
+        .joinToString { "${it.blockEntity.blockPos.toShortString()} removed=${it.blockEntity.isRemoved} " +
+            "unseen=${frame - it.seenFrame} cacheable=${it.cacheable}" }
 
     val bucketCount: Int
         get() = buckets.values.sumOf { it.size }
@@ -443,7 +555,10 @@ object StaticCache {
     fun debugLine(): String {
         val types = CachePolicy.all.joinToString(", ") { "${it.key} ${cachedCount(it.key)}" }
         return "Mobium static cache ${if (active) "on" else "off"}: $types; $lastDrawn drawn, $bucketCount buckets, " +
-            "${lastUploadBytes / 1024} KB uploaded"
+            String.format(
+                Locale.ROOT, "%.1f of %d MB", budget.usedBytes / 1048576.0, budget.budgetBytes / MemoryBudget.BYTES_PER_MB
+            ) +
+            ", ${lastUploadBytes / 1024} KB uploaded"
     }
 
     // endregion
@@ -468,7 +583,23 @@ class CacheEntry(
     @JvmField
     var cacheable = false
 
-    /** The render state vanilla extracted in the frame this object was first seen; captured in [StaticCache.prepare]. */
+    /** Bytes of cached vertex data, counted by the memory budget; 0 while nothing is cached. */
+    @JvmField
+    var bytes = 0L
+
+    /** The frame the object was captured in. */
+    @JvmField
+    var capturedFrame = 0L
+
+    /** Non-zero while the object's picture changed right after its capture: vanilla until this frame. */
+    @JvmField
+    var volatileUntil = 0L
+
+    /** Dropped to stay within the memory budget; vanilla draws the object until the sweep lets it in again. */
+    @JvmField
+    var evicted = false
+
+    /** What vanilla extracted in the frame this object was first seen; captured in [StaticCache.prepare]. */
     @JvmField
     var pendingState: BlockEntityRenderState? = null
 
@@ -493,8 +624,8 @@ class CacheEntry(
     @JvmField
     val stagger = (blockEntity.blockPos.asLong() * -7046029254386353131L ushr 57)
 
-    fun matches(rule: CacheRule, blockEntity: BlockEntity, state: BlockState): Boolean =
-        this.rule === rule && this.blockEntity === blockEntity && blockState === state && rule.sameInputs(this, blockEntity)
+    fun matches(rule: CacheRule, blockEntity: BlockEntity, state: BlockState): Boolean = this.rule === rule &&
+        this.blockEntity === blockEntity && blockState === state && rule.sameInputs(this, blockEntity)
 
     fun markVisible(frame: Long) {
         for (i in parts.indices) {

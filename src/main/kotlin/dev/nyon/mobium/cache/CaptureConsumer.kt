@@ -52,7 +52,9 @@ object CaptureConsumer {
                     val copy = MemoryUtil.memAlloc(source.remaining())
                     MemoryUtil.memCopy(source, copy)
                     val state = mesh.drawState()
-                    meshes += CapturedMesh(renderType, copy, state.vertexCount(), state.format(), state.primitiveTopology())
+                    meshes += CapturedMesh(
+                        renderType, copy, state.vertexCount(), state.format(), state.primitiveTopology()
+                    )
                 }
             }
         } catch (e: Throwable) {

@@ -52,7 +52,7 @@ class MobiumSettingsScreen(parent: Screen) :
         list.addSmall(toggle("mobium.settings.module_enabled", cache::enabled), memoryBudget(cache))
         val types = cache.types
         val switches = types.switches().map { (key, property) -> toggle("mobium.settings.type.$key", property) }
-        list.addSmall(*(switches + toggle("mobium.settings.prototype", cache::prototype)).toTypedArray())
+        list.addSmall(*switches.toTypedArray())
 
         list.addHeader(Component.translatable("mobium.module.part_transform"))
         list.addBig(toggle("mobium.settings.module_enabled", draft.parts::enabled))
