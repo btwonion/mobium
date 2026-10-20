@@ -13,22 +13,17 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub, one stacked PR per milestone:
-  - #1 M0, merged into `main` with a merge commit;
-  - #2 M1, base `main`;
-  - #3 M2, base `m1-vanilla-recon`;
-  - #4 M3, base `m2-instrumentation`; also carries the 19 Oct benchmark results, the harness fixes and the Gate A
-    decision, because the suite and Gate A tooling live on this branch;
-  - #5 M4, base `m3-chest-prototype`.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#5 (M0–M4) were merged on 20 Oct 2026, but only #1 and #2 into
+  `main`: the stacked PRs #3–#5 were still based on the previous milestone's branch and were merged into it. So `main`
+  has M0–M1 only, and everything up to M4 (plus the self-check commit made after the merge) is on `m4-core`, which
+  merges into `main` cleanly. #6 (`m4-core` → `main`) brings it over; merging is Anton's call.
 
-  Merge in order with merge commits, not squash, so the stack stays intact. After a merge, retarget the next PR to
-  `main` (`gh pr edit <n> --base main`); retargeting does not trigger CI, a push or a close/reopen does. Merging is
-  Anton's call.
+  From M5 on: branch from `main` after #6 is merged and open one PR per milestone against `main`. If PRs ever stack
+  again, retarget the next one to `main` right after a merge (`gh pr edit <n> --base main`), before merging it.
 - **CI:** the first runs hung in the Fabric gametests, because Loom's own `xvfb-run` uses an 8-bit screen without
   GLX. Fixed in #2 (commit `52eb0d8`: Loom's wrapper off, a 24-bit `xvfb-run` in the workflow, 45-minute job
-  timeout) and merged up into #3 and #4; `main` gets it when #2 is merged. If CI hangs or fails again, read the job log
-  first (`gh run view --log`).
-- **Done:** M0–M2; M3 with **Gate A passed (1.53×)**, see §M3 and `docs/benchmarks.md`; the code of M4.
+  timeout), now on `main`. If CI hangs or fails again, read the job log first (`gh run view --log`).
+- **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`.
 - **Waiting for Anton:** before Gate B, refresh the instances (below) and record a full round, every setup's suite
   plus `/mobium gatea`, on the external 1920×1080 monitor, on mains power. The M4 check on both loaders was done with
   the self-check (`python3 scripts/self_check.py`, see §M4); extend its scenario for every rendering PR.
