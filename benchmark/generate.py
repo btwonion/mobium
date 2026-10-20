@@ -298,6 +298,51 @@ GALLERY_SHELVES = [
 ]
 
 
+GALLERY_TAG = "mobium_gallery"
+
+GALLERY_FRAMES = [
+    # (x offset, height above the ground, entity type, extra NBT, name); frames hang on the wall's north face
+    (9, 2, "item_frame", 'Item:{id:"minecraft:diamond",count:1}', "frame_plain"),
+    (10, 2, "item_frame", 'Item:{id:"minecraft:compass",count:1}', "frame_compass"),
+    (11, 2, "item_frame", "", "frame_map"),  # gets an exploration map below: vanilla (maps are translucent)
+    (12, 2, "item_frame", 'Item:{id:"minecraft:iron_sword",count:1},ItemRotation:3b', "frame_rotated"),
+    (9, 1, "item_frame", 'Item:{id:"minecraft:emerald",count:1},Invisible:1b', "frame_invisible"),
+    (10, 1, "item_frame", "", "frame_empty"),
+    (11, 1, "glow_item_frame", 'Item:{id:"minecraft:apple",count:1}', "frame_glow"),
+]
+
+GALLERY_STANDS = [
+    # (x offset, extra NBT, name); the last three stay vanilla: armor (its layers are drawn in submit orders, one after
+    # another), a name tag, a glowing outline
+    (-14, "ShowArms:1b", "stand_plain"),
+    (-13, 'ShowArms:1b,Pose:{Head:[0f,20f,0f],RightArm:[-60f,0f,10f]},'
+          'equipment:{mainhand:{id:"minecraft:iron_sword",count:1}}', "stand_holding"),
+    (-12, 'Small:1b,equipment:{head:{id:"minecraft:skeleton_skull",count:1}}', "stand_small"),
+    (-11, 'ShowArms:1b,equipment:{head:{id:"minecraft:diamond_helmet",count:1},'
+          'chest:{id:"minecraft:iron_chestplate",count:1},'
+          'feet:{id:"minecraft:leather_boots",count:1,components:{"minecraft:dyed_color":11546150}}}', "stand_armored"),
+    (-10, 'CustomName:"Stand",CustomNameVisible:1b', "stand_named"),
+    (-9, "Glowing:1b", "stand_glowing"),
+]
+
+GALLERY_DISPLAYS = [
+    # (x offset, entity type, extra NBT, name); floating above the chest row. Billboard "center" turns with the
+    # camera and stays vanilla; stained glass is translucent and stays vanilla.
+    (-6, "block_display", f'block_state:"minecraft:stone_bricks",transformation:{{left_rotation:{IDENTITY},'
+                          f'right_rotation:{IDENTITY},translation:[0f,0f,0f],scale:[0.9f,0.9f,0.9f]}}', "display_block"),
+    (-4, "block_display", f'block_state:"minecraft:oak_planks",transformation:{{left_rotation:{IDENTITY},'
+                          f'right_rotation:{Y45},translation:[0f,0f,0f],scale:[0.9f,0.9f,0.9f]}}', "display_turned"),
+    (-2, "item_display", 'item:{id:"minecraft:diamond_sword",count:1}', "display_sword"),
+    (0, "item_display", 'item:{id:"minecraft:apple",count:1},billboard:"center"', "display_billboard"),
+    (2, "block_display", 'block_state:"minecraft:white_stained_glass"', "display_glass"),
+    (4, "item_display", 'item:{id:"minecraft:bread",count:1}', "display_bread"),
+]
+
+
+def gallery_tags(name: str) -> str:
+    return f'Tags:["{TAG}","{GALLERY_TAG}","{GALLERY_TAG}_{name}"]'
+
+
 def cache_gallery() -> list[str]:
     """Every type the static cache handles, with the variants its rules tell apart, close to the camera."""
     lines = []
@@ -335,6 +380,32 @@ def cache_gallery() -> list[str]:
             f"setblock {X0 + offset} {GROUND + 3} {Z0 + 12} minecraft:spruce_hanging_sign[rotation=8,attached=true]"
             f'{{front_text:{{messages:["Hanging","sign","{index}",""]{glowing}}},'
             f'back_text:{{messages:["Back","text","",""]}}}} strict'
+        )
+    # Entities. Item frames on a wall to the right of the sign wall.
+    lines.append(f"fill {X0 + 8} {GROUND} {Z0 + 13} {X0 + 13} {GROUND + 3} {Z0 + 13} minecraft:stone_bricks strict")
+    for offset, height, kind, extra, name in GALLERY_FRAMES:
+        x, y, z = X0 + offset, GROUND + height, Z0 + 12
+        item = f",{extra}" if extra else ""
+        lines.append(
+            f"summon minecraft:{kind} {center(x)} {center(y)} {center(z)} "
+            f"{{Pos:[{center(x)}d,{center(y)}d,{center(z)}d],Facing:2b,Fixed:1b,block_pos:[I;{x},{y},{z}],"
+            f"{gallery_tags(name)}{item}}}"
+        )
+    lines.append(
+        f"execute as @e[type=minecraft:item_frame,tag={GALLERY_TAG}_frame_map] "
+        f"run loot replace entity @s contents loot {NAMESPACE}:map"
+    )
+    # Armor stands to the left of the sign wall, in front of a wall of their own, facing the camera.
+    lines.append(f"fill {X0 - 14} {GROUND} {Z0 + 13} {X0 - 10} {GROUND + 3} {Z0 + 13} minecraft:stone_bricks strict")
+    for offset, extra, name in GALLERY_STANDS:
+        lines.append(
+            f"summon minecraft:armor_stand {center(X0 + offset)} {GROUND} {center(Z0 + 12)} "
+            f"{{Rotation:[180f,0f],{gallery_tags(name)},{extra}}}"
+        )
+    # Display entities floating above the chest row.
+    for offset, kind, extra, name in GALLERY_DISPLAYS:
+        lines.append(
+            f"summon minecraft:{kind} {X0 + offset} {GROUND + 4.5} {Z0 + 9} {{{gallery_tags(name)},{extra}}}"
         )
     return lines
 

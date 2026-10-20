@@ -37,6 +37,8 @@ only) then walks through the checks inside the game: screens opened the loader's
 and in the benchmark world key presses, commands and pixel comparisons against vanilla. It writes
 `<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched, and closes the game.
 Extend the scenario for every rendering PR, run it on both loaders, and read the screenshots before asking Anton.
+`--mode gallery` runs only the `cache_gallery` part (every cached type, effects, shader pack, Fresh Animations) and is
+the quick loop while working on the static cache; failed count checks name why an object was not cached.
 
 In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium suite` runs every scene of a setup
 and `/mobium gatea` runs Gate A unattended (`/mobium stop` aborts), scenes come from the

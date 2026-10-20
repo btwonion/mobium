@@ -6,6 +6,9 @@ import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.MobiumKeys
 import dev.nyon.mobium.bench.BenchSuite
 import dev.nyon.mobium.bench.SceneBuilder
+import dev.nyon.mobium.cache.ArmorStands
+import dev.nyon.mobium.cache.Displays
+import dev.nyon.mobium.cache.ItemFrames
 import dev.nyon.mobium.cache.Lids
 import dev.nyon.mobium.cache.Pots
 import dev.nyon.mobium.cache.Shelves
@@ -87,8 +90,15 @@ object SelfCheck {
     private const val IRIS_WITHOUT_MOBIUM = "iris-without-mobium"
     private const val PROFILE = "profile"
     private const val GATE_B = "gateb"
+    private const val GALLERY_ONLY = "gallery"
     private const val CHESTS = 1000
     private const val SIGNS = 300
+
+    /**
+     * Cached entities in the gallery (benchmark/generate.py): 6 of 7 item frames (the map stays vanilla), 3 of 6 armor
+     * stands (armor, name tag, glowing stay vanilla), 4 of 6 displays (billboard, stained glass).
+     */
+    private const val GALLERY_ENTITIES = "6 3 4"
 
     // Must match X0 / Z0 / GROUND in benchmark/generate.py.
     private const val X0 = -3840
@@ -126,6 +136,7 @@ object SelfCheck {
             IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
             PROFILE -> profile(minecraft)
             GATE_B -> gateB(minecraft)
+            GALLERY_ONLY -> galleryOnly(minecraft)
             else -> scenario(minecraft)
         }.iterator()
     }
@@ -159,6 +170,10 @@ object SelfCheck {
 
     private fun until(description: String, seconds: Int, condition: () -> Boolean) =
         Wait(description, seconds * TICKS_PER_SECOND, required = true, condition)
+
+    /** Like [until], but a timeout is no failure of its own: a check with details follows. */
+    private fun upTo(description: String, seconds: Int, condition: () -> Boolean) =
+        Wait(description, seconds * TICKS_PER_SECOND, required = false, condition)
 
     private fun check(name: String, passed: Boolean, detail: String = "") {
         if (!passed) failures++
@@ -235,6 +250,21 @@ object SelfCheck {
         applyConfig(saved)
         if (minecraft.level != null) {
             // What the pause menu's "Save and Quit to Title" does.
+            minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+            yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        }
+        finish(minecraft)
+    }
+
+    /** `--mode gallery`: only the world part's gallery checks (cached types, effects, packs), for quick iterations. */
+    private fun galleryOnly(minecraft: Minecraft) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config())
+        inWorld(minecraft, galleryOnly = true)
+        applyConfig(saved)
+        if (minecraft.level != null) {
             minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
             yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
         }
@@ -489,7 +519,7 @@ object SelfCheck {
 
     // region world
 
-    private suspend fun SequenceScope<Wait>.inWorld(minecraft: Minecraft) {
+    private suspend fun SequenceScope<Wait>.inWorld(minecraft: Minecraft, galleryOnly: Boolean = false) {
         minecraft.createWorldOpenFlows().openWorld(WORLD) { }
         yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
         yield(ticks(40))
@@ -503,6 +533,7 @@ object SelfCheck {
 
         if (!buildScene(minecraft, GALLERY)) return
         gallery(minecraft)
+        if (galleryOnly) return
 
         if (!buildScene(minecraft, SCENE)) return
         minecraft.gui.hud.chat.clearMessages(false)
@@ -647,6 +678,14 @@ object SelfCheck {
             "${StaticCache.cachedCount(Pots.key)} ${StaticCache.cachedCount(Signs.key)}"
         check("gallery: chests, skulls, pots, signs cached", counts == "10 7 2 10", "$counts; ${StaticCache.debugLine()}")
         check("gallery: shelves cached", StaticCache.cachedCount(Shelves.key) >= 2, StaticCache.debugLine())
+        // The compass in its frame settles for a moment and may pause on vanilla meanwhile.
+        yield(upTo("gallery: entities cached", 30) { entityCounts() == GALLERY_ENTITIES })
+        check(
+            "gallery: item frames, armor stands, displays cached",
+            entityCounts() == GALLERY_ENTITIES,
+            "${entityCounts()}; ${StaticCache.debugLine()}; " + StaticCache.describeEntries(ItemFrames.key, 7) + "; " +
+                StaticCache.describeEntries(ArmorStands.key, 5) + "; " + StaticCache.describeEntries(Displays.key, 6)
+        )
         compareView(minecraft, "gallery") { }
 
         val singleChest = BlockPos(X0 - 8, GROUND, Z0 + 9)
@@ -667,6 +706,21 @@ object SelfCheck {
         effect(minecraft, "gallery: chest turned", 1) {
             serverCommand(minecraft, "setblock ${X0 - 3} $GROUND ${Z0 + 9} minecraft:trapped_chest[facing=east]")
         }
+        // Entities whose picture changes while the cache is warm: captured again from the next frame.
+        effect(minecraft, "gallery: item frame turned", 1) {
+            serverCommand(minecraft, "data merge entity @e[tag=mobium_gallery_frame_plain,limit=1] {ItemRotation:2b}")
+        }
+        effect(minecraft, "gallery: item frame item swapped", 1) {
+            serverCommand(minecraft, "data merge entity @e[tag=mobium_gallery_frame_glow,limit=1] {Item:{id:\"minecraft:carrot\",count:1}}")
+        }
+        effect(minecraft, "gallery: display moved", 1) {
+            serverCommand(minecraft, "execute as @e[tag=mobium_gallery_display_block,limit=1] at @s run tp @s ~0.5 ~ ~")
+        }
+        effect(minecraft, "gallery: armor stand pose changed", 1) {
+            serverCommand(minecraft, "data merge entity @e[tag=mobium_gallery_stand_holding,limit=1] {Pose:{Head:[-20f,-30f,0f]}}")
+        }
+        yield(upTo("gallery: entities cached again", 30) { entityCounts() == GALLERY_ENTITIES })
+        check("gallery: changed entities cached again", entityCounts() == GALLERY_ENTITIES, "${entityCounts()}; ${StaticCache.debugLine()}")
 
         if (Compat.isLoaded(CompatMod.IRIS)) {
             /*? if fabric {*/
@@ -679,6 +733,10 @@ object SelfCheck {
         }
         if (Compat.isLoaded(CompatMod.EMF)) freshAnimations(minecraft)
     }
+
+    /** Cached item frames, armor stands and displays, as "frames stands displays". */
+    private fun entityCounts(): String = "${StaticCache.cachedCount(ItemFrames.key)} " +
+        "${StaticCache.cachedCount(ArmorStands.key)} ${StaticCache.cachedCount(Displays.key)}"
 
     /**
      * With a Fresh Animations zip in `resourcepacks/`: EMF replaces head models with the pack's, the cache captures
@@ -728,6 +786,8 @@ object SelfCheck {
         val counts = "${StaticCache.cachedCount(Lids.key)} ${StaticCache.cachedCount(Skulls.key)} " +
             "${StaticCache.cachedCount(Pots.key)} ${StaticCache.cachedCount(Signs.key)}"
         check("shader pack: cache active", StaticCache.active && counts == "10 7 2 10", "$pack; $counts; ${StaticCache.debugLine()}")
+        yield(upTo("shader pack: entities cached", 30) { entityCounts() == GALLERY_ENTITIES })
+        check("shader pack: entities cached", entityCounts() == GALLERY_ENTITIES, "${entityCounts()}; ${StaticCache.debugLine()}")
         val sizes = StaticCache.vertexSizes()
         check("shader pack: captures use Iris's vertex formats", sizes.isNotEmpty() && 36 !in sizes && 28 !in sizes, "vertex sizes $sizes")
         comparePair(minecraft, "shader pack: gallery", "shaderpack-gallery")

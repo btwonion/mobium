@@ -39,9 +39,8 @@ class GateB(
         /** Null while one of the four runs is missing or a frame time is not positive. */
         fun of(storage: Run?, storageNoDraw: Run?, control: Run?, baseline: Run?): GateB? {
             if (storage == null || storageNoDraw == null || control == null || baseline == null) return null
-            if (storage.frameMs <= 0.0 || storageNoDraw.frameMs <= 0.0 || control.frameMs <= 0.0 || baseline.frameMs <= 0.0) {
-                return null
-            }
+            val runs = arrayOf(storage, storageNoDraw, control, baseline)
+            if (runs.any { it.frameMs <= 0.0 }) return null
             val drawCalls = maxOf(0.0, storage.drawMs - storageNoDraw.drawMs)
             return GateB(
                 cost = (storageNoDraw.frameMs + drawCalls) / control.frameMs,
