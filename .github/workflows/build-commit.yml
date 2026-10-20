@@ -57,13 +57,25 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
       # Fabric client gametests run inside `check`; they need a display, provided by xvfb with Mesa's software OpenGL.
-      # The screen must be 24-bit: on xvfb-run's default 8-bit screen Minecraft finds no GLX visual and hangs on its
-      # "no graphics backend" screen.
+      # Minecraft asks SDL for an OpenGL 3.3 core context with an sRGB-capable framebuffer. Xvfb's GLX offers no such
+      # visual ("Couldn't find matching GLX visual"; the game then waits on its "no graphics backend" screen until the
+      # job times out), so SDL is told to use Mesa's EGL on X11 instead, which supports sRGB surfaces.
       - name: Install xvfb and Mesa
         if: matrix.loader == 'fabric'
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0 mesa-utils
+      - name: Show the virtual display's OpenGL
+        if: matrix.loader == 'fabric'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          xvfb-run -a -s "-screen 0 1920x1080x24" eglinfo -B -p x11 || true
+          xvfb-run -a -s "-screen 0 1920x1080x24" glxinfo -B || true
       - name: Build, unit tests and client gametests
         if: matrix.loader == 'fabric'
+        timeout-minutes: 25
+        env:
+          SDL_VIDEO_X11_FORCE_EGL: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build --stacktrace
       - name: Build and unit tests
         if: matrix.loader != 'fabric'
