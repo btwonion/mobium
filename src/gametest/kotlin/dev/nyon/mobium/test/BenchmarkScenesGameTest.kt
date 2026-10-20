@@ -4,7 +4,9 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext
 import dev.nyon.mobium.bench.BenchSuite
-import dev.nyon.mobium.cache.ChestPrototype
+import dev.nyon.mobium.cache.Lids
+import dev.nyon.mobium.cache.Signs
+import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
@@ -64,7 +66,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 if (scene == "map_wall") context.waitFor({ mapsSynced(it) }, MAP_SYNC_TIMEOUT_TICKS)
                 context.waitTicks(SETTLE_TICKS)
                 val vanilla = context.takeScreenshot("scene_$scene")
-                if (scene == "storage_room") checkChestPrototype(context, vanilla)
+                if (scene == "storage_room") checkStaticCache(context, vanilla)
             }
 
             checkBenchCommand(context)
@@ -89,10 +91,11 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
     }
 
     /**
-     * M3: switches the chest prototype on in `storage_room`, checks that it caches and draws all chests, and compares
-     * the picture with the vanilla screenshot taken just before. Also logs a short benchmark with and without it.
+     * Switches the static cache on in `storage_room`, checks that it caches and draws all chests and signs, and
+     * compares the picture with the vanilla screenshot taken just before: no pixel may change beyond isolated edge
+     * pixels. Also logs a short benchmark with and without it.
      */
-    private fun checkChestPrototype(context: ClientGameTestContext, vanilla: Path) {
+    private fun checkStaticCache(context: ClientGameTestContext, vanilla: Path) {
         // The same path as the settings screen: change the config, then re-resolve the module states.
         context.runOnClient<RuntimeException> {
             config.cache.prototype = true
@@ -100,17 +103,18 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
         context.waitTicks(SETTLE_TICKS)
         context.runOnClient<RuntimeException> {
-            check(ChestPrototype.active) {
+            check(StaticCache.active) {
                 "The chest prototype did not start: ${ModuleStates.status(Module.STATIC_CACHE).describe()}"
             }
-            check(ChestPrototype.cachedCount == CHESTS) { "Expected $CHESTS cached chests, got ${ChestPrototype.cachedCount}" }
-            check(ChestPrototype.lastDrawn == CHESTS) { "Expected $CHESTS drawn chests, got ${ChestPrototype.lastDrawn}" }
+            check(StaticCache.cachedCount(Lids.key) == CHESTS) { "Expected $CHESTS cached chests: ${StaticCache.debugLine()}" }
+            check(StaticCache.cachedCount(Signs.key) == SIGNS) { "Expected $SIGNS cached signs: ${StaticCache.debugLine()}" }
+            check(StaticCache.lastDrawn >= CHESTS) { "Expected at least $CHESTS drawn objects, got ${StaticCache.lastDrawn}" }
         }
-        val cached = context.takeScreenshot("scene_storage_room_chest_prototype")
+        val cached = context.takeScreenshot("scene_storage_room_static_cache")
         ScreenshotDiff.compare(vanilla, cached).also { diff ->
-            LOGGER.info("Chest prototype screenshot diff: {}", diff)
-            check(diff.differingFraction <= MAX_DIFFERING_FRACTION) {
-                "The chest prototype changes the picture: $diff (see ${diff.diffImage})"
+            LOGGER.info("Static cache screenshot diff: {}", diff)
+            check(diff.changedFraction <= MAX_DIFFERING_FRACTION) {
+                "The static cache changes the picture: $diff (see ${diff.diffImage})"
             }
         }
 
@@ -121,11 +125,11 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
         val gate = runPlan(context, "mobium gatea $BENCH_SECONDS 1", "gatea-")
         val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
-        check(setups.size == 2 && setups.count { it.endsWith("+chestcache") } == 1) { "Unexpected Gate A rows: $gate" }
+        check(setups.size == 2 && setups.count { it.endsWith("+cache") } == 1) { "Unexpected Gate A rows: $gate" }
         val speedUp = gate.single { it.startsWith("# gate_a_speedup") }.substringAfter(',').toDouble()
-        LOGGER.info("storage_room first look (/mobium gatea {} 1): {}x faster with the chest prototype", BENCH_SECONDS, speedUp)
+        LOGGER.info("storage_room first look (/mobium gatea {} 1): {}x faster with the static cache", BENCH_SECONDS, speedUp)
         context.runOnClient<RuntimeException> {
-            check(!ChestPrototype.active && !config.cache.prototype) { "/mobium gatea did not restore the prototype state" }
+            check(!StaticCache.active && !config.cache.prototype) { "/mobium gatea did not restore the prototype state" }
         }
     }
 
@@ -268,9 +272,10 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         const val BENCH_SECONDS = 5
         const val MAP_SYNC_TIMEOUT_TICKS = 600
         const val CHESTS = 1000
+        const val SIGNS = 300
         const val PLAN_TIMEOUT_TICKS = 20 * 120
 
-        // Cached chests are drawn from section-local vertices with the section origin in the model-view matrix, so
+        // Cached objects are drawn from camera-relative vertices computed as local position + (origin - camera), so
         // positions differ from vanilla's by float rounding at most; allow a handful of edge pixels.
         const val MAX_DIFFERING_FRACTION = 0.001
 

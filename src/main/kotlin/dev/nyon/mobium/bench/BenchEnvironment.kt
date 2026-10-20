@@ -1,6 +1,6 @@
 package dev.nyon.mobium.bench
 
-import dev.nyon.mobium.cache.ChestPrototype
+import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
 import dev.nyon.mobium.core.IrisCompat
@@ -48,7 +48,7 @@ object BenchEnvironment {
     fun detectSetup(): String {
         val parts = ArrayList<String>()
         parts += setupWithoutMobium()
-        if (ChestPrototype.active) parts += "chestcache"
+        if (StaticCache.active) parts += "cache"
         return parts.joinToString("+")
     }
 

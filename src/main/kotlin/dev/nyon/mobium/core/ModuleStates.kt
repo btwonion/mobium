@@ -2,7 +2,7 @@ package dev.nyon.mobium.core
 
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.bench.BenchSuite
-import dev.nyon.mobium.cache.ChestPrototype
+import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.debug.AbToggle
 
@@ -60,10 +60,10 @@ object ModuleStates {
         if (shaderPackInUse() != shaderPack) refresh(if (shaderPack) "shader pack off" else "shader pack on")
     }
 
-    /** Hands the states to the module code. While a benchmark plan runs, it decides the chest prototype itself. */
+    /** Hands the states to the module code. While a benchmark plan runs, it decides the static cache itself. */
     private fun apply() {
         if (BenchSuite.isActive) return
-        ChestPrototype.setActive(isActive(Module.STATIC_CACHE) && ChestPrototype.chestsAllowed())
+        StaticCache.setActive(isActive(Module.STATIC_CACHE) && StaticCache.anyTypeAllowed())
     }
 
     private fun shaderPackInUse(): Boolean = Compat.isLoaded(CompatMod.IRIS) && IrisCompat.isShaderPackInUse()

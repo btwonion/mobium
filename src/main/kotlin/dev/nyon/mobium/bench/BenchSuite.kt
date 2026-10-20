@@ -1,7 +1,7 @@
 package dev.nyon.mobium.bench
 
 import dev.nyon.mobium.Mobium
-import dev.nyon.mobium.cache.ChestPrototype
+import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
@@ -169,8 +169,8 @@ object BenchSuite {
     private fun beginStep() {
         val step = steps[index]
         var toggled = false
-        if (step.prototype != null && step.prototype != ChestPrototype.active) {
-            ChestPrototype.setActive(step.prototype)
+        if (step.prototype != null && step.prototype != StaticCache.active) {
+            StaticCache.setActive(step.prototype)
             toggled = true
         }
         if (step.scene != builtScene) {
@@ -217,7 +217,7 @@ object BenchSuite {
         state = State.IDLE
         if (FrameRecorder.isActive) FrameRecorder.stop()
         if (gateA) {
-            ChestPrototype.setActive(false)
+            StaticCache.setActive(false)
             restorePrototype()
         }
         if (aborted) {
@@ -247,8 +247,8 @@ object BenchSuite {
 
     /** Gate A's speed-up from the medians, or null while one of the two sides has no run yet. */
     private fun gateASpeedUp(medians: List<Medians>): Double? {
-        val off = medians.firstOrNull { !it.setup.endsWith("+chestcache") }?.avgMs
-        val on = medians.firstOrNull { it.setup.endsWith("+chestcache") }?.avgMs
+        val off = medians.firstOrNull { !it.setup.endsWith("+cache") }?.avgMs
+        val on = medians.firstOrNull { it.setup.endsWith("+cache") }?.avgMs
         return if (off != null && on != null && on > 0.0) off / on else null
     }
 
