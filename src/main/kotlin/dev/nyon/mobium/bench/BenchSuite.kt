@@ -11,6 +11,7 @@ import net.minecraft.server.MinecraftServer
 import net.minecraft.world.scores.ScoreHolder
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -25,8 +26,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   speed-up against the 1.5× target of Gate A.
  *
  * Scenes are built through the integrated server (singleplayer only), so the world does not need commands enabled.
- * At the end the medians per scene and setup are printed and written to `mobium-bench/suite-<timestamp>.csv`; every
- * single run is also in `summary.csv` as usual. Ticked once per client tick on the render thread.
+ * The medians per scene and setup are rewritten to `mobium-bench/suite-<timestamp>.csv` after every run, so quitting
+ * halfway keeps what was measured, and printed at the end; every single run is also in `summary.csv` as usual. A plan
+ * does not start when the instance declares another setup than the one that is active ([BenchEnvironment]). Ticked
+ * once per client tick on the render thread.
  */
 object BenchSuite {
     const val DEFAULT_SECONDS = 60
@@ -65,6 +68,7 @@ object BenchSuite {
     private var settleTimeout = 0L
     private val missingPack = AtomicBoolean(false)
     private val results = ArrayList<BenchResult>()
+    private var stamp = ""
 
     val isActive: Boolean
         get() = state != State.IDLE
@@ -99,6 +103,9 @@ object BenchSuite {
     private fun start(plan: List<Step>, seconds: Int, gateA: Boolean): Component? {
         if (isActive || FrameRecorder.isActive) return Component.translatable("mobium.bench.busy")
         if (Minecraft.getInstance().singleplayerServer == null) return Component.translatable("mobium.suite.singleplayer")
+        BenchEnvironment.setupMismatch()?.let { return it }
+        BenchEnvironment.warnings(BenchEnvironment.snapshot()).forEach(::chat)
+        stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
 
         steps.clear()
         steps += plan
@@ -150,7 +157,10 @@ object BenchSuite {
                 }
             }
             State.RECORDING -> if (!FrameRecorder.isActive) {
-                if (FrameRecorder.completedRuns > runsBefore) FrameRecorder.lastResult?.let(results::add)
+                if (FrameRecorder.completedRuns > runsBefore) {
+                    FrameRecorder.lastResult?.let(results::add)
+                    writeMedians()
+                }
                 index++
                 if (index >= steps.size) finishPlan(aborted = false) else beginStep()
             }
@@ -226,7 +236,7 @@ object BenchSuite {
     private fun startRun() {
         waitForQuiet = false
         runsBefore = FrameRecorder.completedRuns
-        if (!FrameRecorder.start(steps[index].scene, seconds, null)) {
+        if (!FrameRecorder.start(steps[index].scene, seconds, null, quiet = true)) {
             fail(Component.translatable("mobium.bench.busy"))
             return
         }
@@ -253,58 +263,85 @@ object BenchSuite {
         report()
     }
 
-    private fun report() {
+    /** Median of every run of one scene and setup. */
+    private class Medians(val scene: String, val setup: String, val runs: Int, val avgMs: Double, val avgFps: Double, val low1Fps: Double)
+
+    private fun medians(): List<Medians> {
         val groups = LinkedHashMap<Pair<String, String>, MutableList<BenchResult>>()
         for (result in results) groups.getOrPut(result.scene to result.setup) { ArrayList() } += result
-
-        val header = buildString {
-            append("scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms")
-            for (name in Sections.NAMES) append(",${name}_ms")
-            append('\n')
+        return groups.map { (key, runs) ->
+            Medians(
+                key.first,
+                key.second,
+                runs.size,
+                FrameStats.median(DoubleArray(runs.size) { runs[it].summary.avgMs }),
+                FrameStats.median(DoubleArray(runs.size) { runs[it].summary.avgFps }),
+                FrameStats.median(DoubleArray(runs.size) { runs[it].summary.low1Fps })
+            )
         }
-        val rows = StringBuilder(header)
-        val medianMs = HashMap<Pair<String, String>, Double>()
+    }
+
+    /** Gate A's speed-up from the medians, or null while one of the two sides has no run yet. */
+    private fun gateASpeedUp(medians: List<Medians>): Double? {
+        val off = medians.firstOrNull { !it.setup.endsWith("+chestcache") }?.avgMs
+        val on = medians.firstOrNull { it.setup.endsWith("+chestcache") }?.avgMs
+        return if (off != null && on != null && on > 0.0) off / on else null
+    }
+
+    /** Rewrites `suite-<stamp>.csv` (or `gatea-<stamp>.csv`) with the medians of the runs so far; null on failure. */
+    private fun writeMedians(): Path? {
+        val rows = StringBuilder()
+        rows.append("scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms")
+        for (name in Sections.NAMES) rows.append(",${name}_ms")
+        rows.append('\n')
+        val groups = LinkedHashMap<Pair<String, String>, MutableList<BenchResult>>()
+        for (result in results) groups.getOrPut(result.scene to result.setup) { ArrayList() } += result
         for ((key, runs) in groups) {
             val avgMs = FrameStats.median(DoubleArray(runs.size) { runs[it].summary.avgMs })
             val avgFps = FrameStats.median(DoubleArray(runs.size) { runs[it].summary.avgFps })
             val low1 = FrameStats.median(DoubleArray(runs.size) { runs[it].summary.low1Fps })
             val p95 = FrameStats.median(DoubleArray(runs.size) { runs[it].summary.p95Ms })
-            medianMs[key] = avgMs
             rows.append("${key.first},${key.second},${runs.size},${fmt(avgMs, 4)},${fmt(avgFps, 2)},${fmt(low1, 2)},${fmt(p95, 4)}")
             for (section in 0 until Sections.COUNT) {
                 rows.append(',').append(fmt(FrameStats.median(DoubleArray(runs.size) { runs[it].sectionMeansMs[section] }), 4))
             }
             rows.append('\n')
+        }
+        if (gateA) gateASpeedUp(medians())?.let { rows.append("# gate_a_speedup,${fmt(it, 3)}\n") }
+
+        return try {
+            val directory = Minecraft.getInstance().gameDirectory.toPath().resolve("mobium-bench")
+            Files.createDirectories(directory)
+            val file = directory.resolve(if (gateA) "gatea-$stamp.csv" else "suite-$stamp.csv")
+            Files.writeString(file, rows)
+            file
+        } catch (e: IOException) {
+            Mobium.LOGGER.error("Could not write the suite medians", e)
+            chat(Component.translatable("mobium.bench.failed", e.message ?: e.javaClass.simpleName))
+            null
+        }
+    }
+
+    private fun report() {
+        val medians = medians()
+        for (median in medians) {
             chat(
                 Component.translatable(
-                    "mobium.suite.result", key.first, key.second, fmt(avgMs, 2), fmt(avgFps, 1), fmt(low1, 1), runs.size
+                    "mobium.suite.result",
+                    median.scene, median.setup, fmt(median.avgMs, 2), fmt(median.avgFps, 1), fmt(median.low1Fps, 1), median.runs
                 )
             )
         }
 
         if (gateA) {
-            val off = medianMs.entries.firstOrNull { !it.key.second.endsWith("+chestcache") }?.value
-            val on = medianMs.entries.firstOrNull { it.key.second.endsWith("+chestcache") }?.value
-            if (off != null && on != null && on > 0.0) {
-                val speedUp = off / on
+            gateASpeedUp(medians)?.let { speedUp ->
                 val verdict = if (speedUp >= GATE_A_TARGET) "mobium.suite.gatea_pass" else "mobium.suite.gatea_below"
                 chat(Component.translatable("mobium.suite.gatea_result", fmt(speedUp, 2), fmt(GATE_A_TARGET, 1), Component.translatable(verdict)))
-                rows.append("# gate_a_speedup,${fmt(speedUp, 3)}\n")
                 Mobium.LOGGER.info("Gate A: {}x faster with the chest prototype (target {}x)", fmt(speedUp, 2), GATE_A_TARGET)
             }
         }
 
-        try {
-            val directory = Minecraft.getInstance().gameDirectory.toPath().resolve("mobium-bench")
-            Files.createDirectories(directory)
-            val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
-            val file = directory.resolve(if (gateA) "gatea-$stamp.csv" else "suite-$stamp.csv")
-            Files.writeString(file, rows)
-            chat(Component.translatable("mobium.suite.saved", file.toString()))
-        } catch (e: IOException) {
-            Mobium.LOGGER.error("Could not write the suite medians", e)
-            chat(Component.translatable("mobium.bench.failed", e.message ?: e.javaClass.simpleName))
-        }
+        writeMedians()?.let { chat(Component.translatable("mobium.suite.saved", it.toString())) }
     }
 
     private fun minutes(steps: Int, scenes: Int): Int {

@@ -1,11 +1,8 @@
 package dev.nyon.mobium.bench
 
 import dev.nyon.mobium.Mobium
-import dev.nyon.mobium.cache.ChestPrototype
 import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
-import dev.nyon.mobium.core.CompatMod
-import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.debug.Sections
 import net.minecraft.SharedConstants
 import net.minecraft.client.Minecraft
@@ -24,7 +21,7 @@ import java.util.Locale
  * `<game dir>/mobium-bench/<scene>-<setup>-<timestamp>.csv`, appends one row to `mobium-bench/summary.csv` and prints a
  * summary in chat. A run is [WARMUP_SECONDS] of warm-up followed by the requested number of seconds; the HUD is hidden
  * while it runs. [onFrameStart] is called once per game-loop iteration on the render thread and does not allocate
- * unless a run outgrows its preallocated arrays.
+ * unless a run outgrows its preallocated arrays; once per second it reads the GPU clock from sysfs (a few bytes).
  */
 /** The result of one finished benchmark run. */
 class BenchResult(
@@ -47,6 +44,12 @@ object FrameRecorder {
     private var phaseEndNanos = 0L
     private var lastFrameStart = 0L
     private var hudToggled = false
+
+    private var environment: BenchEnvironment.Snapshot? = null
+    private var gpuClockFile: Path? = null
+    private var nextClockSample = 0L
+    private var clockSumMhz = 0L
+    private var clockSamples = 0
 
     private var frames = 0
     private var frameNanos = LongArray(0)
@@ -83,15 +86,25 @@ object FrameRecorder {
         }
 
         record(now - previous)
+        if (now >= nextClockSample) sampleClock(now)
         if (now >= phaseEndNanos) finish()
     }
 
-    /** Starts a run; returns false if one is already running. */
-    fun start(scene: String, seconds: Int, setup: String?): Boolean {
+    /**
+     * Starts a run; returns false if one is already running. [quiet] skips the protocol warnings, which
+     * [BenchSuite] prints once for the whole plan instead of once per run.
+     */
+    fun start(scene: String, seconds: Int, setup: String?, quiet: Boolean = false): Boolean {
         if (isActive) return false
         this.scene = sanitize(scene)
-        this.setup = sanitize(setup ?: detectSetup())
+        this.setup = sanitize(setup ?: BenchEnvironment.detectSetup())
         this.seconds = seconds
+        val environment = BenchEnvironment.snapshot()
+        this.environment = environment
+        gpuClockFile = MachineState.SYSTEM.gpuClockFile()
+        nextClockSample = 0L
+        clockSumMhz = 0L
+        clockSamples = 0
 
         val capacity = seconds * PREALLOCATED_FPS + 256
         frames = 0
@@ -107,6 +120,7 @@ object FrameRecorder {
         if (hudToggled) hud.toggle()
 
         chat(Component.translatable("mobium.bench.started", this.scene, this.setup, WARMUP_SECONDS, seconds))
+        if (!quiet) BenchEnvironment.warnings(environment).forEach(::chat)
         val options = Minecraft.getInstance().options
         if (options.enableVsync().get() || options.framerateLimit().get() < Options.UNLIMITED_FRAMERATE_CUTOFF) {
             chat(Component.translatable("mobium.bench.capped", options.framerateLimit().get(), options.enableVsync().get()))
@@ -130,6 +144,19 @@ object FrameRecorder {
         entityCounts[frames] = Sections.lastEntities
         blockEntityCounts[frames] = Sections.lastBlockEntities
         frames++
+    }
+
+    /** Mean of these samples goes into `summary.csv` as `gpu_mhz`; 0 means the GPU was idle at that instant. */
+    private fun sampleClock(now: Long) {
+        nextClockSample = now + NANOS_PER_SECOND
+        val file = gpuClockFile ?: return
+        val mhz = MachineState.readClock(file)
+        if (mhz < 0) {
+            gpuClockFile = null
+            return
+        }
+        clockSumMhz += mhz
+        clockSamples++
     }
 
     private fun grow() {
@@ -227,7 +254,8 @@ object FrameRecorder {
         val header = buildString {
             append("timestamp,scene,setup,seconds,frames,avg_fps,low1_fps,avg_ms,p95_ms")
             for (name in Sections.NAMES) append(",${name}_ms")
-            append(",entities,block_entities,framerate_limit,vsync,minecraft,mobium,loader,backend,gpu\n")
+            append(",entities,block_entities,framerate_limit,vsync,minecraft,mobium,loader,backend,gpu")
+            append(",display,resolution,power,power_profile,gpu_mhz\n")
         }
         val capabilities = Capabilities.current
         val row = buildString {
@@ -243,25 +271,18 @@ object FrameRecorder {
             append(",${csv(Compat.modVersion(Mobium.MOD_ID) ?: "")}")
             append(",${Compat.LOADER}")
             append(",${csv(capabilities?.backendName ?: "")}")
-            append(",${csv(capabilities?.deviceName ?: "")}\n")
+            append(",${csv(capabilities?.deviceName ?: "")}")
+            val environment = environment
+            append(",${csv(environment?.display ?: "")},${environment?.resolution ?: ""}")
+            append(",${environment?.power ?: ""},${csv(environment?.powerProfile ?: "")}")
+            append(",${if (clockSamples == 0) "" else (clockSumMhz / clockSamples).toString()}\n")
+        }
+        if (Files.exists(file) && Files.newBufferedReader(file).use { it.readLine() } + "\n" != header) {
+            // Older Mobium versions wrote fewer columns; keep their rows in a file of their own.
+            Files.move(file, file.resolveSibling("summary-before-$stamp.csv"))
         }
         if (Files.notExists(file)) Files.writeString(file, header)
         Files.writeString(file, row, StandardOpenOption.APPEND)
-    }
-
-    /**
-     * The setup name for the file: base renderer, Iris with an active pack, EMF, Fresh Animations if selected, and the
-     * Mobium features that are on.
-     */
-    private fun detectSetup(): String {
-        val parts = ArrayList<String>()
-        parts += if (Compat.isLoaded(CompatMod.SODIUM)) "sodium" else "vanilla"
-        if (Compat.isLoaded(CompatMod.IRIS) && IrisCompat.isShaderPackInUse()) parts += "iris"
-        if (Compat.isLoaded(CompatMod.EMF)) parts += "emf"
-        val packs = Minecraft.getInstance().resourcePackRepository.selectedIds
-        if (packs.any { "fresh" in it.lowercase(Locale.ROOT) }) parts += "fa"
-        if (ChestPrototype.active) parts += "chestcache"
-        return parts.joinToString("+")
     }
 
     private fun restoreHud() {

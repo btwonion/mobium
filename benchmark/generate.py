@@ -113,8 +113,9 @@ def mob(kind: str, x: int, z: int, ai: bool) -> str:
     if not ai:
         nbt.insert(0, "NoAI:1b")
     if kind == "minecraft:zombie":
-        # A helmet keeps zombies from burning at noon.
-        nbt.append('equipment:{head:{id:"minecraft:leather_helmet",count:1}}')
+        # A helmet keeps zombies from burning at noon; it must be unbreakable, or the sun wears it out within about
+        # two minutes and a third of the mobs burn to death during the second run (Mob.burnUndead).
+        nbt.append('equipment:{head:{id:"minecraft:leather_helmet",count:1,components:{"minecraft:unbreakable":{}}}}')
     return f"summon {kind} {center(x)} {GROUND} {center(z)} {{{','.join(nbt)}}}"
 
 
