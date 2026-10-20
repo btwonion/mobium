@@ -28,9 +28,14 @@ Read this first when picking the work up in a new session.
   (the M3 prototype's fog was off); captures run inside the level render, in Iris's formats with a shader pack;
   chests, signs, skulls, decorated pots and shelves are cached; memory budget, invalidation, config 4 (drops
   `cache.prototype` and the `beds` switch), `/mobium debug validate`, the `cache_gallery` scene. `ModuleRules` no
-  longer has `PROTOTYPE_OFF` or `SHADER_PACK`: Module 1 is on by default. Self-check: Fabric 58/58, NeoForge 49/49
-  (before shelves), every Mobium-vs-vanilla comparison 0 changed pixels except under Complementary, where the
-  difference equals the pack's own noise between two vanilla frames.
+  longer has `PROTOTYPE_OFF` or `SHADER_PACK`: Module 1 is on by default. Self-check: Fabric 58/58, NeoForge 54/54,
+  every Mobium-vs-vanilla comparison 0 changed pixels except under Complementary, where the difference equals the
+  pack's own noise between two vanilla frames. A fast path (entry on the block entity, per-frame text filter, light
+  epoch) made the per-object check cheap; what remains of extraction is mostly Sodium's own loop.
+- **Gate B risk:** in the dev client's 1423×800 window `storage_room` is 1.44× `control` (target 1.2×), and skipping
+  the cache's draw calls shows that drawing the objects costs the GPU about 0.25 ms, which no cache can avoid; in that
+  window the floor is about 1.2× even with no CPU work (`docs/benchmarks.md`, *Gate B first look*). Anton's
+  `/mobium gateb` at 1920×1080 decides; if it misses, the target is his call (stop and ask before changing it).
 - **Known issue (not Mobium):** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
   `CenterDepthSampler` ("Missing uniform InSampler"), also with Mobium switched off
   (`python3 scripts/self_check.py neoforge --mode iris-without-mobium`); the self-check skips the shader pack there.

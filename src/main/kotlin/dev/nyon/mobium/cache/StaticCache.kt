@@ -2,6 +2,7 @@ package dev.nyon.mobium.cache
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.renderpearl.api.commands.RenderPass
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.config.config
@@ -14,11 +15,15 @@ import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.gpu.Gpu
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
+import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.SubmitNodeCollector
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState
 import net.minecraft.client.renderer.culling.Frustum
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer
 import net.minecraft.client.renderer.rendertype.RenderType
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.core.BlockPos
 import net.minecraft.core.SectionPos
 import net.minecraft.util.LightCoordsUtil
@@ -58,6 +63,10 @@ object StaticCache {
     @JvmField
     var active = false
 
+    /** Dev measurements only: skips the cache's draw calls (cached objects vanish) to tell their cost apart. */
+    @JvmField
+    var skipDraws = false
+
     private var frame = 1L
     private var irisLoaded = false
     private val entries = Long2ObjectOpenHashMap<CacheEntry>()
@@ -73,9 +82,27 @@ object StaticCache {
     private val budget = MemoryBudget(config.cache.memoryBudgetMb * MemoryBudget.BYTES_PER_MB)
     private var captureDispatcher: BlockEntityRenderDispatcher? = null
     private var irisPipeline: Any? = null
+
+    /** Bumped by every client light update; an entry that saw the current value needs no light check. */
+    private var lightEpoch = 0
+
+    /** `Minecraft.isTextFilteringEnabled`, read once per frame (it waits on a future every call). */
+    @JvmField
+    internal var textFiltering = false
     private var scratch: ByteBuffer? = null
 
     var lastDrawn = 0
+        private set
+
+    private var fastHits = 0
+    private var slowChecks = 0
+    private var lightBumps = 0
+    private var lastFastHits = 0
+    private var lastSlowChecks = 0
+    private var lastLightBumps = 0
+
+    /** Fast-path hits, full checks and light updates since the start (dev profiling). */
+    var totals = LongArray(3)
         private set
 
     /** Vertex bytes uploaded in the last frame (0 while the camera stands still and nothing changes). */
@@ -159,6 +186,26 @@ object StaticCache {
         cameraPos: Vec3,
         original: Operation<BlockEntityRenderState?>
     ): BlockEntityRenderState? {
+        // Fast path for a cached object whose block state is unchanged: everything that only depends on the state
+        // was checked when the entry was made, so only culling, motion, inputs and light remain.
+        val known = (blockEntity as CachedBlockEntity).`mobium$cacheEntry`() as? CacheEntry
+        if (known != null && known.cacheable && known.rule === rule && known.blockState === blockEntity.blockState &&
+            !rule.checksState && known.lightEpoch == lightEpoch && (frame + known.stagger) and REVALIDATE_MASK != 0L
+        ) {
+            val renderer = known.renderer
+            if (!renderer.shouldRender(blockEntity, cameraPos)) return null
+            /*? if neoforge {*/
+            /*if (frustum != null && !frustum.isVisible(renderer.getRenderBoundingBox(blockEntity))) return null
+            *//*?}*/
+            if (rule.isStaticCached(known, blockEntity, partialTicks) && rule.sameInputs(known, blockEntity)) {
+                known.seenFrame = frame
+                known.markVisible(frame)
+                fastHits++
+                return null
+            }
+        }
+        slowChecks++
+
         val level = blockEntity.level
         val renderer = dispatcher.getRenderer<BlockEntity, BlockEntityRenderState>(blockEntity)
         if (level == null || renderer == null || !blockEntity.type.isValid(blockEntity.blockState)) {
@@ -183,13 +230,19 @@ object StaticCache {
             remove(entry)
             entry = null
         }
+        if (entry != null && hasNeighbour && entry.neighbourEntity?.isRemoved != false) {
+            entry.neighbourEntity = level.getBlockEntity(neighbour)
+        }
         // Light is read again after a light update touched the object's section (or its other half's), and every
         // REVALIDATE_MASK + 1 frames anyway: light data sent by the server does not always announce itself.
-        if (entry != null && (entry.lightVersion != lightVersion || (frame + entry.stagger) and REVALIDATE_MASK == 0L)) {
+        if (entry != null && (entry.lightVersion != lightVersion || (frame + entry.stagger) and REVALIDATE_MASK == 0L ||
+                entry.lightEpoch != lightEpoch)
+        ) {
             val light = LightCoordsUtil.getLightCoords(level, pos)
             val neighbourLight = if (hasNeighbour) LightCoordsUtil.getLightCoords(level, neighbour) else 0
             if (entry.light == light && entry.neighbourLight == neighbourLight) {
                 entry.lightVersion = lightVersion
+                entry.lightEpoch = lightEpoch
             } else {
                 remove(entry)
                 entry = null
@@ -209,6 +262,7 @@ object StaticCache {
                     paused.lightVersion = stale.lightVersion
                     paused.volatileUntil = frame + VOLATILE_PAUSE_FRAMES
                     entries.put(pos.asLong(), paused)
+                    (blockEntity as CachedBlockEntity).`mobium$setCacheEntry`(paused)
                     return extracted
                 }
             }
@@ -220,8 +274,12 @@ object StaticCache {
             val neighbourLight = if (hasNeighbour) LightCoordsUtil.getLightCoords(level, neighbour) else 0
             entry = CacheEntry(rule, blockEntity, state, light, neighbourLight)
             entry.lightVersion = lightVersion
+            entry.lightEpoch = lightEpoch
+            entry.renderer = renderer
+            if (hasNeighbour) entry.neighbourEntity = level.getBlockEntity(neighbour)
             rule.storeInputs(entry, blockEntity)
             entries.put(pos.asLong(), entry)
+            (blockEntity as CachedBlockEntity).`mobium$setCacheEntry`(entry)
             // Vanilla draws the object this frame; it is captured in prepare, inside the level render like vanilla's
             // own submit (Iris only extends vertex formats and records entity ids there), and cached from the next.
             if (rule.canCache(entry, blockEntity) && rule.storeState(entry, vanilla)) {
@@ -246,7 +304,9 @@ object StaticCache {
      */
     @JvmStatic
     fun beginFrame() {
-        if (!active || !irisLoaded) return
+        if (!active) return
+        textFiltering = Minecraft.getInstance().isTextFilteringEnabled
+        if (!irisLoaded) return
         val pipeline = IrisCompat.pipeline()
         if (pipeline !== irisPipeline) {
             if (irisPipeline != null) clear()
@@ -284,7 +344,7 @@ object StaticCache {
     @JvmStatic
     fun onRemoved(blockEntity: BlockEntity) {
         if (!RenderSystem.isOnRenderThread() || blockEntity.level?.isClientSide != true) return
-        val entry = entries.get(blockEntity.blockPos.asLong()) ?: return
+        val entry = (blockEntity as CachedBlockEntity).`mobium$cacheEntry`() as? CacheEntry ?: return
         if (entry.blockEntity === blockEntity) remove(entry)
     }
 
@@ -293,6 +353,8 @@ object StaticCache {
     fun onLightUpdate(sectionX: Int, sectionY: Int, sectionZ: Int) {
         if (!active) return
         lightVersions.addTo(SectionPos.asLong(sectionX, sectionY, sectionZ), 1)
+        lightEpoch++
+        lightBumps++
     }
 
     // endregion
@@ -365,6 +427,8 @@ object StaticCache {
     private fun remove(entry: CacheEntry) {
         dropParts(entry)
         entries.remove(entry.blockEntity.blockPos.asLong())
+        val holder = entry.blockEntity as CachedBlockEntity
+        if (holder.`mobium$cacheEntry`() === entry) holder.`mobium$setCacheEntry`(null)
     }
 
     /** Frees an entry's meshes and takes them out of their buckets. */
@@ -490,6 +554,7 @@ object StaticCache {
         if (active) {
             try {
                 for (i in visibleBuckets.indices) {
+                    if (skipDraws) break
                     val bucket = visibleBuckets[i]
                     val prepared = bucket.type.prepared ?: continue
                     if (bucket.type.preparedFrame == frame) drawn += bucket.draw(renderPass, prepared, frame)
@@ -500,6 +565,15 @@ object StaticCache {
         }
         visibleBuckets.clear()
         lastDrawn = drawn
+        lastFastHits = fastHits
+        lastSlowChecks = slowChecks
+        lastLightBumps = lightBumps
+        totals[0] += fastHits.toLong()
+        totals[1] += slowChecks.toLong()
+        totals[2] += lightBumps.toLong()
+        fastHits = 0
+        slowChecks = 0
+        lightBumps = 0
         frame++
     }
 
@@ -514,7 +588,10 @@ object StaticCache {
     /** Drops every cached object and GPU buffer (level change, reload, render distance change, switched off). */
     @JvmStatic
     fun clear() {
-        for (entry in entries.values) for (part in entry.parts) part.member.mesh.free()
+        for (entry in entries.values) {
+            for (part in entry.parts) part.member.mesh.free()
+            (entry.blockEntity as CachedBlockEntity).`mobium$setCacheEntry`(null)
+        }
         entries.clear()
         for (entry in pending) entry.pendingState = null
         pending.clear()
@@ -558,13 +635,26 @@ object StaticCache {
             String.format(
                 Locale.ROOT, "%.1f of %d MB", budget.usedBytes / 1048576.0, budget.budgetBytes / MemoryBudget.BYTES_PER_MB
             ) +
-            ", ${lastUploadBytes / 1024} KB uploaded"
+            ", ${lastUploadBytes / 1024} KB uploaded; last frame $lastFastHits fast, $lastSlowChecks full checks, " +
+            "$lastLightBumps light updates"
     }
 
     // endregion
 }
 
 private val NO_PARTS = emptyArray<EntryPart>()
+
+/** Placeholder until an entry gets its renderer; never asked anything. */
+private val NO_RENDERER = object : BlockEntityRenderer<BlockEntity, BlockEntityRenderState> {
+    override fun createRenderState() = BlockEntityRenderState()
+
+    override fun submit(
+        state: BlockEntityRenderState,
+        poseStack: PoseStack,
+        submitNodeCollector: SubmitNodeCollector,
+        camera: CameraRenderState
+    ) = Unit
+}
 
 /**
  * One cached object: the inputs its capture depends on and its meshes in the section buckets. Objects whose capture
@@ -582,6 +672,18 @@ class CacheEntry(
 
     @JvmField
     var cacheable = false
+
+    /** The renderer vanilla used for the object when the entry was made (renderers change only on reload). */
+    @JvmField
+    var renderer: BlockEntityRenderer<BlockEntity, BlockEntityRenderState> = NO_RENDERER
+
+    /** The other half of a double chest, when the entry was made. */
+    @JvmField
+    var neighbourEntity: BlockEntity? = null
+
+    /** The [StaticCache] light epoch the entry's light was last checked at. */
+    @JvmField
+    var lightEpoch = 0
 
     /** Bytes of cached vertex data, counted by the memory budget; 0 while nothing is cached. */
     @JvmField
