@@ -24,6 +24,7 @@ class SodiumOptions : ConfigEntryPoint {
 
     override fun registerConfigLate(builder: ConfigBuilder) {
         val general = builder.createOptionGroup()
+            .setName(Component.translatable("mobium.settings.general"))
             .addOption(
                 builder.createBooleanOption(id("enabled"))
                     .setName(Component.translatable("mobium.settings.enabled"))

@@ -29,7 +29,14 @@ Requires JDK 25 (same as CI).
 ./gradlew :26.3-fabric:benchKit            # mods of the four benchmark setups + datapack -> versions/26.3-fabric/build/bench-kit
 ./gradlew :26.3-fabric:runBenchWorld       # saves a ready benchmark world -> versions/26.3-fabric/build/bench-world
 python3 benchmark/prism_instances.py       # creates/updates the Prism instances "Mobium Bench A–D" from the two above
+python3 scripts/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
 ```
+
+`scripts/self_check.py` starts each dev client with a request file; `debug/selfcheck/SelfCheck.kt` (dev environments
+only) then walks through the checks inside the game: screens opened the loader's way, both languages, the Sodium page,
+and in the benchmark world key presses, commands and pixel comparisons against vanilla. It writes
+`<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched, and closes the game.
+Extend the scenario for every rendering PR, run it on both loaders, and read the screenshots before asking Anton.
 
 In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium suite` runs every scene of a setup
 and `/mobium gatea` runs Gate A unattended (`/mobium stop` aborts), scenes come from the
