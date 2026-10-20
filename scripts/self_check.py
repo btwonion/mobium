@@ -73,7 +73,8 @@ def main() -> None:
                         help="gallery: only the cache_gallery checks (quicker); "
                              "iris-without-mobium: only the first shader pack in shaderpacks/, with Mobium off; "
                              "profile: storage_room under Java Flight Recorder, with the cache and without Mobium; "
-                             "gateb: /mobium gateb 20 2 in the dev client's window (a hint, not the protocol)")
+                             "gateb: /mobium gateb 20 2 in the dev client's window plus display_build and map_wall with the cache off "
+                             "and on (a hint, not the protocol)")
     args = parser.parse_args()
     unknown = [loader for loader in args.loaders if loader not in LOADERS]
     if unknown:

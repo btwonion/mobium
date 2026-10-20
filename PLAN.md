@@ -17,13 +17,14 @@ Read this first when picking the work up in a new session.
   branches by mistake, and #6 (`m4-core` → `main`) brought M2–M4 over. `main` has M0–M4 plus the in-game self-check;
   the old milestone branches (`m0-scaffold` … `m4-core`) are deleted. From M5 on: one branch from `main` per
   milestone, one PR against `main`; merging is Anton's call.
-- **CI:** green on #6 and on #7 up to df4080d. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL
+- **CI:** green on #6 and on every push of #7 so far. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL
   (`SDL_VIDEO_FORCE_EGL=1`, `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual; see the
   comments in `.github/workflows/build-commit.yml`. If CI hangs or fails again, read the job log first
   (`gh run view --log`).
-- **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`. M5 is in progress on branch
-  `m5-static-cache` (draft PR btwonion/mobium#7 against `main`): the static cache for block entities is complete and
-  checked, Gate B was measured and failed (below), the entity rows of `CachePolicy` are being built.
+- **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`. M5's code is complete on branch
+  `m5-static-cache` (draft PR btwonion/mobium#7 against `main`): the static cache for block entities and entities
+  (item frames, armor stands, displays), checked on both loaders; Gate B was redefined by Anton and waits for his run
+  (below); then the release steps.
 - **M5 so far** (details in §M5): sign text is cached; buckets draw camera-relative vertices
   (the M3 prototype's fog was off); captures run inside the level render, in Iris's formats with a shader pack;
   chests, signs, skulls, decorated pots and shelves are cached; memory budget, invalidation, config 4 (drops
@@ -32,6 +33,14 @@ Read this first when picking the work up in a new session.
   every Mobium-vs-vanilla comparison 0 changed pixels except under Complementary, where the difference equals the
   pack's own noise between two vanilla frames. A fast path (entry on the block entity, per-frame text filter, light
   epoch) made the per-object check cheap; what remains of extraction is mostly Sodium's own loop.
+- **Entities (20 Oct 2026, `cache/EntityPolicy.kt`):** item frames (maps stay vanilla), armor stands (armor stays
+  vanilla: equipment layers use submit orders), block and item displays (`FIXED` billboard, finished interpolation).
+  The hook wraps the renderer's submit inside `EntityRenderDispatcher.submit`; each frame the extracted state is
+  compared with the captured one. On Fabric, block models come as Fabric renderer API submits, which the capture lets
+  Sodium's/Indigo's renderer write; items that are renderer API meshes stay vanilla. Self-check: Fabric 69/69,
+  NeoForge 64/64 (gallery with 7 frames, 6 stands, 6 displays and four entity effects; `--mode gallery` runs only
+  that part); every comparison 0 changed pixels. Dev-window first look: `display_build` 1.68 → 1.04 ms, `map_wall`
+  5.10 → 4.22 ms.
 - **Benchmark round 20 Oct 2026** (Anton, Prism instances "Mobium Bench A–D", external AOC 1920×1080 at 240 Hz, mains
   power, every suite with the cache on): results in `docs/benchmarks/results/2026-10-20-thinkpad-x9/`, tables in
   `docs/benchmarks.md`. Setup A suite: `mob_pen_static` 2.98, `mob_pen_live` 3.11, `storage_room` 1.71 (vanilla on
@@ -51,15 +60,18 @@ Read this first when picking the work up in a new session.
 - **Known issue (not Mobium):** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
   `CenterDepthSampler` ("Missing uniform InSampler"), also with Mobium switched off
   (`python3 scripts/self_check.py neoforge --mode iris-without-mobium`); the self-check skips the shader pack there.
-- **Waiting for Anton:** `/mobium gateb` with the new definition (setup A, 1920×1080, mains power, about 16 minutes);
-  the visual checks in the PR's *How to verify* (shader pack in B, Fresh
-  Animations in C/D).
-- **Next:** finish M5's `CachePolicy` with entities: item frames with items (frames with maps stay vanilla; maps are
-  translucent custom geometry), armor stands, item and block displays. Hook `renderer.submit` inside
-  `EntityRenderDispatcher.submit` (entities are always extracted; flame, shadow, name tags and leashes stay
-  vanilla), key entries by entity, compare the extracted state each frame (`ItemFingerprint` for items), capture
-  `BlockModelFeatureRenderer` submits (frames, block displays). Extend the gallery and the self-check, run both
-  loaders, update the PR. Then Gate B with Anton's numbers, and the release steps.
+- **Waiting for Anton:** refresh the instances, then `/mobium gateb` with the new definition (setup A, 1920×1080,
+  mains power, about 16 minutes) and `/mobium suite` in A; the visual checks in the PR's *How to verify* (the gallery
+  with entities; shader pack in B, Fresh Animations in C/D).
+- **Next:** Gate B with Anton's numbers. In the dev window the new measure came out at 1.19× and 1.205× (target 1.2×),
+  so it may be close: if it misses, the lever is Mobium's own draw calls (0.05–0.06 ms of CPU in `storage_room` for
+  about 16 buckets; fewer, larger draws), then the gate is Anton's call again. If it passes: README, changelog,
+  Modrinth/CurseForge project IDs in `build.gradle.kts`, `release.yml` (§10). Later, outside M5: cache armor (keep
+  submit orders), renderer API item meshes.
+- **Working in a worktree:** the gitignored dev run folders are not there. Copy `versions/26.3-fabric/run/` and `run/`
+  (`options.txt`, `config`, `saves`, `shaderpacks`, `resourcepacks`) and `versions/26.3-fabric/build/bench-world` from
+  the main checkout before running the self-check; push with `git push origin HEAD:m5-static-cache` when the main
+  checkout has the branch checked out.
 - **Local test assets (gitignored dev run folders):** `shaderpacks/ComplementaryReimagined_r5.9.3.zip` (copied from
   Prism instance B) and `resourcepacks/FreshAnimations_v1.10.3.zip` (from Anton's "Simply Crafted" instance) in
   `versions/26.3-fabric/run/` and `run/`; the self-check uses them when present.

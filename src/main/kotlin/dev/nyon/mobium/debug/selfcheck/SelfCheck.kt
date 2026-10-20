@@ -330,7 +330,7 @@ object SelfCheck {
     /**
      * `--mode gateb`: `/mobium gateb 20 2` in the dev client's window (not the protocol's 1920×1080 or Anton's
      * hardware, so only a hint), including its run with the cache's draw calls skipped; the medians file is copied into
-     * `mobium-selfcheck/`.
+     * `mobium-selfcheck/`. Then `display_build` and `map_wall` with the cache off and on, 15 s each, twice.
      */
     private fun gateB(minecraft: Minecraft) = sequence {
         snapshotOptions(minecraft)
@@ -357,6 +357,23 @@ object SelfCheck {
             results += "NOTE window ${window.width}x${window.height}: " + lines.filter { it.startsWith("#") }.joinToString("; ")
             for (line in lines.drop(1).filter { !it.startsWith("#") }) results += "NOTE " + line.split(',').take(4).joinToString(" ")
             check("gateb medians written", true, file.toString())
+        }
+        // First look at the entity scenes: the static cache off and on, alternating, 15 s each.
+        for (scene in listOf("display_build", "map_wall")) {
+            if (!buildScene(minecraft, scene)) continue
+            for (cache in listOf(false, true, false, true)) {
+                config.cache.enabled = cache
+                ModuleStates.refresh("self-check")
+                yield(ticks(3 * TICKS_PER_SECOND))
+                val summary = bench.resolve("summary.csv")
+                val rowsBefore = if (Files.exists(summary)) Files.readAllLines(summary).size else 0
+                checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium bench $scene 15", null)
+                yield(until("bench $scene (cache $cache)", 60) { Files.exists(summary) && Files.readAllLines(summary).size > rowsBefore })
+                val row = Files.readAllLines(summary).let { lines -> lines.first().split(',').zip(lines.last().split(',')).toMap() }
+                results += "NOTE $scene, cache ${if (cache) "on" else "off"}: ${row["avg_ms"]} ms, extract " +
+                    "${row["extract_entities_ms"]}, submit ${row["submit_entities_ms"]}, prepare ${row["prepare_ms"]}; " +
+                    StaticCache.debugLine()
+            }
         }
         applyConfig(saved)
         minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)

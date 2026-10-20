@@ -371,9 +371,29 @@ window (`self_check.py fabric --mode gateb`, `/mobium gateb 20 2`, 20 Oct):
 | `control`, cache on / off | 0.665 / 0.674 ms | 0.000 ms | 0.000 ms |
 
 Cost **1.19×** (target 1.2×; without the draw calls' CPU time 1.09×), whole frame 1.28×, drawing the cached objects
-0.12 ms, `control` 0.99×. The laptop ran this session's `control` almost twice as fast as on 20 Oct afternoon (0.66
-against 1.13 ms in the same window), which makes Mobium's fixed CPU cost a larger share; the gate is close either way.
-Anton's `/mobium gateb` decides; the release waits for it.
+0.12 ms, `control` 0.99×. A second run the same evening (with the entity rows): cost **1.205×** (without the draw
+calls' CPU time 1.12×), whole frame 1.36×, drawing 0.17 ms, `control` 1.02× (`storage_room` 0.957 ms, without draws
+0.787 ms, `control` 0.704 / 0.692 ms). The laptop ran this session's `control` almost twice as fast as on 20 Oct
+afternoon (0.66–0.70 against 1.13 ms in the same window), which makes Mobium's fixed CPU cost a larger share; the gate
+is close either way. Anton's `/mobium gateb` decides; the release waits for it. If it misses, the next lever is
+Mobium's own draw calls (0.05–0.06 ms of CPU for about 16 buckets in `storage_room`): fewer, larger draws.
+
+### Entity scenes, first look (M5, not a measurement)
+
+20 Oct 2026, `python3 scripts/self_check.py fabric --mode gateb` on the development laptop, Fabric dev client's
+1423×800 window (Sodium + EMF/ETF, no packs), 15-second runs, the static cache off and on twice:
+
+| Scene | Cache off | Cache on | Extract E | Submit E | Prepare | Cached |
+| --- | --- | --- | --- | --- | --- | --- |
+| `display_build` | 1.70 / 1.66 ms | 1.03 / 1.04 ms (**1.62×**) | 0.47 → 0.53 ms | 0.18 → 0.11 ms | 0.74 → 0.09 ms | 433 of 500 displays |
+| `map_wall` | 5.10 / 5.11 ms | 4.21 / 4.24 ms (1.21×) | 0.78 → 0.76 ms | 0.33 → 0.33 ms | 2.69 → 2.03 ms | 80 of 120 shelves |
+
+Entities are still extracted every frame (the extract timer even grows by the cache's per-entity check, about 0.1 µs
+per display); what the cache saves is their submit and prepare. In `display_build` the 67 uncached displays are item
+displays: 17 shields (a special item renderer) and 17 lanterns and 16 flower pots, block-shaped items whose models
+Fabric's renderer API turns into meshes (`ExtendedItemSubmit`), which the cache leaves to vanilla because an item
+fingerprint cannot see a mesh. In `map_wall` all 400 frames hold maps, which stay vanilla
+(translucent), and the 40 shelves holding a recovery compass, whose needle spins, stay vanilla too.
 
 ### Measurement pitfalls
 
