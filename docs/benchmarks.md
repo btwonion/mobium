@@ -280,8 +280,8 @@ identical):
 | Chest prototype off | 9.38 ms (107 FPS) | 0.45 ms | 0.79 ms | 0.81 ms | 4.81 ms | 0.56 ms |
 | Chest prototype on | 5.55 ms (180 FPS) | 0.34 ms | 0.47 ms | 0 | 3.11 ms | 0.62 ms |
 
-With the prototype on, what is left of `prepare` and `submit` is almost entirely the 300 signs (their text is
-translucent, so Module 1 leaves it on the vanilla path).
+With the prototype on, what is left of `prepare` and `submit` is almost entirely the 300 signs. (M3 thought their
+text was translucent; it is opaque and drawn in the solid phase, and since M5 the static cache takes it too.)
 
 `mob_pen_live`, 5-second run (measured before the frame-rate cap was lifted, at 110 FPS, just under it):
 
@@ -291,3 +291,22 @@ translucent, so Module 1 leaves it on the vanilla path).
 
 Even without Fresh Animations, writing vertices for 500 vanilla mobs costs about 14 times as much CPU time as posing
 them; treat this as a hint for what to look for in the real baselines, not as a result.
+
+### Gate B first look (M5, not a measurement)
+
+20 Oct 2026, `python3 scripts/self_check.py fabric --mode gateb` on the development laptop: `/mobium gateb 20 2` in the
+Fabric dev client's 1423×800 window (Sodium + EMF/ETF, no shader pack), then `storage_room` with the static cache
+twice with its draw calls on and twice with them skipped (a dev switch; the cached objects then vanish):
+
+| Run | Frame |
+| --- | --- |
+| `control`, cache on / off | 1.128 / 1.126 ms |
+| `storage_room`, cache on | 1.63 ms (**1.44×** `control`) |
+| `storage_room`, cache on, its draw calls skipped | 1.22–1.24 ms |
+
+Stage timers of the cached `storage_room`: block entity extraction 0.20 ms (Sodium's loop and the cache's per-object
+check for 1,300 objects), the cache's draw calls 0.09 ms of CPU. Skipping the draws saves 0.33–0.36 ms, so drawing the
+1,000 chests and 300 signs costs the GPU about 0.25 ms. Vanilla pays that as well, and no cache can avoid it: in this
+window `storage_room` would be about 1.2× `control` even with no CPU work at all. Whether Gate B's 1.2× holds on the
+protocol's 1920×1080 is Anton's measurement (`/mobium gateb`); if it does not, the target is his call.
+

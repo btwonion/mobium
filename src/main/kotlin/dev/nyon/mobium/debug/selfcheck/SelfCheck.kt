@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.NativeImage
 import dev.nyon.konfig.config.loadConfig
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.MobiumKeys
+import dev.nyon.mobium.bench.BenchSuite
 import dev.nyon.mobium.bench.SceneBuilder
 import dev.nyon.mobium.cache.Lids
 import dev.nyon.mobium.cache.Pots
@@ -25,10 +26,14 @@ import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.core.OffReason
 import dev.nyon.mobium.debug.AbToggle
 import dev.nyon.mobium.debug.ModuleLines
+import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.debug.Validation
+import jdk.jfr.Configuration
+import jdk.jfr.Recording
 import net.minecraft.client.CloudStatus
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
+import net.minecraft.client.Options
 import net.minecraft.client.Screenshot
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer
@@ -49,6 +54,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.block.Blocks
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.util.Locale
 
 /*? if fabric {*/
@@ -79,6 +85,8 @@ object SelfCheck {
     private const val TICKS_PER_SECOND = 20
     private const val GALLERY = "cache_gallery"
     private const val IRIS_WITHOUT_MOBIUM = "iris-without-mobium"
+    private const val PROFILE = "profile"
+    private const val GATE_B = "gateb"
     private const val CHESTS = 1000
     private const val SIGNS = 300
 
@@ -114,7 +122,12 @@ object SelfCheck {
         this.directory = directory
         Files.createDirectories(directory.resolve("screenshots"))
         Mobium.LOGGER.info("Mobium self-check started ({} on {}{})", Compat.LOADER, minecraft.gameDirectory, if (mode.isEmpty()) "" else ", $mode")
-        steps = (if (mode == IRIS_WITHOUT_MOBIUM) irisWithoutMobium(minecraft) else scenario(minecraft)).iterator()
+        steps = when (mode) {
+            IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
+            PROFILE -> profile(minecraft)
+            GATE_B -> gateB(minecraft)
+            else -> scenario(minecraft)
+        }.iterator()
     }
 
     /** Advances the scenario; called at the end of every client tick. */
@@ -162,6 +175,8 @@ object SelfCheck {
         val options = minecraft.options
         val pause = options.pauseOnLostFocus
         val particles = options.particles().get()
+        val framerateLimit = options.framerateLimit().get()
+        val vsync = options.enableVsync().get()
         val onboarding = options.onboardAccessibility
         val clouds = options.cloudStatus().get()
         val preset = options.graphicsPreset().get()
@@ -174,6 +189,8 @@ object SelfCheck {
             options.onboardAccessibility = onboarding
             options.cloudStatus().set(clouds)
             options.particles().set(particles)
+            options.framerateLimit().set(framerateLimit)
+            options.enableVsync().set(vsync)
             options.renderDistance().set(renderDistanceBefore)
             // Changing the clouds or the render distance turns the preset to "custom"; setting the old preset again
             // restores it.
@@ -271,6 +288,98 @@ object SelfCheck {
                 yield(until("screenshot iris-without-mobium", 10) { shotDone })
                 restore()
                 yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+            }
+        }
+        applyConfig(saved)
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        finish(minecraft)
+    }
+
+    /**
+     * `--mode gateb`: `/mobium gateb 20 2` in the dev client's window (not the protocol's 1920×1080 or Anton's
+     * hardware, so only a hint); the medians file is copied into `mobium-selfcheck/`.
+     */
+    private fun gateB(minecraft: Minecraft) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config())
+        minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
+        minecraft.options.enableVsync().set(false)
+        minecraft.createWorldOpenFlows().openWorld(WORLD) { }
+        yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        val bench = minecraft.gameDirectory.toPath().resolve("mobium-bench")
+        val before = if (Files.isDirectory(bench)) Files.list(bench).use { it.toList() }.toSet() else emptySet()
+        checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium gateb 20 2", null)
+        yield(ticks(TICKS_PER_SECOND))
+        yield(until("Gate B plan finished", 900) { !BenchSuite.isActive })
+        val file = Files.list(bench).use { files -> files.filter { it !in before && it.fileName.toString().startsWith("gateb-") }.findFirst().orElse(null) }
+        if (file == null) {
+            check("gateb medians written", false)
+        } else {
+            Files.copy(file, directory.resolve(file.fileName))
+            val lines = Files.readAllLines(file)
+            val window = minecraft.window
+            results += "NOTE window ${window.width}x${window.height}: " + lines.filter { it.startsWith("#") }.joinToString("; ")
+            for (line in lines.drop(1).filter { !it.startsWith("#") }) results += "NOTE " + line.split(',').take(4).joinToString(" ")
+            check("gateb medians written", true, file.toString())
+        }
+        // The same storage_room with the cache's draw calls skipped: what drawing the cached objects costs.
+        if (buildScene(minecraft, SCENE)) {
+            for (skip in listOf(false, true, false, true)) {
+                StaticCache.skipDraws = skip
+                yield(ticks(3 * TICKS_PER_SECOND))
+                val summary = bench.resolve("summary.csv")
+                val rowsBefore = if (Files.exists(summary)) Files.readAllLines(summary).size else 0
+                checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium bench $SCENE 15", null)
+                yield(until("bench $SCENE (draws skipped: $skip)", 60) { Files.exists(summary) && Files.readAllLines(summary).size > rowsBefore })
+                val row = Files.readAllLines(summary).let { lines -> lines.first().split(',').zip(lines.last().split(',')).toMap() }
+                results += "NOTE $SCENE, cache draws ${if (skip) "skipped" else "on"}: ${row["avg_ms"]} ms"
+            }
+            StaticCache.skipDraws = false
+        }
+        applyConfig(saved)
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        finish(minecraft)
+    }
+
+    /**
+     * `--mode profile`: `storage_room` recorded with Java Flight Recorder (method samples every millisecond), 20 s with
+     * the static cache and 20 s with Mobium off, to `mobium-selfcheck/storage_room-{cache,vanilla}.jfr`.
+     */
+    private fun profile(minecraft: Minecraft) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config())
+        minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
+        minecraft.options.enableVsync().set(false)
+        minecraft.createWorldOpenFlows().openWorld(WORLD) { }
+        yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        minecraft.options.cloudStatus().set(CloudStatus.OFF)
+        if (!minecraft.gui.hud.isHidden) minecraft.gui.hud.toggle()
+        if (buildScene(minecraft, SCENE)) {
+            for ((name, mobium) in listOf("cache" to true, "vanilla" to false)) {
+                if (!mobium) applyConfig(Config(enabled = false))
+                yield(ticks(5 * TICKS_PER_SECOND))
+                val recording = Recording(Configuration.getConfiguration("profile"))
+                recording.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(1))
+                val before = StaticCache.totals.copyOf()
+                val framesBefore = Sections.frame
+                recording.start()
+                yield(ticks(20 * TICKS_PER_SECOND))
+                recording.stop()
+                val totals = LongArray(3) { StaticCache.totals[it] - before[it] }
+                results += "NOTE $name: ${Sections.frame - framesBefore} frames, ${totals[0]} fast, ${totals[1]} full checks, " +
+                    "${totals[2]} light updates"
+                val file = directory.resolve("$SCENE-$name.jfr")
+                recording.dump(file)
+                recording.close()
+                check("recorded $file", Files.size(file) > 0, StaticCache.debugLine())
             }
         }
         applyConfig(saved)

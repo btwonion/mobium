@@ -48,6 +48,12 @@ abstract class CacheRule(@JvmField val key: String) {
     /** False while the object animates or is being edited; vanilla draws it this frame. */
     abstract fun isStatic(blockEntity: BlockEntity, level: Level, state: BlockState, partialTicks: Float): Boolean
 
+    /** [isStatic] for an object with an entry whose block state is unchanged; may use what the entry knows. */
+    open fun isStaticCached(entry: CacheEntry, blockEntity: BlockEntity, partialTicks: Float): Boolean {
+        val level = blockEntity.level ?: return false
+        return isStatic(blockEntity, level, entry.blockState, partialTicks)
+    }
+
     /** Inputs of the picture besides block state and light, compared every frame with what [storeInputs] kept. */
     open fun sameInputs(entry: CacheEntry, blockEntity: BlockEntity): Boolean = true
 
@@ -116,6 +122,14 @@ object Lids : CacheRule("chests") {
         return other.getOpenNess(partialTicks) == 0f
     }
 
+    override fun isStaticCached(entry: CacheEntry, blockEntity: BlockEntity, partialTicks: Float): Boolean {
+        if (blockEntity is ShulkerBoxBlockEntity) return blockEntity.getProgress(partialTicks) == 0f
+        if (blockEntity !is LidBlockEntity || blockEntity.getOpenNess(partialTicks) != 0f) return false
+        val other = entry.neighbourEntity ?: return true
+        // A replaced other half (its chunk reloaded) goes through the full check, which looks it up again.
+        return !other.isRemoved && (other as? LidBlockEntity)?.getOpenNess(partialTicks) == 0f
+    }
+
     override fun neighbour(pos: BlockPos, state: BlockState, out: BlockPos.MutableBlockPos): Boolean {
         if (!state.hasProperty(ChestBlock.TYPE) || state.getValue(ChestBlock.TYPE) == ChestType.SINGLE) return false
         out.setWithOffset(pos, ChestBlock.getConnectedDirection(state))
@@ -169,7 +183,7 @@ object Signs : CacheRule("signs") {
     }
 
     private fun flags(sign: SignBlockEntity, front: SignText, back: SignText): Int {
-        var flags = if (Minecraft.getInstance().isTextFilteringEnabled) FILTERED else 0
+        var flags = if (StaticCache.textFiltering) FILTERED else 0
         // The outline of glowing text depends on the camera; black glowing text always has one.
         if (needsOutlineCheck(front) || needsOutlineCheck(back)) {
             if (AbstractSignRendererInvoker.`mobium$isOutlineVisible`(sign.blockPos)) flags = flags or OUTLINE

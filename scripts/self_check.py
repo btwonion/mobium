@@ -4,6 +4,7 @@
     python3 scripts/self_check.py              # Fabric, then NeoForge
     python3 scripts/self_check.py neoforge     # one loader
     python3 scripts/self_check.py neoforge --mode iris-without-mobium   # shader pack with Mobium off (crash triage)
+    python3 scripts/self_check.py fabric --mode profile    # storage_room under JFR -> mobium-selfcheck/*.jfr
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
 both languages, Sodium's page, and in the benchmark world's storage_room the A/B key, F3 and a forced module failure,
@@ -67,8 +68,10 @@ def run(loader: str, mode: str) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("loaders", nargs="*", help=f"any of {', '.join(LOADERS)} (default: all)")
-    parser.add_argument("--mode", default="", choices=["", "iris-without-mobium"],
-                        help="iris-without-mobium: only the first shader pack in shaderpacks/, with Mobium off")
+    parser.add_argument("--mode", default="", choices=["", "iris-without-mobium", "profile", "gateb"],
+                        help="iris-without-mobium: only the first shader pack in shaderpacks/, with Mobium off; "
+                             "profile: storage_room under Java Flight Recorder, with the cache and without Mobium; "
+                             "gateb: /mobium gateb 20 2 in the dev client's window (a hint, not the protocol)")
     args = parser.parse_args()
     unknown = [loader for loader in args.loaders if loader not in LOADERS]
     if unknown:
