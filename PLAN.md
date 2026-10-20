@@ -13,23 +13,24 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#5 (M0–M4) were merged on 20 Oct 2026, but only #1 and #2 into
-  `main`: the stacked PRs #3–#5 were still based on the previous milestone's branch and were merged into it. So `main`
-  has M0–M1 only, and everything up to M4 (plus the self-check commit made after the merge) is on `m4-core`, which
-  merges into `main` cleanly. #6 (`m4-core` → `main`) brings it over; merging is Anton's call.
-
-  From M5 on: branch from `main` after #6 is merged and open one PR per milestone against `main`. If PRs ever stack
-  again, retarget the next one to `main` right after a merge (`gh pr edit <n> --base main`), before merging it.
-- **CI:** the first runs hung in the Fabric gametests, because Loom's own `xvfb-run` uses an 8-bit screen without
-  GLX. Fixed in #2 (commit `52eb0d8`: Loom's wrapper off, a 24-bit `xvfb-run` in the workflow, 45-minute job
-  timeout), now on `main`. If CI hangs or fails again, read the job log first (`gh run view --log`).
-- **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`.
-- **Waiting for Anton:** before Gate B, refresh the instances (below) and record a full round, every setup's suite
-  plus `/mobium gatea`, on the external 1920×1080 monitor, on mains power. The M4 check on both loaders was done with
-  the self-check (`python3 scripts/self_check.py`, see §M4); extend its scenario for every rendering PR.
-- **Next:** M5 (static cache). Settle the sign-text question first (§M5, *Conflict found at Gate A*); then
-  `CaptureConsumer`/`SectionBucket` grow out of the prototype, `CachePolicy` uses the per-type switches, and
-  `ModuleRules` drops `PROTOTYPE_OFF` and `SHADER_PACK` for Module 1.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#6 are merged: #3–#5 had been merged into their stacked base
+  branches by mistake, and #6 (`m4-core` → `main`) brought M2–M4 over. `main` has M0–M4 plus the in-game self-check;
+  the old milestone branches (`m0-scaffold` … `m4-core`) are deleted. From M5 on: one branch from `main` per
+  milestone, one PR against `main`; merging is Anton's call.
+- **CI:** green on #6. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL
+  (`SDL_VIDEO_FORCE_EGL=1`, `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual; see the
+  comments in `.github/workflows/build-commit.yml`. If CI hangs or fails again, read the job log first
+  (`gh run view --log`).
+- **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`. The M4 check on both loaders was done
+  with the self-check (`python3 scripts/self_check.py`: Fabric 26/26, NeoForge 27/27); nothing from M4 waits for
+  Anton.
+- **Waiting for Anton (not blocking M5):** before Gate B, refresh the instances (below; the script downloads the
+  shader pack and Fresh Animations) and record a full round, `/mobium suite` in setups A–D plus `/mobium gatea` in
+  A, on the external 1920×1080 monitor, on mains power.
+- **Next:** M5 (static cache) on branch `m5-static-cache`. Settle the sign-text question first (§M5, *Conflict found
+  at Gate A*); then `CaptureConsumer`/`SectionBucket` grow out of the prototype, `CachePolicy` uses the per-type
+  switches, and `ModuleRules` drops `PROTOTYPE_OFF` and `SHADER_PACK` for Module 1. Extend the self-check scenario
+  for every new behaviour and run it on both loaders.
 - **Rebuilding the benchmark instances after code changes:**
   `./gradlew :26.3-fabric:benchKit && python3 benchmark/prism_instances.py`. The script also refreshes the datapack in
   the instances' worlds, downloads and selects Complementary Reimagined r5.9.3 (B, D) and Fresh Animations 1.11.1
