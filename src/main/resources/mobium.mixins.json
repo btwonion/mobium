@@ -10,9 +10,12 @@
     "client": [
         "AbstractSignEditScreenAccessor",
         "AbstractSignRendererInvoker",
+        "BlockEntityMixin",
         "BlockEntityRenderDispatcherMixin",
         "ClientChunkCacheMixin",
         "DebugScreenEntriesAccessor",
+        "ItemStackRenderStateAccessor",
+        "LayerRenderStateAccessor",
         "LevelExtractorMixin",
         "LevelRendererMixin",
         "MinecraftMixin",

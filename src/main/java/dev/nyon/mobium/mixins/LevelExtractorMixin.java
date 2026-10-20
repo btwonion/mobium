@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Times the extract stage: vanilla's entity and block entity culling plus render-state extraction (or Sodium's
  * replacement of the block entity loop, which runs inside the wrapped method); with timers off the wrappers only call
- * through. Also clears the static cache when the level or the render distance changes.
+ * through. Also clears the static cache when the level, the render distance or Iris's pipeline changes.
  */
 @Mixin(LevelExtractor.class)
 public class LevelExtractorMixin {
@@ -26,6 +26,13 @@ public class LevelExtractorMixin {
     @Inject(method = {"setLevel", "allChanged"}, at = @At("RETURN"))
     private void mobium$clearCache(CallbackInfo ci) {
         StaticCache.clear();
+    }
+
+    // Static cache (Module 1): checks once per frame, before anything is extracted, whether Iris switched its pipeline
+    // (and drops the cache then). Nothing changes while the cache is off.
+    @Inject(method = "extract", at = @At("HEAD"))
+    private void mobium$beginFrame(DeltaTracker deltaTracker, Camera camera, float worldPartialTicks, CallbackInfo ci) {
+        StaticCache.beginFrame();
     }
 
     @WrapMethod(method = "extractVisibleEntities")

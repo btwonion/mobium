@@ -285,9 +285,16 @@ GALLERY_SIGNS = [
     (-4, '"Yellow","glow","ink","outline"', ',color:"yellow",has_glowing_text:1b'),
     (-2, '{text:"Bold",bold:1b},{text:"Italic",italic:1b},{text:"Under",underlined:1b},{text:"Strike",strikethrough:1b}', ""),
     (0, '{text:"Red",color:"red"},{text:"Green",color:"green"},{text:"Blue",color:"blue"},"Mixed"', ""),
-    (2, '"Obfuscated",{text:"xxxx",obfuscated:1b},"stays","vanilla"', ""),
+    # Obfuscated spaces look the same every frame (Font.getGlyph skips spaces), but the rule still refuses the style.
+    (2, '"Obfuscated",{text:"    ",obfuscated:1b},"stays","vanilla"', ""),
     (4, '"Sprite",{type:"object",object:"atlas",sprite:"block/stone"},"stays","vanilla"', ""),
     (6, '"Light","blue","dye",""', ',color:"light_blue"'),
+]
+
+GALLERY_SHELVES = [
+    (-5, ["diamond", "apple", "book"]),
+    (-1, ["iron_ingot", "clock", "emerald"]),
+    (3, ["compass", "bread", "gold_ingot"]),
 ]
 
 
@@ -315,6 +322,12 @@ def cache_gallery() -> list[str]:
         lines.append(
             f"setblock {X0 + offset} {GROUND + 1} {Z0 + 12} minecraft:oak_wall_sign[facing=north]"
             f"{{front_text:{{messages:[{messages}]{extra}}}}} strict"
+        )
+    # Shelves on the wall between the wall signs: plain items, a clock (time stands still) and a compass.
+    for offset, items in GALLERY_SHELVES:
+        stacks = ",".join(f'{{Slot:{slot}b,id:"minecraft:{item}",count:1}}' for slot, item in enumerate(items))
+        lines.append(
+            f"setblock {X0 + offset} {GROUND + 2} {Z0 + 12} minecraft:oak_shelf[facing=north]{{Items:[{stacks}]}} strict"
         )
     for index, offset in enumerate(range(-7, 8, 4)):
         glowing = ',color:"lime",has_glowing_text:1b' if index % 2 else ""

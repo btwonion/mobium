@@ -26,17 +26,15 @@ data class Config(
  * Module 1: block entities and static entities drawn from GPU buffers until they change.
  *
  * @param enabled switches the module.
- * @param memoryBudgetMb is the GPU memory the cache may use; the farthest objects are evicted first above it.
+ * @param memoryBudgetMb is the memory the cached vertex data may use (it is held once on the GPU and once in system
+ * memory); the farthest objects are evicted first above it.
  * @param types are the per-type switches (PLAN.md M5, `CachePolicy`).
- * @param prototype makes the M3 chest prototype available (until M5 replaces it); it then starts active and the
- * A/B key toggles it.
  */
 @Serializable
 data class CacheConfig(
     var enabled: Boolean = true,
     var memoryBudgetMb: Int = DEFAULT_MEMORY_BUDGET_MB,
-    var types: CacheTypes = CacheTypes(),
-    var prototype: Boolean = false
+    var types: CacheTypes = CacheTypes()
 ) {
     fun deepCopy() = copy(types = types.copy())
 
@@ -50,9 +48,9 @@ data class CacheConfig(
 /**
  * Module 1 per-type switches; a type that is off always takes the vanilla path.
  *
- * @param chests covers chests, trapped chests, ender chests and shulker boxes.
+ * @param chests covers chests (also trapped, copper and ender chests) and shulker boxes.
  * @param signs covers signs and hanging signs, including their text.
- * @param skulls covers skulls and heads.
+ * @param skulls covers skulls and heads. (Beds have no block entity in 26.3; they are terrain.)
  * @param shelves covers shelves and the items on them.
  * @param itemFrames covers item frames and glow item frames.
  * @param displayEntities covers item and block display entities.
@@ -61,7 +59,6 @@ data class CacheConfig(
 data class CacheTypes(
     var chests: Boolean = true,
     var signs: Boolean = true,
-    var beds: Boolean = true,
     var skulls: Boolean = true,
     var decoratedPots: Boolean = true,
     var shelves: Boolean = true,
@@ -73,7 +70,6 @@ data class CacheTypes(
     fun switches(): List<Pair<String, KMutableProperty0<Boolean>>> = listOf(
         "chests" to ::chests,
         "signs" to ::signs,
-        "beds" to ::beds,
         "skulls" to ::skulls,
         "decorated_pots" to ::decoratedPots,
         "shelves" to ::shelves,
