@@ -188,6 +188,10 @@ model.renderToBuffer(this.poseStack, buffer, submit.lightCoords(), submit.overla
 `Model.setupAnim(S)` defaults to `resetPose()` (every part back to its initial pose). `Model.renderToBuffer` is
 `final` and only calls `root().render(poseStack, buffer, light, overlay, color)`.
 
+NeoForge 26.3.0.94 patches `prepareModel`: between `setupAnim` and `renderToBuffer` it calls
+`ClientHooks.updateModelVisibility(model, state)` (part visibility from `RegisterRenderStateModifiersEvent`) and
+afterwards `ClientHooks.resetVisibility(previous)`. Wrapping the two vanilla calls works on both loaders.
+
 ### Part tree walk
 
 `ModelPart.render(PoseStack, VertexConsumer, int light, int overlay, int color)`:
@@ -456,7 +460,7 @@ staged draw) and light/overlay/colour are all final. EMF's `renderLikeVanilla` r
 | Part records | `ModelPart.compile(PoseStack.Pose, VertexConsumer, int, int, int)` (private) inside `ModelFeatureRenderer.prepareModel` | `@WrapMethod` (emit a record instead of vertices when the consumer is the frame's staged builder for a known format; else original) | 2 |
 | Expand pass | after `StagedVertexBuffer.upload()` in `FeatureRenderDispatcher.prepareFrameWithContext` | `@Inject` after the `upload` call; dispatch compute into the uploaded vertex buffer | 2 |
 | Animation LOD | `ModelFeatureRenderer.prepareModel` around `Model.setupAnim`; `LivingEntityRenderer.submit` around its layer `setupAnim` | `@WrapOperation` | 3 |
-| Debug timers | `LevelExtractor.extract`, `LevelRenderer.submitFeatures`, `FeatureRenderDispatcher.prepareFrame`, `ModelFeatureRenderer.prepareModel`, main frame pass | `@Inject` HEAD/RETURN | M2 instrumentation |
+| Debug timers (M2, shipped) | `LevelExtractor.extractVisibleEntities` / `extractVisibleBlockEntities`, `LevelRenderer.submitEntities` / `submitBlockEntities`, the `prepareFrame` call in `LevelRenderer.render`, `Model.setupAnim` / `Model.renderToBuffer` in `ModelFeatureRenderer.prepareModel`, `FeatureRenderDispatcher.PreparedFrame.executePhase(…, OitStage, RenderPass)`, `Minecraft.runTick` HEAD; `ModelFeatureRenderer.Submit` gets a field marking block entity submits | `@WrapMethod`, `@WrapOperation`, `@Inject` | M2 instrumentation |
 
 Open points for later milestones (not answered by reading code):
 
@@ -467,3 +471,61 @@ Open points for later milestones (not answered by reading code):
   submit (M6).
 - `RenderType.prepare()` writes `DynamicTransforms` from the current model-view matrix. Calling it from the execute
   stage for section buckets needs a check that dynamic uniform writes are allowed there on Vulkan (M3/M5).
+
+---
+
+## 11. Data and command formats (found while writing the benchmark datapack)
+
+- Block states in NBT (e.g. `block_display`'s `block_state`) are an id string (`"minecraft:stone"`) or a compound with
+  **`id`** and properties; the old `{Name: …}` form fails with "No key id" and leaves the display empty.
+- Item frames and paintings (`BlockAttachedEntity`) read `block_pos` and reject it unless it lies within 16 blocks of
+  the entity's position at load time; `/summon` sets the position after loading, so the NBT needs `Pos` as well.
+- Gamerules are `snake_case` registry ids (`advance_time`, `spawn_mobs`, `random_tick_speed`,
+  `max_block_modifications`, …).
+- Loot table entries use `modifier` (not `functions`); `exploration_map` creates real map data
+  (`MapItem.applyNewSavedData` + `renderBiomePreviewMap`) but finds nothing when structures are disabled
+  (`ChunkGenerator.findNearestMapStructure`).
+- Item frames only take the map path (`ItemFrameRenderState.mapId`) when the client has the map's data
+  (`ItemFrameRenderer.extractRenderState` → `level.getMapData`); otherwise the map renders as an item.
+- `pack.mcmeta` for 26.3 data packs: `"min_format": 121, "max_format": 121`.
+
+---
+
+## 12. Frame-rate limits that distort measurements
+
+- `Options.framerateLimit()` defaults to 120; `Options.UNLIMITED_FRAMERATE_CUTOFF` (260) means unlimited.
+- `FramerateLimitTracker.getThrottleReason()`: with `inactivityFpsLimit` = AFK (default) the limit drops to 30 FPS after
+  60 s without input and to 10 FPS after 10 min (`onInputReceived()` resets it); an iconified window, or an unfocused
+  exclusive-fullscreen one, runs at 10 FPS. `/mobium bench` resets the idle timer every frame while it records.
+
+## 13. Capturing an object through vanilla (M3)
+
+- `SubmitNodeStorage` can be instantiated and used as a private collector; `drainPhases` hands over each non-empty
+  phase and `FeatureRenderPhase.sortInto(Output)` empties it into any `FeatureRenderPhase.Output`.
+- `RenderTypeFeatureRenderer.buildGroup(FeatureFrameContext, List)` (protected, reached with an `@Invoker`) runs a
+  feature renderer's own vertex writing; `ModelFeatureRenderer.buildGroup` ignores the context and calls
+  `prepareModel` per submit. Redirecting `getVertexBuilder` at its head hands it any `VertexConsumer`
+  (`new BufferBuilder(ByteBufferBuilder, PrimitiveTopology, VertexFormat)` → `build()` → `MeshData`).
+- NeoForge adds `tryExtractRenderState(…, Frustum)` and deprecates the vanilla overload, which forwards to it; vanilla's
+  `LevelExtractor` calls the new one (culling by `getRenderBoundingBox`), Sodium the old one.
+- Light reaching a block entity: `ClientChunkCache.onLightUpdate` fires for sections the client light engine changed
+  (`LayerLightSectionStorage.swapSectionMap`), not for section data the server sends (`queueSectionData`); those
+  only mark sections dirty for a rebuild, and only when the packet asks for it.
+
+## 14. Settings, toasts and loader hooks (M4)
+
+Looked up on 20 Oct 2026 for the settings screens, the fallback toast and the benchmark's environment columns.
+
+| Topic | Finding |
+| --- | --- |
+| Options screens | `net.minecraft.client.gui.screens.options.OptionsSubScreen(Screen lastScreen, Options, Component title)`: `addOptions()` fills `list` (`OptionsList`: `addHeader(Component)`, `addBig(OptionInstance / AbstractWidget)`, `addSmall(OptionInstance...)`), `addFooter()` puts a Done button into `layout` (`HeaderAndFooterLayout`), `onClose()` applies the list and returns to `lastScreen`, `removed()` saves `options.txt`. Two footer buttons: `layout.addToFooter(LinearLayout.horizontal().spacing(8))` as in `WorldOptionsScreen`. |
+| Option widgets | `OptionInstance.createBoolean(captionKey, TooltipSupplier, initial, ValueUpdateListener)`; generic `OptionInstance(captionKey, tooltip, CaptionBasedToString, ValueSet, initial, listener)` with `OptionInstance.IntRange(min, max)` (slider, applied immediately) or `OptionInstance.Enum(values, codec)` (cycle button). `Options.genericValueLabel(caption, Component)` formats "Caption: value". The listener only fires while the game is running. |
+| Toasts | `SystemToast.add(ToastManager, SystemToast.SystemToastId, Component title, Component message)`; the manager is `minecraft.gui.toastManager()`, `ToastManager.getToast(Class, token)` finds a shown toast by its id. Screens open with `minecraft.gui.setScreen(…)`. |
+| Monitor and window | `Window.findBestMonitor()` → `Monitor` record (`name()`, `currentMode()`); `Window.getActiveVideoMode()` (render thread); `Window.getWidth()/getHeight()` are the framebuffer size. The game logs "Exclusive target … on monitor …" whenever the fullscreen window moves. |
+| Dev environment | Fabric `FabricLoader.isDevelopmentEnvironment`; NeoForge (FML 12) `FMLLoader.getCurrent().isProduction()`. |
+| NeoForge config button | `ModLoadingContext.get().registerExtensionPoint(IConfigScreenFactory::class.java) { IConfigScreenFactory { container, parent -> screen } }` from the `@Mod` object's constructor (same as autodrop). |
+| Sodium Config API (0.9.2 Fabric, 0.9.3-beta.1 NeoForge) | `ConfigEntryPoint.registerConfigLate(ConfigBuilder)`; Fabric entrypoint `sodium:config_api_user`, NeoForge class annotation `@ConfigEntryPointForge("<modid>")` (the annotation is in both API jars). `builder.registerModOptions(modId).addPage(builder.createOptionPage().setName(…).addOptionGroup(…))`; options from `createBooleanOption / createIntegerOption / createEnumOption(Identifier, Class) / createExternalButtonOption(Identifier)` with `setName`, `setTooltip`, `setDefaultValue`, `setBinding(Consumer, Supplier)`, `setStorageHandler(StorageEventHandler)` (called once after Apply), `setRange(min, max, step)`, `setValueFormatter`, `setElementNameProvider`, `setScreenConsumer(Consumer<Screen>)`. |
+| Overlapping mods | See `docs/compat.md`. |
+| Driving the client in-process (self-check) | `KeyMapping.click(InputConstants.Key)` counts a press for every mapping on that key (the keyboard handler's path). `Screenshot.takeScreenshot(RenderTarget, Consumer<NativeImage>)` / `Screenshot.grab(dir, name, target, 1, callback)` read the last frame asynchronously (`gameRenderer.mainRenderTarget()`). `minecraft.createWorldOpenFlows().openWorld(levelId, onCancel)` opens a save; `disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)` returns to the title screen like "Save and Quit" (`disconnectWithSavingScreen` alone stays on "Saving world"). `ClientPacketListener.sendUnattendedCommand` runs client commands on both loaders (NeoForge patches it through `ClientCommandHandler`). Changing `options.cloudStatus()` switches `graphicsPreset` to custom, and `OptionsSubScreen.removed()` saves `options.txt`. |
+| NeoForge mod list (26.3.0.94) | `net.neoforged.neoforge.client.gui.modlist.ModListScreen.create(lastScreen)`; its Config button's message is `neoforge.screen.mods.button.config`, active when `IConfigScreenFactory.getForMod` finds a factory. Startup warnings show `LoadingErrorScreen` ("Proceed" runs its `nextScreenTask`); `logoFile` in `neoforge.mods.toml` is deprecated (`iconFile` for square icons, `bannerFile`). |
+| Sodium internals (both loaders) | `ConfigManager.CONFIG` (`client.config.structure.Config`): `getModOptions()` (records with `configId()`, `pages()`), `getOption(Identifier)`, `applyAllOptions()`; `StatefulOption.modifyValue(v)` is what a control does; `VideoSettingsScreen.createScreen(parent, OptionPage)` opens on a page. The NeoForge jar nests these classes, so Mobium reaches them by reflection (dev self-check only). |

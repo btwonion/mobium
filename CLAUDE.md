@@ -11,7 +11,8 @@ hides the Loom/ModDevGradle differences. Targets are declared in `settings.gradl
 The structure follows `btwonion/autodrop`; check it first when unsure how something is done.
 
 **Start with `PLAN.md`.** It is the build plan: work through its milestones in order, tick its checkboxes as tasks
-land, and treat its gates as hard stops. If the repository only contains `PLAN.md` and this file, you are at M0.
+land, and treat its gates as hard stops. Its *Current state* section at the top says where the work stands and what to
+do next; keep it up to date at the end of every session.
 
 ## Commands
 
@@ -25,7 +26,26 @@ Requires JDK 25 (same as CI).
 ./gradlew :26.3-neoforge:runMainClient     # dev client, NeoForge (game dir: run/)
 ./gradlew :26.3-fabric:runClientGameTest   # Fabric client gametests (scene smoke tests, screenshots)
 ./gradlew "Set active project to 26.3-neoforge"   # switch the version the src/ comments are written for
+./gradlew :26.3-fabric:benchKit            # mods of the four benchmark setups + datapack -> versions/26.3-fabric/build/bench-kit
+./gradlew :26.3-fabric:runBenchWorld       # saves a ready benchmark world -> versions/26.3-fabric/build/bench-world
+python3 benchmark/prism_instances.py       # creates/updates the Prism instances "Mobium Bench A–D" from the two above
+python3 scripts/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
 ```
+
+`scripts/self_check.py` starts each dev client with a request file; `debug/selfcheck/SelfCheck.kt` (dev environments
+only) then walks through the checks inside the game: screens opened the loader's way, both languages, the Sodium page,
+and in the benchmark world key presses, commands and pixel comparisons against vanilla. It writes
+`<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched, and closes the game.
+Extend the scenario for every rendering PR, run it on both loaders, and read the screenshots before asking Anton.
+
+In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium suite` runs every scene of a setup
+and `/mobium gatea` runs Gate A unattended (`/mobium stop` aborts), scenes come from the
+`benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
+shows the stage timers. Protocol and results: `docs/benchmarks.md`. Settings: Mod Menu (Fabric), the mod list
+(NeoForge) or Mobium's page in Sodium's video settings; the M3 chest prototype is the "Chest prototype" switch
+(`"cache": {"prototype": true}` in `config/mobium.json`). `]` switches all of Mobium off and on live (A/B), the F3
+entry `mobium:modules` shows each module's state and why it is off, and in dev environments
+`/mobium debug fail <module>` forces a module failure (one toast, module on vanilla until restart).
 
 On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game: locally a window opens and
 closes by itself, CI runs it under `xvfb-run`. Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);
@@ -60,7 +80,10 @@ screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`
 ## Architecture
 
 See `PLAN.md` §5 (hook points, package map, part-record layout) and §6 (runtime fallback and compat behaviour).
-Replace this paragraph with a short description of the real architecture once Modules 1 and 2 exist.
+Replace this paragraph with a short description of the real architecture once Modules 1 and 2 exist. Until then:
+every module asks `core/ModuleStates` whether it may run (resolved by the pure `ModuleRules` from config, backend,
+shader pack, A/B key, overlapping mods and failures), reports exceptions to `core/Fallback`, and allocates GPU memory
+through `gpu/Gpu.backend`.
 
 ## Config and translations
 

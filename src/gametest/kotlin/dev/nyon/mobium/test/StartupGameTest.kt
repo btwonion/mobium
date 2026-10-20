@@ -10,6 +10,7 @@ import net.minecraft.client.gui.screens.TitleScreen
 @Suppress("unused")
 class StartupGameTest : FabricClientGameTest {
     override fun runTest(context: ClientGameTestContext) {
+        if (BenchWorldGameTest.creatingBenchWorld()) return
         check(FabricLoader.getInstance().isModLoaded("mobium")) { "Mobium is not loaded" }
 
         context.waitForScreen(TitleScreen::class.java)

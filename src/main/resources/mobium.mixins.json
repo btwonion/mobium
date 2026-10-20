@@ -7,5 +7,17 @@
     "injectors": {
         "defaultRequire": 1
     },
-    "client": []
+    "client": [
+        "BlockEntityRenderDispatcherMixin",
+        "ClientChunkCacheMixin",
+        "DebugScreenEntriesAccessor",
+        "LevelExtractorMixin",
+        "LevelRendererMixin",
+        "MinecraftMixin",
+        "ModelFeatureRendererMixin",
+        "ModelSubmitMixin",
+        "PreparedFrameMixin",
+        "RenderTypeFeatureRendererInvoker",
+        "RenderTypeFeatureRendererMixin"
+    ]
 }
