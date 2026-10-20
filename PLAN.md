@@ -17,14 +17,14 @@ Read this first when picking the work up in a new session.
   branches by mistake, and #6 (`m4-core` → `main`) brought M2–M4 over. `main` has M0–M4 plus the in-game self-check;
   the old milestone branches (`m0-scaffold` … `m4-core`) are deleted. From M5 on: one branch from `main` per
   milestone, one PR against `main`; merging is Anton's call.
-- **CI:** green on #6. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL
+- **CI:** green on #6 and on #7 up to df4080d. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL
   (`SDL_VIDEO_FORCE_EGL=1`, `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual; see the
   comments in `.github/workflows/build-commit.yml`. If CI hangs or fails again, read the job log first
   (`gh run view --log`).
 - **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`. M5 is in progress on branch
-  `m5-static-cache` (draft PR against `main`): the static cache for block entities is complete and checked, Gate B's
-  measurement exists (`/mobium gateb`), the entity types are open (below).
-- **M5 so far** (details in §M5): sign text is cached, Gate B keeps its target; buckets draw camera-relative vertices
+  `m5-static-cache` (draft PR btwonion/mobium#7 against `main`): the static cache for block entities is complete and
+  checked, Gate B was measured and failed (below), the entity rows of `CachePolicy` are being built.
+- **M5 so far** (details in §M5): sign text is cached; buckets draw camera-relative vertices
   (the M3 prototype's fog was off); captures run inside the level render, in Iris's formats with a shader pack;
   chests, signs, skulls, decorated pots and shelves are cached; memory budget, invalidation, config 4 (drops
   `cache.prototype` and the `beds` switch), `/mobium debug validate`, the `cache_gallery` scene. `ModuleRules` no
@@ -32,22 +32,32 @@ Read this first when picking the work up in a new session.
   every Mobium-vs-vanilla comparison 0 changed pixels except under Complementary, where the difference equals the
   pack's own noise between two vanilla frames. A fast path (entry on the block entity, per-frame text filter, light
   epoch) made the per-object check cheap; what remains of extraction is mostly Sodium's own loop.
-- **Gate B risk:** in the dev client's 1423×800 window `storage_room` is 1.44× `control` (target 1.2×), and skipping
-  the cache's draw calls shows that drawing the objects costs the GPU about 0.25 ms, which no cache can avoid; in that
-  window the floor is about 1.2× even with no CPU work (`docs/benchmarks.md`, *Gate B first look*). Anton's
-  `/mobium gateb` at 1920×1080 decides; if it misses, the target is his call (stop and ask before changing it).
+- **Benchmark round 20 Oct 2026** (Anton, Prism instances "Mobium Bench A–D", external AOC 1920×1080 at 240 Hz, mains
+  power, every suite with the cache on): results in `docs/benchmarks/results/2026-10-20-thinkpad-x9/`, tables in
+  `docs/benchmarks.md`. Setup A suite: `mob_pen_static` 2.98, `mob_pen_live` 3.11, `storage_room` 1.71 (vanilla on
+  19 Oct: 3.33), `map_wall` 4.31, `display_build` 1.70, `control` 1.11 ms. B and D are GPU-bound by Complementary
+  (`control` 33 ms); C's suite has no `control`, D's one run.
+- **Gate B failed: 1.39×** (`/mobium gateb`, setup A, `gateb-20261020-164524.csv`, medians of 3): `storage_room` with
+  the cache 1.695 ms, `control` with the cache 1.218 ms, without 1.213 ms; target at most 1.2×. `control` with/without
+  the cache 1.005× (passes, at most 1.03×). Stage timers in `storage_room`: block entity extraction 0.126 ms, draw
+  0.050 ms, prepare 0.008 ms; the rest of the ~0.48 ms gap is GPU work drawing the 1,000 chests and 300 signs, which
+  vanilla pays too (the dev window's draw-skip experiment measured ~0.25 ms). Even with no CPU work left the ratio would
+  be about 1.24×. Gates are hard stops: **Anton decides how to proceed with Gate B** (write-up and options in
+  `docs/benchmarks.md`, *Gate B*); the release (README, changelog, Modrinth/CurseForge IDs, `release.yml`) waits for
+  that decision.
+- **A/B key:** a physical key position (SDL scancode, the key right of P): `+` on Anton's German keyboard, `]` on a
+  US one (df4080d); chat and action-bar messages name the bound key.
 - **Known issue (not Mobium):** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
   `CenterDepthSampler` ("Missing uniform InSampler"), also with Mobium switched off
   (`python3 scripts/self_check.py neoforge --mode iris-without-mobium`); the self-check skips the shader pack there.
-- **Waiting for Anton:** refresh the instances (below; the script downloads the shader pack and Fresh Animations),
-  then in setup A on the external 1920×1080 monitor, on mains power: `/mobium gateb` (Gate B, about 12 minutes) and
-  `/mobium suite`, and the visual checks in the PR's *How to verify* (shader pack in B, Fresh Animations in C/D).
+- **Waiting for Anton:** the Gate B decision; the visual checks in the PR's *How to verify* (shader pack in B, Fresh
+  Animations in C/D).
 - **Next:** finish M5's `CachePolicy` with entities: item frames with items (frames with maps stay vanilla; maps are
   translucent custom geometry), armor stands, item and block displays. Hook `renderer.submit` inside
   `EntityRenderDispatcher.submit` (entities are always extracted; flame, shadow, name tags and leashes stay
   vanilla), key entries by entity, compare the extracted state each frame (`ItemFingerprint` for items), capture
   `BlockModelFeatureRenderer` submits (frames, block displays). Extend the gallery and the self-check, run both
-  loaders, update the PR. Then Gate B with Anton's numbers, and the release steps.
+  loaders, update the PR. Then whatever Anton decides for Gate B, and the release steps.
 - **Local test assets (gitignored dev run folders):** `shaderpacks/ComplementaryReimagined_r5.9.3.zip` (copied from
   Prism instance B) and `resourcepacks/FreshAnimations_v1.10.3.zip` (from Anton's "Simply Crafted" instance) in
   `versions/26.3-fabric/run/` and `run/`; the self-check uses them when present.
@@ -656,6 +666,10 @@ group had no heading.
 
 **Gate B:** zero screenshot differences; `storage_room` within 1.2× of `control`; `control` not slower than
 baseline; works with the full compat stack on Fabric and NeoForge.
+Status (20 Oct 2026): **failed, 1.39×** (Anton's `/mobium gateb` in setup A at 1920×1080: `storage_room` 1.695 ms,
+`control` 1.218 ms; `control` with/without the cache 1.005×, passes). About 0.18 ms of the gap is Mobium's CPU work,
+about 0.30 ms is the GPU drawing the objects, which vanilla pays as well; even with no CPU work left the ratio would be
+about 1.24×. Write-up and options in `docs/benchmarks.md` (*Gate B*); the next step is Anton's decision.
 Then: create the Modrinth/CurseForge projects, fill the project IDs, write README and changelog, release
 `0.1.0-beta1` through `release.yml`.
 

@@ -252,7 +252,100 @@ explanation is that the GPU clock drops to its minimum when vanilla's per-frame 
 makes the CPU and GPU wait for each other; this is not confirmed. The next round records the GPU clock (`gpu_mhz`
 in `summary.csv`), which settles it. A first reading from the gametest (20 Oct, on battery) shows that the clock does
 follow the workload: 500 MHz in `mob_pen_live`, 1950 MHz in `control`, in the same session. Until then Gate A uses only
-the fast state, the conservative choice.
+the fast state, the conservative choice. (The 20 Oct round below has no vanilla `storage_room` run, so this is still
+open.)
+
+### 20 Oct 2026, M5 static cache, all four setups
+
+Machine as on 19 Oct · every run fullscreen at 1920×1080 on the external AOC monitor (240 Hz), on mains power · Mobium
+0.1.0-beta1 from `m5-static-cache` (block entities cached; item frames, armor stands and displays not yet) ·
+Complementary Reimagined r5.9.3 selected in B and D, Fresh Animations 1.11.1 in C and D (installed and selected by
+`benchmark/prism_instances.py`) · Raw data: [`results/2026-10-20-thinkpad-x9/`](benchmarks/results/2026-10-20-thinkpad-x9/).
+
+- Every suite ran with the static cache on (the setups are `…+cache`); the only vanilla runs of this round are
+  Gate B's `control` runs. Speed-ups against vanilla below compare with 19 Oct, another session.
+- C's suite ended after `display_build` (no `control`), D's `control` has one run.
+- B and D: Complementary at 1920×1080 keeps this iGPU at about 30 FPS even in the empty `control` (33 ms), so those
+  frames are GPU-bound; the stage timers still show the CPU side.
+- GPU clock: `gpu_mhz` is the mean of one `act_freq` sample per second (an idle GPU counts as 0). It stayed between
+  550 and 1,190 MHz in every run, well below the 1,950 MHz maximum: the driver picks the clock per workload.
+
+Median of three 60-second runs, static cache on, times in ms per frame; extract, submit, pose and tessellate add
+entities and block entities.
+
+| Scene | Setup | Avg FPS | 1% low | Avg ms | p95 ms | Extract | Submit | Pose | Tessellate | Prepare | Draw | GPU MHz | Runs |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mob_pen_static | A | 336 | 215 | 2.98 | 3.67 | 0.59 | 0.22 | 0.09 | 1.00 | 1.72 | 0.02 | 700 | 3 |
+| mob_pen_live | A | 322 | 195 | 3.11 | 3.86 | 0.62 | 0.23 | 0.09 | 1.04 | 1.80 | 0.02 | 700 | 3 |
+| storage_room | A | 586 | 353 | 1.71 | 2.16 | 0.12 | 0.00 | 0 | 0 | 0.01 | 0.05 | 827–944 | 3 |
+| map_wall | A | 232 | 106 | 4.31 | 4.82 | 0.87 | 0.41 | 0 | 0 | 2.08 | 0.47 | 1116–1190 | 3 |
+| display_build | A | 588 | 260 | 1.70 | 1.87 | 0.52 | 0.12 | 0.00 | 0.01 | 0.68 | 0.01 | 700–853 | 3 |
+| control | A | 903 | 560 | 1.11 | 1.41 | 0.00 | 0.00 | 0 | 0 | 0.00 | 0.00 | 1050–1114 | 3 |
+| mob_pen_static | B | 16 | 14 | 63.07 | 67.81 | 1.54 | 0.68 | 0.29 | 3.90 | 5.71 | 0.18 | 550–574 | 3 |
+| mob_pen_live | B | 19 | 15 | 53.06 | 62.17 | 1.00 | 0.51 | 0.22 | 3.47 | 5.02 | 0.16 | 569–699 | 3 |
+| storage_room | B | 28 | 20 | 35.78 | 46.73 | 0.43 | 0.00 | 0 | 0 | 0.03 | 0.28 | 825–935 | 3 |
+| map_wall | B | 19 | 13 | 53.97 | 59.07 | 2.65 | 1.06 | 0 | 0 | 4.51 | 0.99 | 580–672 | 3 |
+| display_build | B | 20 | 18 | 49.73 | 54.01 | 1.41 | 0.44 | 0.00 | 0.04 | 2.42 | 0.23 | 578–579 | 3 |
+| control | B | 30 | 22 | 33.35 | 42.98 | 0.01 | 0.00 | 0 | 0 | 0.01 | 0.00 | 757–806 | 3 |
+| mob_pen_static | C | 117 | 73 | 8.55 | 12.23 | 0.85 | 1.18 | 0.17 | 4.31 | 5.13 | 0.02 | 758–774 | 3 |
+| mob_pen_live | C | 111 | 69 | 8.97 | 12.79 | 0.89 | 1.28 | 0.18 | 4.57 | 5.43 | 0.02 | 793–796 | 3 |
+| storage_room | C | 666 | 420 | 1.50 | 1.84 | 0.12 | 0.00 | 0 | 0 | 0.01 | 0.04 | 970–1014 | 3 |
+| map_wall | C | 246 | 114 | 4.07 | 4.54 | 0.81 | 0.43 | 0 | 0 | 1.96 | 0.46 | 1146–1169 | 3 |
+| display_build | C | 590 | 249 | 1.69 | 1.87 | 0.40 | 0.15 | 0.00 | 0.01 | 0.74 | 0.01 | 700 | 3 |
+| mob_pen_static | D | 15 | 12 | 67.93 | 78.20 | 1.45 | 3.17 | 0.22 | 8.88 | 10.89 | 0.18 | 654–757 | 3 |
+| mob_pen_live | D | 16 | 13 | 63.70 | 75.29 | 1.17 | 3.07 | 0.22 | 8.73 | 10.56 | 0.15 | 660–701 | 3 |
+| storage_room | D | 27 | 21 | 36.97 | 45.67 | 0.37 | 0.00 | 0 | 0 | 0.03 | 0.26 | 773–844 | 3 |
+| map_wall | D | 19 | 13 | 54.00 | 59.17 | 2.93 | 1.21 | 0 | 0 | 4.61 | 1.00 | 587–597 | 3 |
+| display_build | D | 19 | 18 | 51.37 | 54.12 | 1.52 | 0.59 | 0.00 | 0.04 | 2.36 | 0.20 | 550 | 3 |
+| control | D | 30 | 23 | 33.53 | 42.27 | 0.01 | 0.00 | 0 | 0 | 0.01 | 0.00 | 792 | 1 |
+
+What the round shows:
+
+- **`storage_room` (A): 3.33 → 1.71 ms**, 1.95× faster than vanilla on 19 Oct (Gate A session 1, same monitor), and
+  0.47 ms faster than Gate A's chest prototype (2.18 ms): the signs are cached too. Block entities cost 0.12 ms of
+  extraction, nothing of submit, 0.01 ms of prepare (vanilla: 1.68) and 0.05 ms of draw calls.
+- `map_wall`: the shelves are cached (prepare 2.08 ms against 2.43–2.63 ms on 19 Oct); the 400 item frames with maps
+  stay vanilla by design (maps are translucent custom geometry). `display_build`, the mob pens: nothing cached yet.
+- **Fresh Animations** (C against A): the mob pens take 8.5–9.0 ms instead of 3.0–3.1; tessellation grows from 1.0 to
+  4.3–4.6 ms, posing only from 0.09 to 0.17–0.18 ms, so even with Fresh Animations writing vertices is the cost, not
+  animating. This is the M6 measurement `PLAN.md` asked for.
+- **Gate C outlook** (D, `mob_pen_live`): 63.7 ms against 33.5 ms for `control`. The timed CPU stages make up about
+  15 ms of the 30 ms difference (tessellation 8.7 ms); the rest is GPU work and Iris's shadow pass, whose entity
+  drawing the timers do not count. M6 needs shadow-pass timers before it can promise 1.5×.
+
+### Gate B (20 Oct 2026): failed, 1.39×
+
+`/mobium gateb` in setup A ([`gateb-20261020-164524.csv`](benchmarks/results/2026-10-20-thinkpad-x9/A/gateb-20261020-164524.csv),
+three rounds of 60 s, medians):
+
+| Run | Frame | p95 | Extract BE | Prepare | Draw | GPU MHz |
+| --- | --- | --- | --- | --- | --- | --- |
+| `storage_room`, cache on | 1.695 ms | 2.13 ms | 0.126 ms | 0.008 ms | 0.050 ms | 865–904 |
+| `control`, cache on | 1.218 ms | 1.61 ms | 0.000 ms | 0.003 ms | 0.000 ms | 923–981 |
+| `control`, cache off | 1.213 ms | 1.59 ms | 0.001 ms | 0.003 ms | 0.000 ms | 946–983 |
+
+- **`storage_room` / `control` = 1.39× (target at most 1.2×): failed.** No round came close: 1.37×, 1.34×, 1.41×.
+- `control` with / without the cache = 1.005× (at most 1.03×): passes.
+
+**Where the 0.48 ms go.** Mobium's timed CPU work in `storage_room` is about 0.18 ms: block entity extraction 0.126 ms
+(Sodium's per-block-entity loop plus the cache's fast-path check, about 0.1 µs for each of the 1,300 objects), the
+cache's draw calls 0.050 ms, prepare 0.005 ms more than `control`. The other ~0.30 ms are outside every timer: the GPU
+drawing 1,000 chests and 300 signs. In the dev window, skipping the cache's draw calls measured about 0.25 ms of GPU
+time for them at 1423×800 (*Gate B first look* below); 1920×1080 has 1.8× the pixels. Vanilla draws the same
+vertices and pays the same; no cache can avoid it. The driver's clock choice adds to it: in A `storage_room` took
+1.60 ms at 944 MHz and 1.76 ms at 827 MHz, and in C, which keeps the GPU at about 1,000 MHz, 1.50 ms.
+
+**What is left to optimise, and the bound.** 1.2 × 1.218 ms = 1.46 ms, so `storage_room` would have to lose 0.23 ms.
+Removing all of Mobium's timed CPU work (0.18 ms) leaves about 1.51 ms, **1.24×**: on this machine Gate B as written
+cannot be reached through CPU work alone.
+
+- Skip Sodium's per-block-entity loop for sections whose cached objects are all unchanged: needs event-driven
+  invalidation (lid events, block entity data, light and block updates) instead of the per-frame check, and a hook in
+  Sodium's internals. Saves at most about 0.1 ms (→ about 1.31×).
+- Fewer draw calls (bigger buckets or multi-draw): at most 0.03 ms of CPU, perhaps a little GPU state switching.
+- The GPU cost itself only shrinks with fewer pixels or vertices, which would change the picture.
+
+Gates are hard stops (`PLAN.md` §7): how to proceed is Anton's call, and the release waits for it.
 
 ### Measurement pitfalls
 
@@ -308,6 +401,6 @@ twice with its draw calls on and twice with them skipped (a dev switch; the cach
 Stage timers of the cached `storage_room`: block entity extraction 0.20 ms (Sodium's loop and the cache's per-object
 check for 1,300 objects), the cache's draw calls 0.09 ms of CPU. Skipping the draws saves 0.33–0.36 ms, so drawing the
 1,000 chests and 300 signs costs the GPU about 0.25 ms. Vanilla pays that as well, and no cache can avoid it: in this
-window `storage_room` would be about 1.2× `control` even with no CPU work at all. Whether Gate B's 1.2× holds on the
-protocol's 1920×1080 is Anton's measurement (`/mobium gateb`); if it does not, the target is his call.
+window `storage_room` would be about 1.2× `control` even with no CPU work at all. At the protocol's 1920×1080 Anton
+measured 1.39× (*Gate B* above).
 
