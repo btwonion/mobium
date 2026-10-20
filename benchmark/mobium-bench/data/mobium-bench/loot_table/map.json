@@ -1,0 +1,24 @@
+{
+    "type": "minecraft:chest",
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+                {
+                    "type": "minecraft:item",
+                    "name": "minecraft:filled_map",
+                    "modifier": [
+                        {
+                            "type": "minecraft:exploration_map",
+                            "destination": "#minecraft:village",
+                            "decoration": "minecraft:target_x",
+                            "zoom": 1,
+                            "search_radius": 64,
+                            "skip_existing_chunks": false
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

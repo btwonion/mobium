@@ -8,6 +8,9 @@ import dev.nyon.mobium.config.config
 import dev.nyon.mobium.config.migrate
 import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
+import dev.nyon.mobium.core.ModuleStates
+import dev.nyon.mobium.debug.selfcheck.SelfCheck
+import net.minecraft.client.Minecraft
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -31,5 +34,7 @@ object Mobium {
     fun onClientStarted() {
         val capabilities = Capabilities.detect()
         LOGGER.info("Graphics: {}", capabilities.describe())
+        ModuleStates.onClientStarted()
+        SelfCheck.startIfRequested(Minecraft.getInstance())
     }
 }
