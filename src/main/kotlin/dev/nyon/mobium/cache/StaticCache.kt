@@ -63,7 +63,10 @@ object StaticCache {
     @JvmField
     var active = false
 
-    /** Dev measurements only: skips the cache's draw calls (cached objects vanish) to tell their cost apart. */
+    /**
+     * Measurements only (`/mobium gateb`, the dev self-check): skips the cache's draw calls, so the cached objects vanish
+     * and the GPU has nothing to draw for them; everything else the cache does per frame still runs.
+     */
     @JvmField
     var skipDraws = false
 
