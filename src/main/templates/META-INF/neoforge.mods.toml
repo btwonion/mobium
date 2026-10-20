@@ -12,7 +12,8 @@ authors = "${mod_author}"
 description = '''
 ${mod_description}
 '''
-logoFile = "${icon}"
+iconFile = "${icon}"
+displayURL = "https://github.com/${repo}"
 
 [[dependencies.${mod_id}]]
 modId = "minecraft"

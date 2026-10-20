@@ -29,11 +29,9 @@ Read this first when picking the work up in a new session.
   timeout) and merged up into #3 and #4; `main` gets it when #2 is merged. If CI hangs or fails again, read the job log
   first (`gh run view --log`).
 - **Done:** M0–M2; M3 with **Gate A passed (1.53×)**, see §M3 and `docs/benchmarks.md`; the code of M4.
-- **Waiting for Anton:**
-  - the M4 check on both loaders (#5 *How to verify*): settings in Mod Menu / the NeoForge mod list / Sodium's video
-    settings, `]`, F3 `mobium:modules`, `/mobium debug fail`;
-  - before Gate B: refresh the instances (below) and record a full round, every setup's suite plus `/mobium gatea`,
-    on the external 1920×1080 monitor, on mains power.
+- **Waiting for Anton:** before Gate B, refresh the instances (below) and record a full round, every setup's suite
+  plus `/mobium gatea`, on the external 1920×1080 monitor, on mains power. The M4 check on both loaders was done with
+  the self-check (`python3 scripts/self_check.py`, see §M4); extend its scenario for every rendering PR.
 - **Next:** M5 (static cache). Settle the sign-text question first (§M5, *Conflict found at Gate A*); then
   `CaptureConsumer`/`SectionBucket` grow out of the prototype, `CachePolicy` uses the per-type switches, and
   `ModuleRules` drops `PROTOTYPE_OFF` and `SHADER_PACK` for Module 1.
@@ -343,7 +341,8 @@ dev.nyon.mobium
 │   ├── ModuleLines.kt         # F3 mobium:modules: module states, GPU memory, cached objects, failed types
 │   ├── AbToggle.kt            # keybind toggling all modules live for A/B comparison
 │   ├── Sections.kt            # timers around extract / submit / pose / tessellate / draw
-│   └── Validation.kt          # dev builds: draw both ways off-screen and pixel-diff
+│   ├── Validation.kt          # dev builds: draw both ways off-screen and pixel-diff (compare() exists)
+│   └── selfcheck/             # dev builds: in-game scripted check of a PR's "How to verify", both loaders
 ├── bench/
 │   ├── BenchCommand.kt        # client command: /mobium bench <scene> <seconds>
 │   └── FrameRecorder.kt       # frame times → CSV + summary (avg FPS, 1% low, avg and p95 frame ms, section times)
@@ -544,7 +543,14 @@ therefore outside Module 1 as planned (§M5).
 Done when both loaders show identical settings, toggling a module at runtime logs the state change, and a forced
 exception in a module disables it with one toast.
 
-Status (20 Oct 2026): code done on branch `m4-core`; Anton's visual check on both loaders is open (PR *How to verify*).
+Status (20 Oct 2026): done on branch `m4-core`, verified on both loaders with the in-game self-check
+(`scripts/self_check.py`: Fabric 26/26, NeoForge 27/27 checks; screenshots read by eye). The self-check runs #5's
+*How to verify* inside the dev clients: settings through Mod Menu's factory and the NeoForge mod list's Config button,
+English and German without raw keys, Mobium's Sodium page and its Apply path, saved settings, and in `storage_room`
+the A/B key (Mobium and vanilla pictures: 0 differing pixels), F3 `mobium:modules`, `/mobium debug fail` (one toast,
+chests still drawn) and the status line. It found two real problems, both fixed: Mobium's `neoforge.mods.toml` used
+the deprecated `logoFile` (a NeoForge loading warning; now `iconFile`, plus `displayURL`), and the Sodium page's first
+group had no heading.
 - **Module states.** `core/ModuleRules` (pure, unit-tested) resolves each module from config, backend, compute, shader
   pack, A/B key, overlapping mods and failures, with one reason when it is off. `core/ModuleStates` re-resolves on
   every change and logs each transition ("Mobium static_cache: active -> vanilla (ab_toggle) (A/B key: vanilla)").
@@ -663,6 +669,7 @@ Before starting M6, measure setup D with the shader pack and Fresh Animations: w
 | `./gradlew build` both targets | Claude Code + CI | Every PR |
 | Unit tests (pure Kotlin: ring buffer, budget, record packing, expand reference math, config migration) | CI | Every PR |
 | Fabric client gametests: scene smoke tests and screenshots | CI under xvfb with Mesa's software OpenGL (supports compute, so correctness of the compute path can be checked; speed cannot) | Every PR from M2 |
+| In-game self-check on both dev clients (`scripts/self_check.py`): the PR's *How to verify* as scripted checks, pixel comparisons and screenshots | Claude Code, locally | Every rendering PR from M4 |
 | Visual check with shader packs and Fresh Animations | Anton | Every rendering PR |
 | Benchmarks (`/mobium bench`, all scenes, four setups) | Anton | Gates A–C and before each release |
 | NeoForge parity | Anton (manual) + CI build | Every rendering PR |

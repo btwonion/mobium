@@ -9,16 +9,12 @@ import dev.nyon.mobium.core.OffReason
 import dev.nyon.mobium.debug.Sections
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.Identifier
-import net.minecraft.server.MinecraftServer
-import net.minecraft.world.scores.ScoreHolder
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Runs benchmark plans unattended, so a whole setup is one command:
@@ -41,13 +37,10 @@ object BenchSuite {
     const val GATE_A_TARGET = 1.5
     val SCENES = listOf("mob_pen_static", "mob_pen_live", "storage_room", "map_wall", "display_build", "control")
 
-    private const val NAMESPACE = "mobium-bench"
-    private const val OBJECTIVE = "mobium_bench"
     private const val BUILD_TIMEOUT_SECONDS = 120L
     private const val TOGGLE_SETTLE_SECONDS = 3L
     private const val QUIET_SECONDS = 3L
     private const val QUIET_TIMEOUT_SECONDS = 120L
-    private const val QUIET_TICK_NANOS = 25_000_000L
     private const val NANOS_PER_SECOND = 1_000_000_000L
 
     /** One benchmark run of the plan; [prototype] null leaves the chest prototype as it is. */
@@ -65,11 +58,10 @@ object BenchSuite {
     private var runsBefore = 0
     private var gateA = false
     private var prototypeConfigBefore = false
-    private val ready = AtomicBoolean(false)
     private var waitForQuiet = false
     private var quietSince = 0L
     private var settleTimeout = 0L
-    private val missingPack = AtomicBoolean(false)
+    private val scenes = SceneBuilder()
     private val results = ArrayList<BenchResult>()
     private var stamp = ""
 
@@ -137,8 +129,8 @@ object BenchSuite {
         val now = System.nanoTime()
         when (state) {
             State.BUILDING -> when {
-                missingPack.get() -> fail(Component.translatable("mobium.suite.no_datapack"))
-                ready.get() -> {
+                scenes.missingPack.get() -> fail(Component.translatable("mobium.suite.no_datapack"))
+                scenes.ready.get() -> {
                     state = State.SETTLING
                     deadline = now + SETTLE_SECONDS * NANOS_PER_SECOND
                     waitForQuiet = true
@@ -151,7 +143,7 @@ object BenchSuite {
             State.SETTLING -> if (now >= deadline) {
                 if (!waitForQuiet) {
                     startRun()
-                } else if (isQuiet(minecraft)) {
+                } else if (SceneBuilder.isQuiet(minecraft)) {
                     if (quietSince == 0L) quietSince = now
                     if (now - quietSince >= QUIET_SECONDS * NANOS_PER_SECOND) startRun()
                 } else {
@@ -190,25 +182,9 @@ object BenchSuite {
     }
 
     private fun build(scene: String) {
-        val minecraft = Minecraft.getInstance()
-        val server = minecraft.singleplayerServer
-        val player = minecraft.player
-        if (server == null || player == null) {
+        if (!scenes.build(Minecraft.getInstance(), scene)) {
             fail(Component.translatable("mobium.suite.singleplayer"))
             return
-        }
-        ready.set(false)
-        missingPack.set(false)
-        val uuid = player.uuid
-        server.execute {
-            if (server.functions.get(Identifier.fromNamespaceAndPath(NAMESPACE, scene)).isEmpty) {
-                missingPack.set(true)
-                return@execute
-            }
-            server.commands.performPrefixedCommand(
-                server.createCommandSourceStack().withSuppressedOutput(),
-                "execute as $uuid at @s run function $NAMESPACE:$scene"
-            )
         }
         builtScene = scene
         state = State.BUILDING
@@ -216,27 +192,10 @@ object BenchSuite {
         nextPoll = 0L
     }
 
-    /** Asks the server whether the datapack set `#ready` to 1; runs after the build command in the server's queue. */
+    /** Asks the server whether the scene is ready, at most twice per second. */
     private fun poll(minecraft: Minecraft) {
         nextPoll = System.nanoTime() + NANOS_PER_SECOND / 2
-        val server = minecraft.singleplayerServer ?: return
-        server.execute { ready.set(isReady(server)) }
-    }
-
-    private fun isReady(server: MinecraftServer): Boolean {
-        val objective = server.scoreboard.getObjective(OBJECTIVE) ?: return false
-        return server.scoreboard.getPlayerScoreInfo(ScoreHolder.forNameOnly("#ready"), objective)?.value() == 1
-    }
-
-    /**
-     * A freshly built scene keeps the game busy for a while (section rebuilds, client light updates, server lighting);
-     * measuring before that ends would penalise whichever run comes first.
-     */
-    private fun isQuiet(minecraft: Minecraft): Boolean {
-        val level = minecraft.level ?: return false
-        if (!minecraft.levelRenderer.hasRenderedAllSections() || level.lightEngine.hasLightWork()) return false
-        val server = minecraft.singleplayerServer ?: return true
-        return server.averageTickTimeNanos < QUIET_TICK_NANOS
+        scenes.poll(minecraft)
     }
 
     private fun startRun() {
