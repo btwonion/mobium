@@ -191,12 +191,13 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
     /** Runs `/mobium bench <scene>` for [BENCH_SECONDS] and returns its row of summary.csv. */
     private fun runBench(context: ClientGameTestContext, scene: String): Map<String, String> {
         val summary = benchDirectory(context).resolve("summary.csv")
-        val rowsBefore = if (Files.exists(summary)) Files.readAllLines(summary).size else 1
+        // The last row rather than the row count: a summary.csv with older columns is renamed and starts over.
+        val lastBefore = if (Files.exists(summary)) Files.readAllLines(summary).lastOrNull() else null
         context.runOnClient<RuntimeException> {
             checkNotNull(it.player).connection.sendUnattendedCommand("mobium bench $scene $BENCH_SECONDS", null)
         }
         context.waitFor(
-            { Files.exists(summary) && Files.readAllLines(summary).size > rowsBefore },
+            { Files.exists(summary) && Files.readAllLines(summary).let { it.size > 1 && it.last() != lastBefore } },
             (BENCH_SECONDS + 5 + 10) * 20
         )
         val lines = Files.readAllLines(summary)
