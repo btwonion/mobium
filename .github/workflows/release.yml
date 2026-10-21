@@ -21,9 +21,14 @@ jobs:
         run: chmod +x gradlew
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+      # `build` runs the Fabric client gametests, which need the same display as in build-commit.yml: xvfb with Mesa's
+      # software OpenGL, and SDL on Mesa's EGL (Xvfb's GLX has no sRGB-capable visual; see the comment there).
       - name: Install xvfb and Mesa
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0
       - name: Build with Gradle
+        env:
+          SDL_VIDEO_FORCE_EGL: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew build --stacktrace
       - name: Release with Gradle
         run: ./gradlew releaseMod --stacktrace
