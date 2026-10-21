@@ -291,6 +291,7 @@ object StaticCache {
             entry.lightVersion = lightVersion
             entry.lightEpoch = lightEpoch
             entry.renderer = renderer
+            entry.hasNeighbour = hasNeighbour
             if (hasNeighbour) entry.neighbourEntity = level.getBlockEntity(neighbour)
             rule.storeInputs(entry, blockEntity)
             entries.put(pos.asLong(), entry)
@@ -907,7 +908,11 @@ class CacheEntry(
     @JvmField
     var renderer: BlockEntityRenderer<BlockEntity, BlockEntityRenderState> = NO_RENDERER
 
-    /** The other half of a double chest, when the entry was made. */
+    /** True for half of a double chest: the other half's lid and light belong to the picture too. */
+    @JvmField
+    var hasNeighbour = false
+
+    /** The other half of a double chest, when the entry was made (null if its chunk was not loaded yet). */
     @JvmField
     var neighbourEntity: BlockEntity? = null
 

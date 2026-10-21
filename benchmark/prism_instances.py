@@ -130,13 +130,15 @@ def kit_build(kit: Path) -> str | None:
 
 def check_build(kit: Path, allow_behind: bool) -> str:
     """Refuses to install a kit that does not match the checkout, or a checkout behind its upstream branch."""
-    head = git("describe", "--always", "--dirty", "--abbrev=7")
+    head = git("describe", "--always", "--abbrev=7")
     built = kit_build(kit)
-    if head is not None and built != head:
+    if head is not None and (built or "").removesuffix("-dirty") != head:
         raise SystemExit(
             f"The kit's Mobium was built from {built or 'an unknown commit'}, the checkout is at {head}: "
             "run ./gradlew :26.3-fabric:benchKit first"
         )
+    if built is not None and built.endswith("-dirty"):
+        print(f"note: the kit was built from {built}, i.e. with uncommitted changes")
     upstream = git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
     if upstream is not None and not allow_behind:
         if git("fetch", "--quiet") is None:
