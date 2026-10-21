@@ -340,6 +340,7 @@ object BenchSuite {
             rows.append("# gate_b_drawing_ms,${fmt(gate.drawingMs, 4)}\n")
             rows.append("# gate_b_control_cache_over_vanilla,${fmt(gate.control, 3)}\n")
         }
+        rows.append("# build,${Mobium.BUILD}\n")
 
         return try {
             val directory = Minecraft.getInstance().gameDirectory.toPath().resolve("mobium-bench")

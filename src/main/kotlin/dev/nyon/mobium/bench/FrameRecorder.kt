@@ -254,7 +254,7 @@ object FrameRecorder {
         val header = buildString {
             append("timestamp,scene,setup,seconds,frames,avg_fps,low1_fps,avg_ms,p95_ms")
             for (name in Sections.NAMES) append(",${name}_ms")
-            append(",entities,block_entities,framerate_limit,vsync,minecraft,mobium,loader,backend,gpu")
+            append(",entities,block_entities,framerate_limit,vsync,minecraft,mobium,build,loader,backend,gpu")
             append(",display,resolution,power,power_profile,gpu_mhz\n")
         }
         val capabilities = Capabilities.current
@@ -268,7 +268,7 @@ object FrameRecorder {
             append(",${if (limit >= Options.UNLIMITED_FRAMERATE_CUTOFF) "unlimited" else limit.toString()}")
             append(",${options.enableVsync().get()}")
             append(",${csv(SharedConstants.getCurrentVersion().name())}")
-            append(",${csv(Compat.modVersion(Mobium.MOD_ID) ?: "")}")
+            append(",${csv(Compat.modVersion(Mobium.MOD_ID) ?: "")},${csv(Mobium.BUILD)}")
             append(",${Compat.LOADER}")
             append(",${csv(capabilities?.backendName ?: "")}")
             append(",${csv(capabilities?.deviceName ?: "")}")
