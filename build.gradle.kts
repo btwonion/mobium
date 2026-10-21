@@ -317,6 +317,7 @@ publishMods {
         } else {
             requires { slug = "kotlin-lang-forge" }
         }
+        optional { slug = "sodium" }
     }
 
     curseforge {
@@ -333,6 +334,7 @@ publishMods {
         } else {
             requires { slug = "kotlinlangforge" }
         }
+        optional { slug = "sodium" }
     }
 
     github {
