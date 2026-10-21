@@ -255,7 +255,12 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
     /** Runs `/mobium suite` on the control scene and checks its medians file. */
     private fun checkSuiteCommand(context: ClientGameTestContext) {
         val medians = runPlan(context, "mobium suite $BENCH_SECONDS 1 control", "suite-")
-        check(medians.size == 2 && medians[1].startsWith("control,")) { "Unexpected suite medians: $medians" }
+        check(
+            medians.size == 3 && medians[1].startsWith("control,") && medians[2].startsWith("# build,") &&
+                !medians[2].endsWith(",unknown")
+        ) {
+            "Unexpected suite medians: $medians"
+        }
     }
 
     /** Runs `/mobium bench` on the last scene (live mobs) and checks the files it writes. */
