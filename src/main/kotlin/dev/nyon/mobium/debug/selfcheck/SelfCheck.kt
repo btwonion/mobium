@@ -366,9 +366,12 @@ object SelfCheck {
                 ModuleStates.refresh("self-check")
                 yield(ticks(3 * TICKS_PER_SECOND))
                 val summary = bench.resolve("summary.csv")
-                val rowsBefore = if (Files.exists(summary)) Files.readAllLines(summary).size else 0
+                // The last row rather than the row count: a summary.csv with older columns is renamed and starts over.
+                val lastBefore = if (Files.exists(summary)) Files.readAllLines(summary).lastOrNull() else null
                 checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium bench $scene 15", null)
-                yield(until("bench $scene (cache $cache)", 60) { Files.exists(summary) && Files.readAllLines(summary).size > rowsBefore })
+                yield(until("bench $scene (cache $cache)", 60) {
+                    Files.exists(summary) && Files.readAllLines(summary).let { it.size > 1 && it.last() != lastBefore }
+                })
                 val row = Files.readAllLines(summary).let { lines -> lines.first().split(',').zip(lines.last().split(',')).toMap() }
                 results += "NOTE $scene, cache ${if (cache) "on" else "off"}: ${row["avg_ms"]} ms, extract " +
                     "${row["extract_entities_ms"]}, submit ${row["submit_entities_ms"]}, prepare ${row["prepare_ms"]}; " +
