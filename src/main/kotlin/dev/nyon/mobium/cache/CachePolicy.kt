@@ -129,8 +129,9 @@ object Lids : CacheRule("chests") {
     override fun isStaticCached(entry: CacheEntry, blockEntity: BlockEntity, partialTicks: Float): Boolean {
         if (blockEntity is ShulkerBoxBlockEntity) return blockEntity.getProgress(partialTicks) == 0f
         if (blockEntity !is LidBlockEntity || blockEntity.getOpenNess(partialTicks) != 0f) return false
-        val other = entry.neighbourEntity ?: return true
-        // A replaced other half (its chunk reloaded) goes through the full check, which looks it up again.
+        // A missing other half (its chunk was not loaded yet) or a replaced one (its chunk reloaded) goes through the
+        // full check, which looks it up again.
+        val other = entry.neighbourEntity ?: return !entry.hasNeighbour
         return !other.isRemoved && (other as? LidBlockEntity)?.getOpenNess(partialTicks) == 0f
     }
 
