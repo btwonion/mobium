@@ -3,6 +3,9 @@
 
     python3 scripts/self_check.py              # Fabric, then NeoForge
     python3 scripts/self_check.py neoforge     # one loader
+    python3 scripts/self_check.py fabric --mode gallery    # only the cache_gallery checks, for quick iterations
+    python3 scripts/self_check.py neoforge --mode iris-without-mobium   # shader pack with Mobium off (crash triage)
+    python3 scripts/self_check.py fabric --mode profile    # storage_room under JFR -> mobium-selfcheck/*.jfr
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
 both languages, Sodium's page, and in the benchmark world's storage_room the A/B key, F3 and a forced module failure,
@@ -19,6 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WORLD = ROOT / "versions/26.3-fabric/build/bench-world/Mobium Bench"
+PACK = ROOT / "benchmark/mobium-bench"
 LOADERS = {
     "fabric": (":26.3-fabric:runClient", ROOT / "versions/26.3-fabric/run"),
     "neoforge": (":26.3-neoforge:runMainClient", ROOT / "run"),
@@ -26,7 +30,7 @@ LOADERS = {
 TIMEOUT_SECONDS = 20 * 60
 
 
-def run(loader: str) -> bool:
+def run(loader: str, mode: str) -> bool:
     task, game = LOADERS[loader]
     saves = game / "saves"
     saves.mkdir(parents=True, exist_ok=True)
@@ -34,10 +38,14 @@ def run(loader: str) -> bool:
         if not WORLD.is_dir():
             raise SystemExit(f"{WORLD} not found; run ./gradlew :26.3-fabric:runBenchWorld first")
         shutil.copytree(WORLD, saves / WORLD.name, ignore=shutil.ignore_patterns("session.lock"))
+    # The world keeps its own copy of the datapack; the scenes may have changed since it was made.
+    pack = saves / WORLD.name / "datapacks" / PACK.name
+    shutil.rmtree(pack, ignore_errors=True)
+    shutil.copytree(PACK, pack)
     directory = game / "mobium-selfcheck"
     shutil.rmtree(directory, ignore_errors=True)
     directory.mkdir(parents=True)
-    (directory / "request").touch()
+    (directory / "request").write_text(mode)
 
     print(f"{loader}: running {task} (a game window opens and closes by itself)", flush=True)
     try:
@@ -61,11 +69,17 @@ def run(loader: str) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("loaders", nargs="*", help=f"any of {', '.join(LOADERS)} (default: all)")
+    parser.add_argument("--mode", default="", choices=["", "gallery", "iris-without-mobium", "profile", "gateb"],
+                        help="gallery: only the cache_gallery checks (quicker); "
+                             "iris-without-mobium: only the first shader pack in shaderpacks/, with Mobium off; "
+                             "profile: storage_room under Java Flight Recorder, with the cache and without Mobium; "
+                             "gateb: /mobium gateb 20 2 in the dev client's window plus display_build and map_wall with the cache off "
+                             "and on (a hint, not the protocol)")
     args = parser.parse_args()
     unknown = [loader for loader in args.loaders if loader not in LOADERS]
     if unknown:
         parser.error(f"unknown loader {', '.join(unknown)}; use {' or '.join(LOADERS)}")
-    results = [run(loader) for loader in (args.loaders or list(LOADERS))]
+    results = [run(loader, args.mode) for loader in (args.loaders or list(LOADERS))]
     sys.exit(0 if all(results) else 1)
 
 

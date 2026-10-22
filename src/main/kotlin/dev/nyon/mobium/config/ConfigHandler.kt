@@ -12,7 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 var config: Config = Config()
     internal set
 
-const val CONFIG_VERSION = 3
+const val CONFIG_VERSION = 4
 
 /**
  * Replaces the config with [value], writes it to disk and re-resolves the module states, which logs every module
@@ -36,25 +36,28 @@ fun applyConfig(value: Config) {
 @Suppress("UNUSED_PARAMETER")
 internal fun migrate(json: Json, jsonTree: JsonElement, version: Int?): Config? = runCatching {
     when (version) {
-        1 -> migrateVersion1(jsonTree)
-        2 -> migrateVersion2(jsonTree)
+        1, 2 -> migrateVersion1(jsonTree)
+        3 -> migrateVersion3(json, jsonTree)
         else -> null
     }
 }.getOrNull()
 
-/** Version 1 (M0–M2) only had the global switch. */
+/**
+ * Version 1 (M0–M2) only had the global switch; version 2 (M3) added `cache.prototype`, which the full static cache
+ * (M5) no longer needs. Both keep the global switch only.
+ */
 private fun migrateVersion1(jsonTree: JsonElement): Config =
     Config(enabled = jsonTree.jsonObject["enabled"]?.jsonPrimitive?.booleanOrNull ?: true)
 
 /**
- * Version 2 (M3) had the global switch and `cache.prototype`. Version 3 only adds keys, so a valid version 2 file
- * decodes as it is; this branch keeps the two settings when the rest of a version 2 file does not decode.
+ * Version 3 (M4) had `cache.prototype` (the opt-in for the M3 chest prototype) and the per-type switch
+ * `cache.types.beds` (beds have no block entity in 26.3). Both are dropped, everything else is kept.
  */
-private fun migrateVersion2(jsonTree: JsonElement): Config {
+private fun migrateVersion3(json: Json, jsonTree: JsonElement): Config {
     val root = jsonTree.jsonObject
-    val cache = root["cache"] as? JsonObject
-    return Config(
-        enabled = root["enabled"]?.jsonPrimitive?.booleanOrNull ?: true,
-        cache = CacheConfig(prototype = cache?.get("prototype")?.jsonPrimitive?.booleanOrNull ?: false)
-    )
+    val cache = root["cache"] as? JsonObject ?: return json.decodeFromJsonElement(Config.serializer(), root)
+    val types = cache["types"] as? JsonObject
+    val newTypes = if (types == null) emptyMap() else mapOf("types" to JsonObject(types - "beds"))
+    val newCache = JsonObject(cache - "prototype" + newTypes)
+    return json.decodeFromJsonElement(Config.serializer(), JsonObject(root + ("cache" to newCache)))
 }

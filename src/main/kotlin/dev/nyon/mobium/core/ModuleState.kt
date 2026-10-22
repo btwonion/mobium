@@ -43,12 +43,6 @@ enum class OffReason(val key: String) {
     /** The module needs compute shaders (OpenGL 4.3). */
     NO_COMPUTE("no_compute"),
 
-    /** The M3 prototype does not support shader packs. */
-    SHADER_PACK("shader_pack"),
-
-    /** Module 1 is still the M3 chest prototype, which is opt-in (`cache.prototype`). */
-    PROTOTYPE_OFF("prototype_off"),
-
     /** The module's code does not exist yet (Module 2: M6, Module 3: M7). */
     NOT_BUILT("not_built");
 
@@ -73,6 +67,8 @@ data class ModuleStatus(val module: Module, val reason: OffReason?, val detail: 
  * Everything besides the config that decides whether a module may run.
  *
  * @param backend is null before the GPU device exists.
+ * @param shaderPack says whether an Iris shader pack is in use; since M5 no rule depends on it (the static cache
+ * captures in Iris's extended vertex format), Module 2 decides in M6.
  * @param overlaps names, per module, an installed mod that does the same job.
  * @param failures holds, per module, the message of the failure that switched it off.
  */
@@ -107,11 +103,7 @@ object ModuleRules {
             return off(OffReason.BACKEND, environment.backend?.name?.lowercase() ?: "")
         }
         return when (module) {
-            Module.STATIC_CACHE -> when {
-                environment.shaderPack -> off(OffReason.SHADER_PACK)
-                !config.cache.prototype -> off(OffReason.PROTOTYPE_OFF)
-                else -> ModuleStatus(module, null)
-            }
+            Module.STATIC_CACHE -> ModuleStatus(module, null)
             Module.PART_TRANSFORM -> if (!environment.compute) off(OffReason.NO_COMPUTE) else off(OffReason.NOT_BUILT)
             Module.ANIMATION_LOD -> off(OffReason.NOT_BUILT)
         }
