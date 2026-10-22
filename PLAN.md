@@ -25,10 +25,12 @@ Read this first when picking the work up in a new session.
   armor stands without armor and `FIXED` display entities; on by default. Self-check on both loaders: every
   Mobium-vs-vanilla comparison 0 changed pixels (Complementary on Fabric: within the pack's own noise).
 - **Next: release `0.1.0-beta1`** (§10). Everything in the repository is ready (README, changelog, `release.yml`,
-  version `0.1.0-beta1` from `gradle.properties`). Waiting for Anton: create the Modrinth and CurseForge projects
-  (slug `mobium`, client-side, LGPL-3.0) and give their IDs, which go into `build.gradle.kts` (`modrinth.projectId`,
-  `curseforge.projectId`), `release.yml` and `readme-modrinth-sync.yml` (add its push trigger back); check the
-  repository secrets; then he dispatches `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
+  version `0.1.0-beta1` from `gradle.properties`). Anton created the projects on 22 Oct 2026: Modrinth slug `mobium`,
+  CurseForge slug `mobium-perf` (`mod.curseforge-slug`), summary "Draws chests, signs and
+  item frames from the GPU" (also `mod.description`). Waiting for their project IDs (drafts are not visible through
+  the public APIs), which go into `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`), `release.yml`
+  and `readme-modrinth-sync.yml` (add its push trigger back); check the repository secrets; then he dispatches
+  `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
   Also open before the release: Anton's visual checks of #7's *How to verify* (gallery with entities on A, B with
   Complementary, C/D with Fresh Animations; moving around; NeoForge).
 - **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis in `docs/benchmarks.md`: with Fresh Animations
@@ -213,9 +215,10 @@ mod.icon-url=https://raw.githubusercontent.com/btwonion/mobium/main/src/main/res
 mod.group=dev.nyon
 mod.repo=btwonion/mobium
 mod.slug=mobium
+mod.curseforge-slug=mobium-perf
 mod.id=mobium
 mod.name=Mobium
-mod.description=Draws entities and block entities from the GPU instead of rebuilding them every frame
+mod.description=Draws chests, signs and item frames from the GPU
 mod.beta=1
 mod.major-version=0.1.0
 mod.supported-loaders=fabric,quilt,neoforge
@@ -792,8 +795,8 @@ benchmark numbers if performance changed.
 
 ## 11. Open questions
 
-- [ ] GitHub repository name (assumed `btwonion/mobium`) and whether to reserve the `mobium` slug on Modrinth and
-      CurseForge now (no project with that name was found on 19 Oct 2026).
+- [x] GitHub repository name (`btwonion/mobium`) and the project slugs: Modrinth `mobium`, CurseForge `mobium-perf`
+      (created by Anton on 22 Oct 2026).
 - [ ] Which shader packs are the official test set (suggest one heavy and one light pack). Heavy: Complementary
       Reimagined r5.9.3 (Anton's pick, 19 Oct 2026); light: open.
 - [ ] Which GPU/OS Anton tests on; who covers AMD/Intel. Anton: ThinkPad X9-14 Gen 1 (Core Ultra 7 258V, Arc 140V
