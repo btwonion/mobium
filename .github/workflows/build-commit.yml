@@ -64,7 +64,13 @@ jobs:
       # SDL_VIDEO_DRIVER=x11 and llvmpipe: the game starts and the gametests pass.
       - name: Install xvfb and Mesa
         if: matrix.loader == 'fabric'
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0 mesa-utils
+        # The runner image also lists Microsoft's package repository, which these jobs do not need (Java comes from
+        # setup-java, xvfb and Mesa from Ubuntu's archive). On 22 Oct 2026 it answered the runners with 403 and
+        # apt-get update failed, which stopped the release before it built anything; so it is removed first.
+        run: |
+          { grep -l packages.microsoft.com /etc/apt/sources.list.d/* 2>/dev/null || true; } | xargs -r sudo rm -f
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0 mesa-utils
       - name: Show the virtual display's OpenGL
         if: matrix.loader == 'fabric'
         env:
