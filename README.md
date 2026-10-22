@@ -104,7 +104,7 @@ Not yet. Mobs are what the GPU part transform (next version) is for.
 ## 📦 Installation
 
 Download the file for your loader from [Modrinth](https://modrinth.com/mod/mobium/versions)
-or [CurseForge](https://www.curseforge.com/minecraft/mc-mods/mobium/files), put it in your `mods` folder and add
+or [CurseForge](https://www.curseforge.com/minecraft/mc-mods/mobium-perf/files), put it in your `mods` folder and add
 the required dependencies. Mobium 0.1 is for Minecraft 26.3.
 
 | Loader | Required dependencies | Optional |

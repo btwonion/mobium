@@ -25,12 +25,12 @@ Read this first when picking the work up in a new session.
   armor stands without armor and `FIXED` display entities; on by default. Self-check on both loaders: every
   Mobium-vs-vanilla comparison 0 changed pixels (Complementary on Fabric: within the pack's own noise).
 - **Next: release `0.1.0-beta1`** (§10). Everything in the repository is ready (README, changelog, `release.yml`,
-  version `0.1.0-beta1` from `gradle.properties`). Waiting for Anton: create the Modrinth and CurseForge projects
-  (slug `mobium`, client-side, LGPL-3.0) and give their IDs, which go into `build.gradle.kts` (`modrinth.projectId`,
-  `curseforge.projectId`), `release.yml` and `readme-modrinth-sync.yml` (add its push trigger back); check the
-  repository secrets; then he dispatches `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
-  Also open before the release: Anton's visual checks of #7's *How to verify* (gallery with entities on A, B with
-  Complementary, C/D with Fresh Animations; moving around; NeoForge).
+  version `0.1.0-beta1` from `gradle.properties`). Anton created the projects on 22 Oct 2026: Modrinth slug `mobium`,
+  CurseForge slug `mobium-perf` (`mod.curseforge-slug`), summary "Draws chests, signs and
+  item frames from the GPU" (also `mod.description`). Project IDs: Modrinth `8i5oedw8`, CurseForge `1759818`, in
+  `build.gradle.kts`, `release.yml` and `readme-modrinth-sync.yml` (which syncs README.md on every push to `main`
+  again). Anton's visual checks of #7 are done (22 Oct 2026). Left for Anton: the repository secrets, then he
+  dispatches `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
 - **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis in `docs/benchmarks.md`: with Fresh Animations
   tessellation is 3.8–4.5 ms of the mob pens in C (pose 0.16 ms); in D the mob pens are 65–70 ms against 27–38 ms for
   `control`, and the timers do not count Iris's shadow pass, so M6 needs shadow-pass timers first.
@@ -213,9 +213,10 @@ mod.icon-url=https://raw.githubusercontent.com/btwonion/mobium/main/src/main/res
 mod.group=dev.nyon
 mod.repo=btwonion/mobium
 mod.slug=mobium
+mod.curseforge-slug=mobium-perf
 mod.id=mobium
 mod.name=Mobium
-mod.description=Draws entities and block entities from the GPU instead of rebuilding them every frame
+mod.description=Draws chests, signs and item frames from the GPU
 mod.beta=1
 mod.major-version=0.1.0
 mod.supported-loaders=fabric,quilt,neoforge
@@ -781,9 +782,10 @@ benchmark numbers if performance changed.
 - [x] `README.md` describes what the release does (synced to Modrinth/CurseForge by `release.yml` and
       `readme-modrinth-sync.yml`; links are absolute so they work there).
 - [x] `release.yml` builds like CI (the Fabric gametests need Mesa's EGL under xvfb).
-- [ ] Modrinth and CurseForge project IDs set in `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`),
-      `release.yml` and `readme-modrinth-sync.yml` (there also the push trigger on `README.md`, as in autodrop). No
-      `mobium` project existed on Modrinth on 21 Oct 2026; Anton creates both.
+- [x] Anton's visual checks of the release's rendering PR (#7, *How to verify* steps 3–5), 22 Oct 2026.
+- [x] Modrinth and CurseForge project IDs set in `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`),
+      `release.yml` and `readme-modrinth-sync.yml` (there also the push trigger on `README.md`, as in autodrop):
+      Modrinth `mobium` = `8i5oedw8`, CurseForge `mobium-perf` = `1759818` (22 Oct 2026).
 - [ ] Repository secrets for `release.yml`: `MODRINTH_API_KEY`, `CURSEFORGE_API_KEY`, `NYON_USERNAME`,
       `NYON_PASSWORD`, `DISCORD_WEBHOOK`, `DISCORD_ROLE_ID` (as in autodrop).
 - [ ] Run `release.yml` (manual dispatch on `main`): builds, `releaseMod`, Discord post, README sync.
@@ -792,8 +794,8 @@ benchmark numbers if performance changed.
 
 ## 11. Open questions
 
-- [ ] GitHub repository name (assumed `btwonion/mobium`) and whether to reserve the `mobium` slug on Modrinth and
-      CurseForge now (no project with that name was found on 19 Oct 2026).
+- [x] GitHub repository name (`btwonion/mobium`) and the project slugs: Modrinth `mobium`, CurseForge `mobium-perf`
+      (created by Anton on 22 Oct 2026).
 - [ ] Which shader packs are the official test set (suggest one heavy and one light pack). Heavy: Complementary
       Reimagined r5.9.3 (Anton's pick, 19 Oct 2026); light: open.
 - [ ] Which GPU/OS Anton tests on; who covers AMD/Intel. Anton: ThinkPad X9-14 Gen 1 (Core Ultra 7 258V, Arc 140V
