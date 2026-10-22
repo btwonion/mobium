@@ -29,9 +29,8 @@ Read this first when picking the work up in a new session.
   CurseForge slug `mobium-perf` (`mod.curseforge-slug`), summary "Draws chests, signs and
   item frames from the GPU" (also `mod.description`). Project IDs: Modrinth `8i5oedw8`, CurseForge `1759818`, in
   `build.gradle.kts`, `release.yml` and `readme-modrinth-sync.yml` (which syncs README.md on every push to `main`
-  again). Left for Anton: the repository secrets, his visual checks of #7, then he dispatches `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
-  Also open before the release: Anton's visual checks of #7's *How to verify* (gallery with entities on A, B with
-  Complementary, C/D with Fresh Animations; moving around; NeoForge).
+  again). Anton's visual checks of #7 are done (22 Oct 2026). Left for Anton: the repository secrets, then he
+  dispatches `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
 - **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis in `docs/benchmarks.md`: with Fresh Animations
   tessellation is 3.8–4.5 ms of the mob pens in C (pose 0.16 ms); in D the mob pens are 65–70 ms against 27–38 ms for
   `control`, and the timers do not count Iris's shadow pass, so M6 needs shadow-pass timers first.
@@ -783,6 +782,7 @@ benchmark numbers if performance changed.
 - [x] `README.md` describes what the release does (synced to Modrinth/CurseForge by `release.yml` and
       `readme-modrinth-sync.yml`; links are absolute so they work there).
 - [x] `release.yml` builds like CI (the Fabric gametests need Mesa's EGL under xvfb).
+- [x] Anton's visual checks of the release's rendering PR (#7, *How to verify* steps 3–5), 22 Oct 2026.
 - [x] Modrinth and CurseForge project IDs set in `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`),
       `release.yml` and `readme-modrinth-sync.yml` (there also the push trigger on `README.md`, as in autodrop):
       Modrinth `mobium` = `8i5oedw8`, CurseForge `mobium-perf` = `1759818` (22 Oct 2026).
