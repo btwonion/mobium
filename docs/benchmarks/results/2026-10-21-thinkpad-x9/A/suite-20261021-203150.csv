@@ -1,0 +1,8 @@
+scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms,extract_entities_ms,extract_block_entities_ms,submit_entities_ms,submit_block_entities_ms,pose_entities_ms,pose_block_entities_ms,tessellate_entities_ms,tessellate_block_entities_ms,prepare_ms,draw_ms
+mob_pen_static,sodium+cache,3,3.0798,324.70,183.63,3.7409,0.5527,0.0008,0.2499,0.0000,0.0910,0.0000,1.1037,0.0000,1.8325,0.0211
+mob_pen_live,sodium+cache,3,3.3232,300.92,159.32,4.0313,0.5721,0.0008,0.2595,0.0000,0.0945,0.0000,1.2745,0.0000,2.0269,0.0217
+storage_room,sodium+cache,3,1.5359,651.11,415.56,1.9021,0.0012,0.0844,0.0000,0.0001,0.0000,0.0000,0.0000,0.0000,0.0063,0.0405
+map_wall,sodium+cache,3,4.1478,241.09,110.16,4.7553,0.7506,0.0846,0.3182,0.1227,0.0000,0.0000,0.0000,0.0000,1.9601,0.4856
+display_build,sodium+cache,3,1.6321,612.70,304.69,1.7922,0.5478,0.0004,0.0810,0.0000,0.0009,0.0000,0.0085,0.0000,0.0738,0.0199
+control,sodium+cache,2,1.0819,924.38,569.38,1.3884,0.0007,0.0004,0.0000,0.0001,0.0000,0.0000,0.0000,0.0000,0.0022,0.0001
+# build,6fb45dc
