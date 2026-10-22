@@ -260,6 +260,156 @@ def display_build() -> list[str]:
     return lines
 
 
+GALLERY_SKULLS = [
+    "skeleton_skull", "wither_skeleton_skull", "zombie_head", "creeper_head", "dragon_head", "piglin_head",
+    "player_head",
+]
+GALLERY_CHESTS = [
+    # (x offset, block state)
+    (-8, "chest[facing=north,type=single]"),
+    # facing north: the left half connects east (ChestBlock.getConnectedDirection)
+    (-6, "chest[facing=north,type=left]"),
+    (-5, "chest[facing=north,type=right]"),
+    (-3, "trapped_chest[facing=north,type=single]"),
+    (-1, "ender_chest[facing=north]"),
+    (1, "copper_chest[facing=north,type=single]"),
+    (2, "oxidized_copper_chest[facing=north,type=single]"),
+    (4, "shulker_box[facing=up]"),
+    (5, "red_shulker_box[facing=north]"),
+    (6, "blue_shulker_box[facing=up]"),
+]
+GALLERY_SIGNS = [
+    # (x offset, front text messages, extra front_text fields); obfuscated and sprite text stay on vanilla
+    (-8, '"Plain","oak","wall","sign"', ""),
+    (-6, '"Black","glow","ink",""', ',color:"black",has_glowing_text:1b'),
+    (-4, '"Yellow","glow","ink","outline"', ',color:"yellow",has_glowing_text:1b'),
+    (-2, '{text:"Bold",bold:1b},{text:"Italic",italic:1b},{text:"Under",underlined:1b},{text:"Strike",strikethrough:1b}', ""),
+    (0, '{text:"Red",color:"red"},{text:"Green",color:"green"},{text:"Blue",color:"blue"},"Mixed"', ""),
+    # Obfuscated spaces look the same every frame (Font.getGlyph skips spaces), but the rule still refuses the style.
+    (2, '"Obfuscated",{text:"    ",obfuscated:1b},"stays","vanilla"', ""),
+    (4, '"Sprite",{type:"object",object:"atlas",sprite:"block/stone"},"stays","vanilla"', ""),
+    (6, '"Light","blue","dye",""', ',color:"light_blue"'),
+]
+
+GALLERY_SHELVES = [
+    (-5, ["diamond", "apple", "book"]),
+    (-1, ["iron_ingot", "clock", "emerald"]),
+    (3, ["compass", "bread", "gold_ingot"]),
+]
+
+
+GALLERY_TAG = "mobium_gallery"
+
+GALLERY_FRAMES = [
+    # (x offset, height above the ground, entity type, extra NBT, name); frames hang on the wall's north face
+    (9, 2, "item_frame", 'Item:{id:"minecraft:diamond",count:1}', "frame_plain"),
+    (10, 2, "item_frame", 'Item:{id:"minecraft:compass",count:1}', "frame_compass"),
+    (11, 2, "item_frame", "", "frame_map"),  # gets an exploration map below: vanilla (maps are translucent)
+    (12, 2, "item_frame", 'Item:{id:"minecraft:iron_sword",count:1},ItemRotation:3b', "frame_rotated"),
+    (9, 1, "item_frame", 'Item:{id:"minecraft:emerald",count:1},Invisible:1b', "frame_invisible"),
+    (10, 1, "item_frame", "", "frame_empty"),
+    (11, 1, "glow_item_frame", 'Item:{id:"minecraft:apple",count:1}', "frame_glow"),
+]
+
+GALLERY_STANDS = [
+    # (x offset, extra NBT, name); the last three stay vanilla: armor (its layers are drawn in submit orders, one after
+    # another), a name tag, a glowing outline
+    (-14, "ShowArms:1b", "stand_plain"),
+    (-13, 'ShowArms:1b,Pose:{Head:[0f,20f,0f],RightArm:[-60f,0f,10f]},'
+          'equipment:{mainhand:{id:"minecraft:iron_sword",count:1}}', "stand_holding"),
+    (-12, 'Small:1b,equipment:{head:{id:"minecraft:skeleton_skull",count:1}}', "stand_small"),
+    (-11, 'ShowArms:1b,equipment:{head:{id:"minecraft:diamond_helmet",count:1},'
+          'chest:{id:"minecraft:iron_chestplate",count:1},'
+          'feet:{id:"minecraft:leather_boots",count:1,components:{"minecraft:dyed_color":11546150}}}', "stand_armored"),
+    (-10, 'CustomName:"Stand",CustomNameVisible:1b', "stand_named"),
+    (-9, "Glowing:1b", "stand_glowing"),
+]
+
+GALLERY_DISPLAYS = [
+    # (x offset, entity type, extra NBT, name); floating above the chest row. Billboard "center" turns with the
+    # camera and stays vanilla; stained glass is translucent and stays vanilla.
+    (-6, "block_display", f'block_state:"minecraft:stone_bricks",transformation:{{left_rotation:{IDENTITY},'
+                          f'right_rotation:{IDENTITY},translation:[0f,0f,0f],scale:[0.9f,0.9f,0.9f]}}', "display_block"),
+    (-4, "block_display", f'block_state:"minecraft:oak_planks",transformation:{{left_rotation:{IDENTITY},'
+                          f'right_rotation:{Y45},translation:[0f,0f,0f],scale:[0.9f,0.9f,0.9f]}}', "display_turned"),
+    (-2, "item_display", 'item:{id:"minecraft:diamond_sword",count:1}', "display_sword"),
+    (0, "item_display", 'item:{id:"minecraft:apple",count:1},billboard:"center"', "display_billboard"),
+    (2, "block_display", 'block_state:"minecraft:white_stained_glass"', "display_glass"),
+    (4, "item_display", 'item:{id:"minecraft:bread",count:1}', "display_bread"),
+]
+
+
+def gallery_tags(name: str) -> str:
+    return f'Tags:["{TAG}","{GALLERY_TAG}","{GALLERY_TAG}_{name}"]'
+
+
+def cache_gallery() -> list[str]:
+    """Every type the static cache handles, with the variants its rules tell apart, close to the camera."""
+    lines = []
+    # Row 1: skulls (one dragon head powered by a redstone block below, so its mouth moves) and decorated pots.
+    for index, skull in enumerate(GALLERY_SKULLS):
+        lines.append(f"setblock {X0 - 8 + index} {GROUND} {Z0 + 6} minecraft:{skull}[rotation=8] strict")
+    lines.append(f"setblock {X0} {FLOOR} {Z0 + 6} minecraft:redstone_block strict")
+    lines.append(f"setblock {X0} {GROUND} {Z0 + 6} minecraft:dragon_head[rotation=8,powered=true] strict")
+    lines.append(f"setblock {X0 + 2} {GROUND} {Z0 + 6} minecraft:decorated_pot[facing=north] strict")
+    lines.append(
+        f"setblock {X0 + 4} {GROUND} {Z0 + 6} minecraft:decorated_pot[facing=north]"
+        '{sherds:{front:"minecraft:angler_pottery_sherd",left:"minecraft:heart_pottery_sherd",'
+        'right:"minecraft:skull_pottery_sherd",back:"minecraft:brick"}} strict'
+    )
+    # Row 2: chests of every kind and shulker boxes.
+    for offset, state in GALLERY_CHESTS:
+        lines.append(f"setblock {X0 + offset} {GROUND} {Z0 + 9} minecraft:{state} strict")
+    # Row 3: a wall with wall signs, and hanging signs from a beam above them.
+    lines.append(f"fill {X0 - 9} {GROUND} {Z0 + 13} {X0 + 7} {GROUND + 4} {Z0 + 13} minecraft:stone_bricks strict")
+    lines.append(f"fill {X0 - 9} {GROUND + 4} {Z0 + 12} {X0 + 7} {GROUND + 4} {Z0 + 12} minecraft:stone_bricks strict")
+    for offset, messages, extra in GALLERY_SIGNS:
+        lines.append(
+            f"setblock {X0 + offset} {GROUND + 1} {Z0 + 12} minecraft:oak_wall_sign[facing=north]"
+            f"{{front_text:{{messages:[{messages}]{extra}}}}} strict"
+        )
+    # Shelves on the wall between the wall signs: plain items, a clock (time stands still) and a compass.
+    for offset, items in GALLERY_SHELVES:
+        stacks = ",".join(f'{{Slot:{slot}b,id:"minecraft:{item}",count:1}}' for slot, item in enumerate(items))
+        lines.append(
+            f"setblock {X0 + offset} {GROUND + 2} {Z0 + 12} minecraft:oak_shelf[facing=north]{{Items:[{stacks}]}} strict"
+        )
+    for index, offset in enumerate(range(-7, 8, 4)):
+        glowing = ',color:"lime",has_glowing_text:1b' if index % 2 else ""
+        lines.append(
+            f"setblock {X0 + offset} {GROUND + 3} {Z0 + 12} minecraft:spruce_hanging_sign[rotation=8,attached=true]"
+            f'{{front_text:{{messages:["Hanging","sign","{index}",""]{glowing}}},'
+            f'back_text:{{messages:["Back","text","",""]}}}} strict'
+        )
+    # Entities. Item frames on a wall to the right of the sign wall.
+    lines.append(f"fill {X0 + 8} {GROUND} {Z0 + 13} {X0 + 13} {GROUND + 3} {Z0 + 13} minecraft:stone_bricks strict")
+    for offset, height, kind, extra, name in GALLERY_FRAMES:
+        x, y, z = X0 + offset, GROUND + height, Z0 + 12
+        item = f",{extra}" if extra else ""
+        lines.append(
+            f"summon minecraft:{kind} {center(x)} {center(y)} {center(z)} "
+            f"{{Pos:[{center(x)}d,{center(y)}d,{center(z)}d],Facing:2b,Fixed:1b,block_pos:[I;{x},{y},{z}],"
+            f"{gallery_tags(name)}{item}}}"
+        )
+    lines.append(
+        f"execute as @e[type=minecraft:item_frame,tag={GALLERY_TAG}_frame_map] "
+        f"run loot replace entity @s contents loot {NAMESPACE}:map"
+    )
+    # Armor stands to the left of the sign wall, in front of a wall of their own, facing the camera.
+    lines.append(f"fill {X0 - 14} {GROUND} {Z0 + 13} {X0 - 10} {GROUND + 3} {Z0 + 13} minecraft:stone_bricks strict")
+    for offset, extra, name in GALLERY_STANDS:
+        lines.append(
+            f"summon minecraft:armor_stand {center(X0 + offset)} {GROUND} {center(Z0 + 12)} "
+            f"{{Rotation:[180f,0f],{gallery_tags(name)},{extra}}}"
+        )
+    # Display entities floating above the chest row.
+    for offset, kind, extra, name in GALLERY_DISPLAYS:
+        lines.append(
+            f"summon minecraft:{kind} {X0 + offset} {GROUND + 4.5} {Z0 + 9} {{{gallery_tags(name)},{extra}}}"
+        )
+    return lines
+
+
 def main() -> None:
     write("pack.mcmeta", [
         "{",
@@ -312,6 +462,9 @@ def main() -> None:
     scene("display_build", "A decoration built from 400 block displays and 100 item displays",
           wall_camera, display_build())
     scene("control", "Empty superflat, nothing to accelerate", wall_camera, [])
+    # Not a benchmark scene: the self-check compares vanilla and Mobium on every cached type here.
+    scene("cache_gallery", "Every type the static cache handles, for pixel comparisons",
+          (X0 + 0.5, GROUND + 2.6, Z0 + 0.5, 0, 12), cache_gallery())
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 package dev.nyon.mobium.debug
 
-import dev.nyon.mobium.cache.ChestPrototype
+import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.core.Fallback
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.gpu.Gpu
@@ -34,7 +34,7 @@ object ModuleLines : DebugScreenEntry {
                 backend.buffersAllocated
             )
         )
-        ChestPrototype.debugLine()?.let(displayer::addLine)
+        displayer.addLine(StaticCache.debugLine())
         val disabled = Fallback.disabledTypes()
         if (disabled.isNotEmpty()) displayer.addLine("Mobium types on vanilla after failures: ${disabled.joinToString()}")
     }

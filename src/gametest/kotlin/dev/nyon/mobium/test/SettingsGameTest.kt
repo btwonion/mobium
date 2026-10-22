@@ -36,14 +36,15 @@ class SettingsGameTest : FabricClientGameTest {
         // The same call the Done button and Sodium's Apply make.
         context.runOnClient<RuntimeException> {
             val saved = config
-            check(ModuleStates.status(Module.STATIC_CACHE).reason == OffReason.PROTOTYPE_OFF) {
+            check(ModuleStates.isActive(Module.STATIC_CACHE)) {
                 "Unexpected start state: ${ModuleStates.status(Module.STATIC_CACHE).describe()}"
             }
-            applyConfig(saved.deepCopy().also { changed -> changed.cache.prototype = true })
-            check(ModuleStates.isActive(Module.STATIC_CACHE)) { ModuleStates.status(Module.STATIC_CACHE).describe() }
             applyConfig(saved.deepCopy().also { changed -> changed.cache.enabled = false })
             check(ModuleStates.status(Module.STATIC_CACHE).reason == OffReason.CONFIG)
+            applyConfig(saved.deepCopy().also { changed -> changed.enabled = false })
+            check(ModuleStates.status(Module.STATIC_CACHE).reason == OffReason.GLOBAL_SWITCH)
             applyConfig(saved)
+            check(ModuleStates.isActive(Module.STATIC_CACHE)) { ModuleStates.status(Module.STATIC_CACHE).describe() }
         }
 
         // Part transform does not exist yet, so failing it leaves the other gametests alone.

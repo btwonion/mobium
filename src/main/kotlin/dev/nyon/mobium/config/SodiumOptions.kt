@@ -61,14 +61,6 @@ class SodiumOptions : ConfigEntryPoint {
                     .setBinding({ config.cache.memoryBudgetMb = it }, { config.cache.memoryBudgetMb })
             )
         addTypeSwitches(builder, cache)
-        cache.addOption(
-            builder.createBooleanOption(id("prototype"))
-                .setName(Component.translatable("mobium.settings.prototype"))
-                .setTooltip(Component.translatable("mobium.settings.prototype.tooltip"))
-                .setStorageHandler(save)
-                .setDefaultValue(defaults.cache.prototype)
-                .setBinding({ config.cache.prototype = it }, { config.cache.prototype })
-        )
 
         val parts = builder.createOptionGroup()
             .setName(Component.translatable("mobium.module.part_transform"))

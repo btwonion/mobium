@@ -163,6 +163,21 @@ if (isFabric) {
     }
 }
 
+// The commit a jar was built from (`git describe`, "-dirty" with local changes), so a benchmark result names the build
+// it measured (summary.csv's `build` column) and benchmark/prism_instances.py can refuse a kit older than the checkout.
+val gitDescribe: Provider<String> = providers.exec {
+    commandLine("git", "describe", "--always", "--dirty", "--abbrev=7")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().ifEmpty { "unknown" } }
+val buildInfoDir = layout.buildDirectory.dir("generated/mobium-build")
+val buildInfo by tasks.registering(WriteProperties::class) {
+    destinationFile = buildInfoDir.map { it.file("mobium-build.properties") }
+    property("commit", gitDescribe)
+}
+sourceSets.main {
+    resources.srcDir(files(buildInfoDir).builtBy(buildInfo))
+}
+
 base {
     archivesName.set(rootProject.name)
 }
@@ -302,6 +317,7 @@ publishMods {
         } else {
             requires { slug = "kotlin-lang-forge" }
         }
+        optional { slug = "sodium" }
     }
 
     curseforge {
@@ -318,6 +334,7 @@ publishMods {
         } else {
             requires { slug = "kotlinlangforge" }
         }
+        optional { slug = "sodium" }
     }
 
     github {

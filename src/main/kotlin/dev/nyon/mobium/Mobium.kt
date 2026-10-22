@@ -14,6 +14,7 @@ import net.minecraft.client.Minecraft
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
+import java.util.Properties
 
 object Mobium {
     const val MOD_ID = "mobium"
@@ -21,11 +22,19 @@ object Mobium {
     @JvmField
     val LOGGER: Logger = LoggerFactory.getLogger("Mobium")
 
+    /** The commit this jar was built from (`git describe`, written by the build), or "unknown". */
+    val BUILD: String by lazy {
+        val properties = Properties()
+        Mobium::class.java.getResourceAsStream("/mobium-build.properties")?.use(properties::load)
+        properties.getProperty("commit") ?: "unknown"
+    }
+
     /** Loads the config and detects the installed compat mods. Runs once, from the loader entrypoint. */
     fun bootstrap(configPath: Path) {
         config(configPath, CONFIG_VERSION, Config()) { json, jsonTree, version -> migrate(json, jsonTree, version) }
         config = loadConfig<Config>()
 
+        LOGGER.info("Build: {}", BUILD)
         Compat.detect()
         LOGGER.info("Compat mods: {}", Compat.describe())
     }

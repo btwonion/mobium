@@ -6,7 +6,8 @@
     python3 benchmark/prism_instances.py       # -> four "Mobium Bench" instances in Prism
 
 Run it again after rebuilding Mobium: it replaces the mods, the launcher component list and the benchmark datapack in
-the instances' worlds. It also installs and selects the protocol's shader pack (setups B and D) and Fresh Animations
+the instances' worlds. It refuses a kit that was not built from the checkout's current commit, and a checkout that is
+behind its upstream branch (--allow-behind measures an older build on purpose). It also installs and selects the protocol's shader pack (setups B and D) and Fresh Animations
 (C and D), downloading them from Modrinth once (skip with --no-download), and tells Mobium which setup each instance is
 for (`-Dmobium.bench.expect`), so `/mobium suite` refuses to run with the wrong packs. Other options, worlds and
 instance settings stay as you left them. Restart Prism to see new instances.
@@ -20,6 +21,7 @@ import shutil
 import subprocess
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -97,6 +99,57 @@ def write_config(instance: Path, name: str, notes: str) -> None:
         "MaxMemAlloc=6144\n"
         f"notes={notes}. Benchmark protocol: docs/benchmarks.md in the Mobium repository.\n"
     )
+
+
+def find_instance(instances: Path, folder: str, name: str) -> Path:
+    """The instance's folder: Prism renames an instance's folder to its display name, so look for the name as well."""
+    if (instances / folder).exists():
+        return instances / folder
+    for config in instances.glob("*/instance.cfg"):
+        if f"\nname={name}\n" in "\n" + config.read_text() + "\n":
+            return config.parent
+    return instances / folder
+
+
+def git(*args: str) -> str | None:
+    result = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def kit_build(kit: Path) -> str | None:
+    """The commit the kit's Mobium jar was built from (mobium-build.properties, written by the build)."""
+    for jar in sorted((kit / "A-sodium" / "mods").glob("mobium-*.jar")):
+        with zipfile.ZipFile(jar) as archive:
+            if "mobium-build.properties" not in archive.namelist():
+                return None
+            for line in archive.read("mobium-build.properties").decode().splitlines():
+                if line.startswith("commit="):
+                    return line.removeprefix("commit=").strip()
+    return None
+
+
+def check_build(kit: Path, allow_behind: bool) -> str:
+    """Refuses to install a kit that does not match the checkout, or a checkout behind its upstream branch."""
+    head = git("describe", "--always", "--abbrev=7")
+    built = kit_build(kit)
+    if head is not None and (built or "").removesuffix("-dirty") != head:
+        raise SystemExit(
+            f"The kit's Mobium was built from {built or 'an unknown commit'}, the checkout is at {head}: "
+            "run ./gradlew :26.3-fabric:benchKit first"
+        )
+    if built is not None and built.endswith("-dirty"):
+        print(f"note: the kit was built from {built}, i.e. with uncommitted changes")
+    upstream = git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    if upstream is not None and not allow_behind:
+        if git("fetch", "--quiet") is None:
+            print(f"could not fetch {upstream}; not checking whether the checkout is behind it")
+        behind = git("rev-list", "--count", "HEAD..@{u}")
+        if behind not in (None, "0"):
+            raise SystemExit(
+                f"The checkout is {behind} commits behind {upstream}: git pull, run ./gradlew :26.3-fabric:benchKit, "
+                "then this script again (or pass --allow-behind to measure this older build)"
+            )
+    return built or "unknown"
 
 
 def sync_mods(source: Path, target: Path) -> list[str]:
@@ -208,10 +261,12 @@ def main() -> None:
     parser.add_argument("--kit", type=Path, default=ROOT / "versions/26.3-fabric/build/bench-kit")
     parser.add_argument("--world", type=Path, default=ROOT / "versions/26.3-fabric/build/bench-world/Mobium Bench")
     parser.add_argument("--no-download", action="store_true", help="do not download missing packs from Modrinth")
+    parser.add_argument("--allow-behind", action="store_true", help="install even if the checkout is behind upstream")
     args = parser.parse_args()
 
     if not args.kit.is_dir():
         raise SystemExit(f"{args.kit} not found; run ./gradlew :26.3-fabric:benchKit first")
+    build = check_build(args.kit, args.allow_behind)
     prism = args.prism or default_prism_dir()
     instances = prism / "instances"
     packs = args.kit.parent / "bench-packs"
@@ -219,7 +274,7 @@ def main() -> None:
     fresh_animations = fetch_pack(*FRESH_ANIMATIONS, packs, not args.no_download)
 
     for setup, (folder, name, notes, expected, wants_shaders, wants_fa) in SETUPS.items():
-        instance = instances / folder
+        instance = find_instance(instances, folder, name)
         game = instance / "minecraft"
         created = not instance.exists()
         game.mkdir(parents=True, exist_ok=True)
@@ -252,6 +307,7 @@ def main() -> None:
         if missing:
             print(f"  missing {' and '.join(missing)}: run without --no-download; /mobium suite refuses to run until then")
 
+    print(f"Mobium build {build} installed")
     running = subprocess.run(["pgrep", "-fi", "prismlauncher"], capture_output=True).returncode == 0
     if running:
         print("Prism is running: restart it to see new instances.")

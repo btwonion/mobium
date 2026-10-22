@@ -7,6 +7,8 @@ import dev.nyon.mobium.config.LodPreset
 import dev.nyon.mobium.config.applyConfig
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.core.ModuleStates
+import dev.nyon.mobium.core.OffReason
+import dev.nyon.mobium.debug.AbToggle
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.client.OptionInstance
@@ -40,7 +42,8 @@ class MobiumSettingsScreen(parent: Screen) :
                 .withStyle(if (status.active) ChatFormatting.GREEN else ChatFormatting.GRAY)
             val line = Component.translatable("mobium.settings.status.line", Component.translatable(status.module.translationKey), state)
             list.addBig(StringWidget(310, 20, line, font).also {
-                it.setTooltip(Tooltip.create(Component.translatable("$key.tooltip", status.detail)))
+                val detail: Any = if (status.reason == OffReason.AB_TOGGLE) AbToggle.keyName() else status.detail
+                it.setTooltip(Tooltip.create(Component.translatable("$key.tooltip", detail)))
             })
         }
 
@@ -52,7 +55,7 @@ class MobiumSettingsScreen(parent: Screen) :
         list.addSmall(toggle("mobium.settings.module_enabled", cache::enabled), memoryBudget(cache))
         val types = cache.types
         val switches = types.switches().map { (key, property) -> toggle("mobium.settings.type.$key", property) }
-        list.addSmall(*(switches + toggle("mobium.settings.prototype", cache::prototype)).toTypedArray())
+        list.addSmall(*switches.toTypedArray())
 
         list.addHeader(Component.translatable("mobium.module.part_transform"))
         list.addBig(toggle("mobium.settings.module_enabled", draft.parts::enabled))
