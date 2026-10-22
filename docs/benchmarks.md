@@ -10,10 +10,11 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
   every frame for `<seconds>`, then prints a summary in chat and writes two files to `<game dir>/mobium-bench/`:
   - `<scene>-<setup>-<yyyyMMdd-HHmmss>.csv`: one row per frame (frame time, every timer below, entity and block
     entity counts);
-  - `summary.csv`: one row per run, appended (averages, Minecraft and Mobium version, loader, backend, GPU, the
-    monitor and video mode, the window size, `ac` or `battery`, the power profile, and `gpu_mhz`, the GPU's actual
-    clock sampled once per second; the last three come from Linux sysfs and stay empty elsewhere). A `summary.csv`
-    with older columns is renamed to `summary-before-<timestamp>.csv`.
+  - `summary.csv`: one row per run, appended (averages, Minecraft and Mobium version, `build`, the commit the jar was
+    built from (`git describe`, `-dirty` with local changes), loader, backend, GPU, the monitor and video mode, the
+    window size, `ac` or `battery`, the power profile, and `gpu_mhz`, the GPU's actual clock sampled once per second;
+    the last three come from Linux sysfs and stay empty elsewhere). A `summary.csv` with older columns is renamed to
+    `summary-before-<timestamp>.csv`. The suite and gate files end with a `# build,<commit>` line.
   `setup` is detected when omitted: `sodium` or `vanilla`, `+iris` if a shader pack is active, `+emf` if Entity Model
   Features is installed, `+fa` if a resource pack with "fresh" in its id is enabled, `+chestcache` while the M3 chest
   prototype is on. Before it starts, the run warns in chat about anything that breaks the protocol: a window other than
@@ -51,7 +52,10 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
   shader pack and Fresh Animations from Modrinth once (pinned versions, checked against Modrinth's SHA-512; skip with
   `--no-download`), installs and selects them in the setups that need them, and adds
   `-Dmobium.bench.expect=<setup>` to each instance's Java arguments, so `/mobium suite` and `/mobium gatea` refuse to
-  run with the wrong packs. Re-run the first and last step after changing Mobium.
+  run with the wrong packs. Re-run the first and last step after changing Mobium. The script refuses a kit whose
+  Mobium jar was not built from the checkout's current commit, and a checkout that is behind its upstream branch
+  (`git pull` first; `--allow-behind` measures an older build on purpose), and prints the build it installed. It finds
+  the instances by folder (`mobium-bench-a` …) or, after Prism renamed a folder to the instance's name, by name.
 
 The game directory of the dev clients is `versions/26.3-fabric/run/` (Fabric) and `run/` (NeoForge); in a Prism
 instance it is the instance's `minecraft/` folder.
@@ -377,6 +381,7 @@ calls' CPU time 1.12×), whole frame 1.36×, drawing 0.17 ms, `control` 1.02× (
 afternoon (0.66–0.70 against 1.13 ms in the same window), which makes Mobium's fixed CPU cost a larger share; the gate
 is close either way. Anton's `/mobium gateb` decides; the release waits for it. If it misses, the next lever is
 Mobium's own draw calls (0.05–0.06 ms of CPU for about 16 buckets in `storage_room`): fewer, larger draws.
+**Result (21 Oct, at 1920×1080): 1.17×, passed** (*21–22 Oct 2026* below).
 
 ### Entity scenes, first look (M5, not a measurement)
 
@@ -395,6 +400,119 @@ Fabric's renderer API turns into meshes (`ExtendedItemSubmit`), which the cache 
 fingerprint cannot see a mesh. In `map_wall` all 400 frames hold maps, which stay vanilla
 (translucent), and the 40 shelves holding a recovery compass, whose needle spins, stay vanilla too.
 
+### 21–22 Oct 2026, entities cached, all four setups; Gate B passed (1.17×)
+
+Machine and settings as on 20 Oct · every run fullscreen at 1920×1080 on the AOC (240 Hz), on mains power, uncapped,
+VSync off · Mobium 0.1.0-beta1, **build 6fb45dc** (`build` column in every `summary.csv`): block entities and entities
+(item frames, armor stands, displays) cached · A and B on 21 Oct evening, C and D on 22 Oct afternoon · Raw data:
+[`results/2026-10-21-thinkpad-x9/`](benchmarks/results/2026-10-21-thinkpad-x9/).
+
+#### Gate B
+
+`/mobium gateb` in setup A ([`gateb-20261021-201631.csv`](benchmarks/results/2026-10-21-thinkpad-x9/A/gateb-20261021-201631.csv),
+three rounds of 60 s, medians):
+
+| Run | Frame | p95 | Extract BE | Prepare | Draw | GPU MHz |
+| --- | --- | --- | --- | --- | --- | --- |
+| `storage_room`, cache on | 1.536 ms | 1.93 ms | 0.095 ms | 0.006 ms | 0.041 ms | 935–1066 |
+| `storage_room`, cache on, its draw calls skipped | 1.247 ms | 1.56 ms | 0.087 ms | 0.006 ms | 0.000 ms | 965–1004 |
+| `control`, cache on | 1.101 ms | 1.40 ms | 0.000 ms | 0.002 ms | 0.000 ms | 945–1125 |
+| `control`, cache off | 1.098 ms | 1.40 ms | 0.000 ms | 0.002 ms | 0.000 ms | 1080–1114 |
+
+- **What the cached objects cost Mobium: (1.247 + 0.041) / 1.101 = 1.170× (target at most 1.2×): passed.** Single
+  rounds: 1.07×, 1.21×, 1.16× (the first round's `control` with the cache ran slow, 1.21 ms); the gate is defined on
+  the medians.
+- **`control` with / without the cache = 1.003×** (at most 1.03×): passed.
+- Reported without a target: the whole `storage_room` frame over `control` 1.395× (20 Oct: 1.39×); drawing the 1,000
+  chests and 300 signs costs 0.29 ms per frame (20 Oct, dev window: 0.12–0.17 ms at 1423×800); the run without draw
+  calls alone over `control` 1.133×.
+- What is left of the cost (0.15 ms over `control` without the draw calls): block entity extraction 0.087 ms (Sodium's
+  loop and the cache's per-object check), the cache's per-frame bookkeeping, and the room itself, whose floor, walls
+  and 300 sign boards are terrain that `control` does not have.
+
+Gate B's other conditions: zero screenshot differences (self-check and gametests, both loaders, every comparison 0
+changed pixels) and the full compat stack on both loaders (`docs/compat.md`; NeoForge without a shader pack, which
+crashes in Iris itself).
+
+#### Suites
+
+Median of three 60-second runs (A's `control`: two, the third was cut short), static cache on, ms per frame; extract,
+submit, pose and tessellate add entities and block entities. The *21 Oct (df4080d)* column is the same scene on the
+previous build, which did not cache entities, measured earlier the same day (A, B) or the day before (C, D).
+
+| Scene | Setup | Avg FPS | 1% low | Avg ms | 21 Oct (df4080d) | p95 ms | Extract | Submit | Pose | Tessellate | Prepare | Draw | GPU MHz |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mob_pen_static | A | 325 | 184 | 3.08 | 2.87 | 3.74 | 0.55 | 0.25 | 0.09 | 1.10 | 1.83 | 0.02 | 700 |
+| mob_pen_live | A | 301 | 159 | 3.32 | 3.07 | 4.03 | 0.57 | 0.26 | 0.09 | 1.27 | 2.03 | 0.02 | 700 |
+| storage_room | A | 651 | 416 | 1.54 | 1.42 | 1.90 | 0.09 | 0.00 | 0 | 0 | 0.01 | 0.04 | 880–1066 |
+| map_wall | A | 241 | 110 | 4.15 | 4.18 | 4.76 | 0.84 | 0.44 | 0 | 0 | 1.96 | 0.49 | 1125–1157 |
+| display_build | A | 613 | 305 | 1.63 | 1.61 | 1.79 | 0.55 | 0.08 | 0.00 | 0.01 | **0.07** (0.44) | 0.02 | 700–746 |
+| control | A | 924 | 569 | 1.08 | 1.02 | 1.39 | 0.00 | 0.00 | 0 | 0 | 0.00 | 0.00 | 945–1125 |
+| mob_pen_static | B | 16 | 14 | 62.12 | 65.40 | 65.48 | 1.55 | 0.71 | 0.23 | 3.52 | 5.16 | 0.18 | 556–757 |
+| mob_pen_live | B | 17 | 15 | 57.21 | 56.57 | 65.64 | 1.10 | 0.60 | 0.20 | 3.75 | 5.24 | 0.15 | 590–610 |
+| storage_room | B | 29 | 21 | 34.21 | 39.93 | 45.74 | 0.25 | 0.00 | 0 | 0 | 0.02 | 0.22 | 804–915 |
+| map_wall | B | 18 | 13 | 56.77 | 55.82 | 60.25 | 2.66 | 1.24 | 0 | 0 | 5.09 | 0.92 | 550 |
+| display_build | B | 20 | 18 | 51.26 | 50.42 | 53.73 | 1.51 | 0.52 | 0.00 | 0.05 | **0.47** (2.55) | 0.29 | 546–550 |
+| control | B | 30 | 22 | 33.84 | 31.61 | 42.47 | 0.01 | 0.00 | 0 | 0 | 0.01 | 0.00 | 766–814 |
+| mob_pen_static | C | 125 | 76 | 8.01 | 7.74 | 11.78 | 0.86 | 1.18 | 0.16 | 3.80 | 4.60 | 0.02 | 673–702 |
+| mob_pen_live | C | 112 | 69 | 8.94 | 8.55 | 12.88 | 0.90 | 1.28 | 0.17 | 4.45 | 5.31 | 0.02 | 878–896 |
+| storage_room | C | 656 | 340 | 1.52 | 1.46 | 2.04 | 0.13 | 0.00 | 0 | 0 | 0.01 | 0.06 | 1000–1080 |
+| map_wall | C | 237 | 111 | 4.21 | 3.98 | 4.70 | 0.87 | 0.45 | 0 | 0 | 2.01 | 0.45 | 1180–1211 |
+| display_build | C | 597 | 288 | 1.67 | 1.69 | 1.98 | 0.58 | 0.11 | 0.00 | 0.01 | **0.09** (0.74) | 0.02 | 700–736 |
+| control | C | 867 | 441 | 1.15 | 1.05 | 1.51 | 0.00 | 0.00 | 0 | 0 | 0.00 | 0.00 | 939–1035 |
+| mob_pen_static | D | 14 | 12 | 70.23 | 72.23 | 78.06 | 1.34 | 3.49 | 0.25 | 9.74 | 11.78 | 0.18 | 600–674 |
+| mob_pen_live | D | 15 | 13 | 65.51 | 69.71 | 74.80 | 1.08 | 3.15 | 0.23 | 9.30 | 11.16 | 0.16 | 600–819 |
+| storage_room | D | 33 | 25 | 30.26 | 41.41 | 36.54 | 0.30 | 0.00 | 0 | 0 | 0.03 | 0.22 | 996–1165 |
+| map_wall | D | 20 | 14 | 48.99 | 53.49 | 55.52 | 2.21 | 1.13 | 0 | 0 | 4.42 | 0.93 | 600–701 |
+| display_build | D | 21 | 18 | 47.79 | 50.53 | 53.09 | 1.29 | 0.54 | 0.00 | 0.04 | **0.38** (2.53) | 0.28 | 567–686 |
+| control | D | 37 | 31 | 27.37 | 38.16 | 30.54 | 0.01 | 0.00 | 0 | 0 | 0.01 | 0.00 | 996–1061 |
+
+What the round shows:
+
+- **`display_build`: entities are cached, but the frame does not get faster at 1920×1080 on this iGPU.** Prepare drops
+  from 0.44–0.74 ms to 0.07–0.09 ms (A, C) and from 2.5 ms to 0.4–0.5 ms (B, D); entity extraction grows by 0.12–0.19
+  ms in A–C, the cache's per-entity comparison (about 0.3 µs for each of the 500 displays). The frame stays at 1.63–1.67 ms
+  in A and C: drawing 500 displays at 1920×1080 keeps the GPU busy longer than the CPU now needs (CPU stages 0.72 ms of
+  1.63 ms). In the dev window (1423×800) the same change took the frame from 1.68 to 1.04 ms (*Entity scenes, first
+  look*). The slowest 1 % of frames got slower (1% low 473 → 305 FPS in A); in those frames every stage is about 2.7×
+  its average, which points at the CPU's clock and scheduling (it now idles more per frame) rather than at one stage.
+- **`map_wall`** is unchanged: all 400 frames hold maps, which stay vanilla; the shelves were cached before.
+- **`storage_room`**: 1.52–1.54 ms in A and C, as before. B and D (Complementary) are GPU-bound and vary between
+  sessions by more than any change here (D's `control` 27 ms against 38 ms the day before).
+- Between days the laptop's speed differs (A's `control` 1.02–1.11 ms over three sessions); compare scenes within one
+  session, as the gates do.
+
+### 21 Oct 2026, a repeat of 20 Oct on the previous build (does not decide Gate B)
+
+Anton refreshed the instances and ran `/mobium gateb` and `/mobium suite` in setup A, then the suite in B–D (16:47–19:09),
+every run fullscreen at 1920×1080 on the AOC at 240 Hz, on mains power, uncapped, VSync off. His checkout was four
+commits behind `m5-static-cache`, so the kit held the build of df4080d, the same cache as on 20 Oct: **entities not
+cached, and `/mobium gateb` recorded the first Gate B definition** without the run that skips the cache's draw calls.
+The round therefore does not decide Gate B (the re-run on the current build is the next section); it is kept as a
+repeat of 20 Oct.
+Raw data: [`results/2026-10-21-thinkpad-x9-df4080d/`](benchmarks/results/2026-10-21-thinkpad-x9-df4080d/).
+
+- **Old Gate B, again failed:** `storage_room` 1.436 ms, `control` with the cache 1.014 ms, without 1.023 ms (medians
+  of 3): 1.416× (20 Oct: 1.39×); `control` with/without the cache 0.992× (passes).
+- **The machine was faster than on 20 Oct:** `control` 1.02 ms against 1.11 ms in the suite (1.01 against 1.22 ms in
+  the gate runs), `storage_room` 1.42 against 1.71 ms, with the GPU at 1,035–1,260 MHz instead of 830–1,110 MHz in
+  those scenes. Ratios between scenes of one session stay comparable; absolute times between days do not.
+
+Setup A, median of three 60-second runs, static cache on (block entities only), ms per frame:
+
+| Scene | Avg ms | 20 Oct | Avg FPS | 1% low | p95 ms | Extract | Submit | Pose | Tessellate | Prepare | Draw | GPU MHz |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mob_pen_static | 2.87 | 2.98 | 348 | 199 | 3.53 | 0.58 | 0.21 | 0.09 | 0.96 | 1.66 | 0.02 | 700 |
+| mob_pen_live | 3.07 | 3.11 | 325 | 176 | 3.77 | 0.58 | 0.23 | 0.09 | 1.11 | 1.84 | 0.02 | 700 |
+| storage_room | 1.42 | 1.71 | 702 | 425 | 1.83 | 0.09 | 0.00 | 0 | 0 | 0.01 | 0.04 | 1035–1155 |
+| map_wall | 4.18 | 4.31 | 239 | 109 | 4.77 | 0.85 | 0.43 | 0 | 0 | 1.97 | 0.51 | 1131–1145 |
+| display_build | 1.61 | 1.70 | 622 | 473 | 1.68 | 0.43 | 0.10 | 0.00 | 0.01 | 0.44 | 0.01 | 700 |
+| control | 1.02 | 1.11 | 979 | 620 | 1.30 | 0.00 | 0.00 | 0 | 0 | 0.00 | 0.00 | 1117–1259 |
+
+B and D (Complementary, GPU-bound) differ from 20 Oct by −5 to +14 % per scene, about the spread between their single
+runs (B `mob_pen_live` on 20 Oct: 49.9–60.4 ms); C's mob pens were 5–9 % faster, and C has a `control` (1.05 ms) for
+the first time. The per-setup medians are in the folder's `suite-*.csv` files.
+
 ### Measurement pitfalls
 
 - Vanilla's default 120 FPS cap, and its idle frame limit after 60 s without input (the bench handles the second).
@@ -404,6 +522,9 @@ fingerprint cannot see a mesh. In `map_wall` all 400 frames hold maps, which sta
 - The slow state of vanilla `storage_room` above.
 - Zombies in the sun (fixed in the datapack), packs that are installed but not selected, and quitting during
   `control` (all caught by the instances and the suite now).
+- A bench kit built from an outdated checkout (21 Oct 2026: four commits behind, so the round measured the previous
+  build and `/mobium gateb` the old gate). The jar now names its commit (`build` in `summary.csv`), and
+  `benchmark/prism_instances.py` refuses a stale kit or a checkout behind its upstream.
 
 ### First look (not a baseline)
 

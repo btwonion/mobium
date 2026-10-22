@@ -9,84 +9,71 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 ---
 
-## Current state (updated 20 Oct 2026)
+## Current state (updated 22 Oct 2026)
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#6 are merged: #3–#5 had been merged into their stacked base
-  branches by mistake, and #6 (`m4-core` → `main`) brought M2–M4 over. `main` has M0–M4 plus the in-game self-check;
-  the old milestone branches (`m0-scaffold` … `m4-core`) are deleted. From M5 on: one branch from `main` per
-  milestone, one PR against `main`; merging is Anton's call.
-- **CI:** green on #6 and on every push of #7 so far. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL
-  (`SDL_VIDEO_FORCE_EGL=1`, `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual; see the
-  comments in `.github/workflows/build-commit.yml`. If CI hangs or fails again, read the job log first
-  (`gh run view --log`).
-- **Done:** M0–M4; Gate A passed (1.53×), see §M3 and `docs/benchmarks.md`. M5's code is complete on branch
-  `m5-static-cache` (draft PR btwonion/mobium#7 against `main`): the static cache for block entities and entities
-  (item frames, armor stands, displays), checked on both loaders; Gate B was redefined by Anton and waits for his run
-  (below); then the release steps.
-- **M5 so far** (details in §M5): sign text is cached; buckets draw camera-relative vertices
-  (the M3 prototype's fog was off); captures run inside the level render, in Iris's formats with a shader pack;
-  chests, signs, skulls, decorated pots and shelves are cached; memory budget, invalidation, config 4 (drops
-  `cache.prototype` and the `beds` switch), `/mobium debug validate`, the `cache_gallery` scene. `ModuleRules` no
-  longer has `PROTOTYPE_OFF` or `SHADER_PACK`: Module 1 is on by default. Self-check: Fabric 58/58, NeoForge 54/54,
-  every Mobium-vs-vanilla comparison 0 changed pixels except under Complementary, where the difference equals the
-  pack's own noise between two vanilla frames. A fast path (entry on the block entity, per-frame text filter, light
-  epoch) made the per-object check cheap; what remains of extraction is mostly Sodium's own loop.
-- **Entities (20 Oct 2026, `cache/EntityPolicy.kt`):** item frames (maps stay vanilla), armor stands (armor stays
-  vanilla: equipment layers use submit orders), block and item displays (`FIXED` billboard, finished interpolation).
-  The hook wraps the renderer's submit inside `EntityRenderDispatcher.submit`; each frame the extracted state is
-  compared with the captured one. On Fabric, block models come as Fabric renderer API submits, which the capture lets
-  Sodium's/Indigo's renderer write; items that are renderer API meshes stay vanilla. Self-check: Fabric 69/69,
-  NeoForge 64/64 (gallery with 7 frames, 6 stands, 6 displays and four entity effects; `--mode gallery` runs only
-  that part); every comparison 0 changed pixels. Dev-window first look: `display_build` 1.68 → 1.04 ms, `map_wall`
-  5.10 → 4.22 ms.
-- **Benchmark round 20 Oct 2026** (Anton, Prism instances "Mobium Bench A–D", external AOC 1920×1080 at 240 Hz, mains
-  power, every suite with the cache on): results in `docs/benchmarks/results/2026-10-20-thinkpad-x9/`, tables in
-  `docs/benchmarks.md`. Setup A suite: `mob_pen_static` 2.98, `mob_pen_live` 3.11, `storage_room` 1.71 (vanilla on
-  19 Oct: 3.33), `map_wall` 4.31, `display_build` 1.70, `control` 1.11 ms. B and D are GPU-bound by Complementary
-  (`control` 33 ms); C's suite has no `control`, D's one run.
-- **Gate B failed: 1.39×** (`/mobium gateb`, setup A, `gateb-20261020-164524.csv`, medians of 3): `storage_room` with
-  the cache 1.695 ms, `control` with the cache 1.218 ms, without 1.213 ms; target at most 1.2×. `control` with/without
-  the cache 1.005× (passes, at most 1.03×). Stage timers in `storage_room`: block entity extraction 0.126 ms, draw
-  0.050 ms, prepare 0.008 ms; the rest of the ~0.48 ms gap is GPU work drawing the 1,000 chests and 300 signs, which
-  vanilla pays too (the dev window's draw-skip experiment measured ~0.25 ms). Even with no CPU work left the ratio would
-  be about 1.24×. **Anton redefined the gate the same day** (§M5, *Gate B*): what the cached objects cost Mobium,
-  measured as `storage_room` with the cache's draw calls skipped (plus their CPU time) over `control`, at most 1.2×;
-  `/mobium gateb` now records that fourth run. The release (README, changelog, Modrinth/CurseForge IDs,
-  `release.yml`) waits for Anton's run of the new `/mobium gateb`.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#7 are merged; `main` has M0–M5 (#7, `m5-static-cache`, merged on
+  22 Oct 2026 at Anton's request once Gate B had passed and the checks were green). From M6 on: one branch from `main`
+  per milestone, one PR against `main`; merging is Anton's call.
+- **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
+  `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
+  `.github/workflows/build-commit.yml`); `release.yml` does the same. If CI hangs or fails, read the job log first
+  (`gh run view --log-failed`).
+- **Done:** M0–M5. Gate A passed (1.53×), **Gate B passed (1.17×**, Anton's `/mobium gateb` on 21 Oct, build 6fb45dc;
+  §M5). Module 1, the static cache, caches chests, signs (with text), skulls, decorated pots, shelves, item frames,
+  armor stands without armor and `FIXED` display entities; on by default. Self-check on both loaders: every
+  Mobium-vs-vanilla comparison 0 changed pixels (Complementary on Fabric: within the pack's own noise).
+- **Next: release `0.1.0-beta1`** (§10). Everything in the repository is ready (README, changelog, `release.yml`,
+  version `0.1.0-beta1` from `gradle.properties`). Waiting for Anton: create the Modrinth and CurseForge projects
+  (slug `mobium`, client-side, LGPL-3.0) and give their IDs, which go into `build.gradle.kts` (`modrinth.projectId`,
+  `curseforge.projectId`), `release.yml` and `readme-modrinth-sync.yml` (add its push trigger back); check the
+  repository secrets; then he dispatches `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
+  Also open before the release: Anton's visual checks of #7's *How to verify* (gallery with entities on A, B with
+  Complementary, C/D with Fresh Animations; moving around; NeoForge).
+- **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis in `docs/benchmarks.md`: with Fresh Animations
+  tessellation is 3.8–4.5 ms of the mob pens in C (pose 0.16 ms); in D the mob pens are 65–70 ms against 27–38 ms for
+  `control`, and the timers do not count Iris's shadow pass, so M6 needs shadow-pass timers first.
+- **Follow-ups for Module 1** (from the #7 review, not blocking, none affects what is drawn):
+  - one light epoch for the whole level: any client light update sends every cached object through the full check
+    that frame (`StaticCache.extractCached`); in normal play (chunk loading, torches) the fast path rarely hits. Keep
+    per-section versions only, or an epoch per section.
+  - `StaticCache.lightVersions` gets a key for every section that ever had a light update and is only cleared with the
+    cache; prune it in the 600-frame sweep.
+  - the sweep, the budget eviction and `removeType` use Kotlin collection operators and lambdas (CLAUDE.md hot paths).
+  - entity render states keep a strong reference to their entity (`EntityRenderStateMixin`) until overwritten.
+  - `display_build` at 1920×1080 is GPU-bound on this iGPU: entities cached save 0.4–2 ms of CPU but no frame time
+    there; the per-entity check costs about 0.3 µs per display.
+  - later: cache armor (keep submit orders), renderer API item meshes (`ExtendedItemSubmit`).
 - **A/B key:** a physical key position (SDL scancode, the key right of P): `+` on Anton's German keyboard, `]` on a
-  US one (df4080d); chat and action-bar messages name the bound key.
+  US one; chat and action-bar messages name the bound key.
 - **Known issue (not Mobium):** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
   `CenterDepthSampler` ("Missing uniform InSampler"), also with Mobium switched off
   (`python3 scripts/self_check.py neoforge --mode iris-without-mobium`); the self-check skips the shader pack there.
-- **Waiting for Anton:** refresh the instances, then `/mobium gateb` with the new definition (setup A, 1920×1080,
-  mains power, about 16 minutes) and `/mobium suite` in A; the visual checks in the PR's *How to verify* (the gallery
-  with entities; shader pack in B, Fresh Animations in C/D).
-- **Next:** Gate B with Anton's numbers. In the dev window the new measure came out at 1.19× and 1.205× (target 1.2×),
-  so it may be close: if it misses, the lever is Mobium's own draw calls (0.05–0.06 ms of CPU in `storage_room` for
-  about 16 buckets; fewer, larger draws), then the gate is Anton's call again. If it passes: README, changelog,
-  Modrinth/CurseForge project IDs in `build.gradle.kts`, `release.yml` (§10). Later, outside M5: cache armor (keep
-  submit orders), renderer API item meshes.
 - **Working in a worktree:** the gitignored dev run folders are not there. Copy `versions/26.3-fabric/run/` and `run/`
-  (`options.txt`, `config`, `saves`, `shaderpacks`, `resourcepacks`) and `versions/26.3-fabric/build/bench-world` from
-  the main checkout before running the self-check; push with `git push origin HEAD:m5-static-cache` when the main
-  checkout has the branch checked out.
-- **Local test assets (gitignored dev run folders):** `shaderpacks/ComplementaryReimagined_r5.9.3.zip` (copied from
-  Prism instance B) and `resourcepacks/FreshAnimations_v1.10.3.zip` (from Anton's "Simply Crafted" instance) in
-  `versions/26.3-fabric/run/` and `run/`; the self-check uses them when present.
-- **Rebuilding the benchmark instances after code changes:**
-  `./gradlew :26.3-fabric:benchKit && python3 benchmark/prism_instances.py`. The script also refreshes the datapack in
-  the instances' worlds, downloads and selects Complementary Reimagined r5.9.3 (B, D) and Fresh Animations 1.11.1
-  (C, D) from Modrinth, and sets `-Dmobium.bench.expect` so the suite refuses the wrong setup. A new world comes from
-  `./gradlew :26.3-fabric:runBenchWorld` followed by deleting `saves/Mobium Bench` in the instances.
+  (`options.txt`, `config`, `saves`, `shaderpacks`, `resourcepacks`), `versions/26.3-fabric/build/bench-world` and
+  `versions/26.3-fabric/build/bench-packs` from the main checkout before running the self-check or the Prism script.
+- **Local test assets (gitignored dev run folders):** `shaderpacks/ComplementaryReimagined_r5.9.3.zip` and
+  `resourcepacks/FreshAnimations_v1.10.3.zip` in `versions/26.3-fabric/run/` and `run/`; the self-check uses them when
+  present.
+- **Rebuilding the benchmark instances after code changes:** `git pull` first, then
+  `./gradlew :26.3-fabric:benchKit && python3 benchmark/prism_instances.py`. The script refuses a kit that was not
+  built from the checkout's commit and a checkout behind its upstream (the 21 Oct round was lost to that), prints the
+  installed build, finds instances whose folder Prism renamed ("Mobium Bench A (Sodium)", "Mobium Bench D (all)"),
+  refreshes the datapack in their worlds, installs and selects Complementary Reimagined r5.9.3 (B, D) and Fresh
+  Animations 1.11.1 (C, D) and sets `-Dmobium.bench.expect` so the suite refuses the wrong setup. Every `summary.csv`
+  row names its build (`build`). A new world comes from `./gradlew :26.3-fabric:runBenchWorld` followed by deleting
+  `saves/Mobium Bench` in the instances.
 - **Measurement pitfalls found so far** (details in `docs/benchmarks.md`):
   - the default 120 FPS cap and vanilla's idle frame limit (the bench handles the second);
   - battery power and low-power profiles, and windows other than 1920×1080 (the bench warns);
   - the first run after a scene build (the suite waits for the world to settle);
-  - packs installed but not selected, zombies burning in the mob pens, quitting during `control` (fixed);
-  - vanilla `storage_room` sometimes running 5× slower for a whole session (unexplained; `gpu_mhz` in
-    `summary.csv` should explain it next round).
+  - packs installed but not selected, zombies burning in the mob pens, quitting during `control` (A's suite on 21 Oct
+    has two `control` runs);
+  - a bench kit from an outdated checkout (now refused);
+  - day-to-day speed of the laptop (`control` 1.02–1.11 ms in A): compare within one session, as the gates do;
+  - vanilla `storage_room` sometimes running 5× slower for a whole session (unexplained; not seen since `gpu_mhz` is
+    recorded, because no round since has a vanilla `storage_room` run).
 
 ---
 
@@ -704,9 +691,17 @@ alongside, without a target.
 ratio would have been about 1.24×. Of the options (keep 1.2× and do more CPU work first, gate against vanilla, waive it
 for the beta, or gate Mobium's own cost), Anton chose the last. `/mobium gateb` therefore records a fourth run per
 round, `storage_room` with the cache's draw calls skipped (`…+cache+nodraw`; the chests and signs vanish during it).
-Write-up in `docs/benchmarks.md` (*Gate B*). Status: waiting for Anton's run of the new `/mobium gateb`.
-Then: create the Modrinth/CurseForge projects, fill the project IDs, write README and changelog, release
-`0.1.0-beta1` through `release.yml`.
+Write-up in `docs/benchmarks.md` (*Gate B*).
+**Status (22 Oct 2026): Gate B passed, 1.17×.** Anton's `/mobium gateb` in setup A on 21 Oct (build 6fb45dc,
+1920×1080, mains power, medians of 3): `storage_room` without the cache's draw calls 1.247 ms plus their CPU time
+0.041 ms over `control` 1.101 ms = 1.170× (rounds 1.07×, 1.21×, 1.16×); `control` with/without the cache 1.003×; the
+whole frame 1.395× and 0.29 ms for drawing the cached objects, reported without a target. Zero screenshot differences
+(self-check and gametests on both loaders); the compat stack works on both loaders (NeoForge without a shader pack:
+Iris crashes there with Complementary, Mobium off too). A first round on 21 Oct had measured the previous build
+(Anton's checkout was four commits behind); the jar now names its commit and `benchmark/prism_instances.py` refuses a
+stale kit. Full round with entities cached (A–D) in `docs/benchmarks.md` (*21–22 Oct 2026*). Release prep for
+`0.1.0-beta1` is on the same branch (README, changelog, `release.yml`); left for Anton: the Modrinth/CurseForge
+projects and their IDs, then `release.yml` (§10).
 
 ### M6 · Module 2, GPU part transform (Phase 2) → Gate C
 - [ ] `MeshPool`: first time a `ModelPart` is seen, write its cuboids once in local space; keyed by part
@@ -778,11 +773,20 @@ benchmark numbers if performance changed.
 
 ## 10. Release checklist
 
-- [ ] `changelog.md` contains only the upcoming release's notes.
-- [ ] Gate for the release passed and results committed to `docs/benchmarks/results/`.
-- [ ] `docs/compat.md` updated.
-- [ ] Modrinth and CurseForge project IDs set in `build.gradle.kts`.
-- [ ] Run `release.yml` (manual dispatch): builds, `releaseMod`, Discord post, README sync.
+`0.1.0-beta1` (M5, Gate B):
+
+- [x] `changelog.md` contains only the upcoming release's notes.
+- [x] Gate for the release passed and results committed to `docs/benchmarks/results/` (Gate B 1.17×, 21 Oct 2026).
+- [x] `docs/compat.md` updated.
+- [x] `README.md` describes what the release does (synced to Modrinth/CurseForge by `release.yml` and
+      `readme-modrinth-sync.yml`; links are absolute so they work there).
+- [x] `release.yml` builds like CI (the Fabric gametests need Mesa's EGL under xvfb).
+- [ ] Modrinth and CurseForge project IDs set in `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`),
+      `release.yml` and `readme-modrinth-sync.yml` (there also the push trigger on `README.md`, as in autodrop). No
+      `mobium` project existed on Modrinth on 21 Oct 2026; Anton creates both.
+- [ ] Repository secrets for `release.yml`: `MODRINTH_API_KEY`, `CURSEFORGE_API_KEY`, `NYON_USERNAME`,
+      `NYON_PASSWORD`, `DISCORD_WEBHOOK`, `DISCORD_ROLE_ID` (as in autodrop).
+- [ ] Run `release.yml` (manual dispatch on `main`): builds, `releaseMod`, Discord post, README sync.
 
 ---
 
