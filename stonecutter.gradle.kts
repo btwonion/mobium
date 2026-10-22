@@ -32,6 +32,7 @@ private data class DiscordWebhook(
 val majorVersion = property("mod.major-version").toString()
 val betaVersion = property("mod.beta").toString().toInt()
 val slug = property("mod.slug").toString()
+val curseforgeSlug = property("mod.curseforge-slug").toString()
 val repo = property("mod.repo").toString()
 val avatar = property("mod.icon-url").toString()
 val color = property("mod.color").toString().toInt()
@@ -61,7 +62,7 @@ tasks.register("postUpdate") {
                         "Supported loaders", supportedLoaders.joinToString(), false
                     ),
                     Field("Modrinth", "https://modrinth.com/mod/$slug", true),
-                    Field("CurseForge", "https://www.curseforge.com/minecraft/mc-mods/$slug", true),
+                    Field("CurseForge", "https://www.curseforge.com/minecraft/mc-mods/$curseforgeSlug", true),
                     Field("GitHub", "https://github.com/$repo", true)
                 )
             )

@@ -48,6 +48,6 @@ jobs:
         with:
           modrinth-api-key: ${{ secrets.MODRINTH_API_KEY }}
           curseforge-api-key: ${{ secrets.CURSEFORGE_API_KEY }}
-          modrinth-project-id: "TODO" # TODO: set once the Modrinth project exists (PLAN.md Gate B)
-          curseforge-project-id: "TODO" # TODO: set once the CurseForge project exists (PLAN.md Gate B)
+          modrinth-project-id: "8i5oedw8"
+          curseforge-project-id: "1759818"
           readme-path: README.md
