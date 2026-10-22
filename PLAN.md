@@ -27,10 +27,9 @@ Read this first when picking the work up in a new session.
 - **Next: release `0.1.0-beta1`** (§10). Everything in the repository is ready (README, changelog, `release.yml`,
   version `0.1.0-beta1` from `gradle.properties`). Anton created the projects on 22 Oct 2026: Modrinth slug `mobium`,
   CurseForge slug `mobium-perf` (`mod.curseforge-slug`), summary "Draws chests, signs and
-  item frames from the GPU" (also `mod.description`). Waiting for their project IDs (drafts are not visible through
-  the public APIs), which go into `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`), `release.yml`
-  and `readme-modrinth-sync.yml` (add its push trigger back); check the repository secrets; then he dispatches
-  `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
+  item frames from the GPU" (also `mod.description`). Project IDs: Modrinth `8i5oedw8`, CurseForge `1759818`, in
+  `build.gradle.kts`, `release.yml` and `readme-modrinth-sync.yml` (which syncs README.md on every push to `main`
+  again). Left for Anton: the repository secrets, his visual checks of #7, then he dispatches `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
   Also open before the release: Anton's visual checks of #7's *How to verify* (gallery with entities on A, B with
   Complementary, C/D with Fresh Animations; moving around; NeoForge).
 - **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis in `docs/benchmarks.md`: with Fresh Animations
@@ -784,9 +783,9 @@ benchmark numbers if performance changed.
 - [x] `README.md` describes what the release does (synced to Modrinth/CurseForge by `release.yml` and
       `readme-modrinth-sync.yml`; links are absolute so they work there).
 - [x] `release.yml` builds like CI (the Fabric gametests need Mesa's EGL under xvfb).
-- [ ] Modrinth and CurseForge project IDs set in `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`),
-      `release.yml` and `readme-modrinth-sync.yml` (there also the push trigger on `README.md`, as in autodrop). No
-      `mobium` project existed on Modrinth on 21 Oct 2026; Anton creates both.
+- [x] Modrinth and CurseForge project IDs set in `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`),
+      `release.yml` and `readme-modrinth-sync.yml` (there also the push trigger on `README.md`, as in autodrop):
+      Modrinth `mobium` = `8i5oedw8`, CurseForge `mobium-perf` = `1759818` (22 Oct 2026).
 - [ ] Repository secrets for `release.yml`: `MODRINTH_API_KEY`, `CURSEFORGE_API_KEY`, `NYON_USERNAME`,
       `NYON_PASSWORD`, `DISCORD_WEBHOOK`, `DISCORD_ROLE_ID` (as in autodrop).
 - [ ] Run `release.yml` (manual dispatch on `main`): builds, `releaseMod`, Discord post, README sync.

@@ -305,7 +305,7 @@ publishMods {
     if (isFabric) modLoaders.addAll("fabric", "quilt") else modLoaders.add("neoforge")
 
     modrinth {
-        projectId = "TODO" // TODO: set once the Modrinth project exists (PLAN.md Gate B)
+        projectId = "8i5oedw8"
         accessToken = providers.environmentVariable("MODRINTH_API_KEY")
         minecraftVersions.addAll(supportedMcVersions)
         environment = ModrinthEnvironment.CLIENT_ONLY
@@ -321,7 +321,7 @@ publishMods {
     }
 
     curseforge {
-        projectId = "TODO" // TODO: set once the CurseForge project exists (PLAN.md Gate B)
+        projectId = "1759818"
         accessToken = providers.environmentVariable("CURSEFORGE_API_KEY")
         minecraftVersions.addAll(supportedMcVersions.mapNotNull { if (it.contains('-')) null else it })
         client = true
