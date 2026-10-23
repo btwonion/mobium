@@ -33,7 +33,7 @@ Read this first when picking the work up in a new session.
 - **Next: `0.1.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
   Module 1 follow-ups below plus shadow-pass timers (`Sections.SHADOW…`, `compat/iris/ShadowRendererMixin`), so that
   Anton's next benchmark round on beta2 also measures what Iris's shadow pass costs, and fixes for whatever beta1
-  testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`). Branch `beta2-cache-followups`, on top of
+  testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`). Branch `beta2-cache-followups` (#12), on top of
   `post-release-beta1` (#11). Self-check on both loaders passed on 23 Oct (Fabric 74/74 with Complementary and Fresh
   Animations, NeoForge 67/67; every Mobium-vs-vanilla comparison 0 changed pixels; 90 light updates 56 blocks from the
   gallery added no full checks, and the sweep pruned the 8 sections kept back to 0). The self-check now switches vsync
