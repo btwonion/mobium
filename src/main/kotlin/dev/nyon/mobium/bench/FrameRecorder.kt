@@ -205,6 +205,24 @@ object FrameRecorder {
                 fmt(sectionMeans[Sections.DRAW], 2)
             )
         )
+        if (sectionMeans[Sections.SHADOW] > 0.0) {
+            chat(
+                Component.translatable(
+                    "mobium.bench.shadow",
+                    fmt(sectionMeans[Sections.SHADOW], 2),
+                    fmt(sectionMeans[Sections.SHADOW_EXTRACT], 2),
+                    fmt(sectionMeans[Sections.SHADOW_SUBMIT], 2),
+                    fmt(sectionMeans[Sections.SHADOW_POSE], 2),
+                    fmt(
+                        sectionMeans[Sections.SHADOW_TESSELLATE_ENTITIES] +
+                            sectionMeans[Sections.SHADOW_TESSELLATE_BLOCK_ENTITIES],
+                        2
+                    ),
+                    fmt(sectionMeans[Sections.SHADOW_PREPARE], 2),
+                    fmt(sectionMeans[Sections.SHADOW_DRAW], 2)
+                )
+            )
+        }
 
         try {
             val directory = Minecraft.getInstance().gameDirectory.toPath().resolve("mobium-bench")
