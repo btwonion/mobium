@@ -24,11 +24,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(EntityRenderDispatcher.class)
 public class EntityRenderDispatcherMixin {
-    // Render states carry no reference to their entity; the cache keys its entries by entity. No behaviour change.
+    // Render states carry no reference to their entity; the cache keys its entries by entity. Only the states of types
+    // the cache may take get one, so other holders of render states keep no entity alive. No behaviour change.
     @Inject(method = "extractEntity", at = @At("RETURN"))
     private void mobium$linkEntity(Entity entity, float partialTicks, CallbackInfoReturnable<EntityRenderState> cir) {
         EntityRenderState state = cir.getReturnValue();
-        if (state != null) ((EntityStateSource) state).mobium$setEntity(entity);
+        if (state != null && StaticCache.linksEntity(entity)) ((EntityStateSource) state).mobium$setEntity(entity);
     }
 
     @WrapOperation(

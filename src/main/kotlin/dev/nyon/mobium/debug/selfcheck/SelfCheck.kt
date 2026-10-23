@@ -8,6 +8,8 @@ import dev.nyon.mobium.bench.BenchSuite
 import dev.nyon.mobium.bench.SceneBuilder
 import dev.nyon.mobium.cache.ArmorStands
 import dev.nyon.mobium.cache.Displays
+import dev.nyon.mobium.cache.EntityPolicy
+import dev.nyon.mobium.cache.EntityStateSource
 import dev.nyon.mobium.cache.ItemFrames
 import dev.nyon.mobium.cache.Lids
 import dev.nyon.mobium.cache.Pots
@@ -144,6 +146,9 @@ object SelfCheck {
     /** Advances the scenario; called at the end of every client tick. */
     fun tick() {
         val iterator = steps ?: return
+        // Nobody touches the game during the self-check; without this vanilla caps the frame rate after 60 s without
+        // input (FramerateLimitTracker), and waits counted in frames (the cache's pauses, its sweep) take far longer.
+        Minecraft.getInstance().framerateLimitTracker.onInputReceived()
         val wait = current
         if (wait != null) {
             if (!wait.condition()) {
@@ -548,6 +553,9 @@ object SelfCheck {
         minecraft.options.cloudStatus().set(CloudStatus.OFF)
         // Particles (the ender chest's) move between two pictures; restored at the end too.
         minecraft.options.particles().set(ParticleStatus.MINIMAL)
+        // With vsync each swap waits for the compositor, which throttles a window behind others (Wayland: ~17 FPS), and
+        // waits counted in frames (the cache's pauses, its sweep) and same-tick picture pairs need the frame rate.
+        minecraft.options.enableVsync().set(false)
         val hud = minecraft.gui.hud
         if (!hud.isHidden) hud.toggle()
 
@@ -741,6 +749,8 @@ object SelfCheck {
         }
         yield(upTo("gallery: entities cached again", 30) { entityCounts() == GALLERY_ENTITIES })
         check("gallery: changed entities cached again", entityCounts() == GALLERY_ENTITIES, "${entityCounts()}; ${StaticCache.debugLine()}")
+        lightElsewhere(minecraft)
+        entityLinks(minecraft)
 
         if (Compat.isLoaded(CompatMod.IRIS)) {
             /*? if fabric {*/
@@ -752,6 +762,69 @@ object SelfCheck {
             *//*?}*/
         }
         if (Compat.isLoaded(CompatMod.EMF)) freshAnimations(minecraft)
+    }
+
+    /**
+     * Light updates in other sections leave the cached objects on the fast path: a glowstone block 56 blocks west of
+     * the gallery (its light reaches no gallery section) switched on and off ten times. Before beta2 every light update
+     * anywhere sent every cached object through the full check once; now full checks per frame stay as before (the
+     * shelves take it every frame). Then the 600-frame sweep forgets the sections all entries have seen.
+     */
+    private suspend fun SequenceScope<Wait>.lightElsewhere(minecraft: Minecraft) {
+        yield(until("world settled (light elsewhere)", 60) { SceneBuilder.isQuiet(minecraft) })
+        val baselineFrame = Sections.frame
+        val baselineTotals = StaticCache.totals.copyOf()
+        yield(ticks(2 * TICKS_PER_SECOND))
+        val baselineFrames = Sections.frame - baselineFrame
+        val baselineSlow = StaticCache.totals[1] - baselineTotals[1]
+        results += "NOTE frame rate in the gallery: about ${baselineFrames / 2} FPS"
+
+        val startFrame = Sections.frame
+        val startTotals = StaticCache.totals.copyOf()
+        val far = "${X0 - 56} ${GROUND + 2} ${Z0 + 9}"
+        // The sections kept are read every tick: a sweep may already prune them before the toggling ends.
+        var kept = 0
+        for (i in 0 until 10) {
+            serverCommand(minecraft, "setblock $far minecraft:${if (i % 2 == 0) "glowstone" else "air"}")
+            yield(Wait("light toggle $i", 4, required = false) { kept = maxOf(kept, StaticCache.lightSectionsKept); false })
+        }
+        yield(Wait("light toggles settle", TICKS_PER_SECOND, required = false) {
+            kept = maxOf(kept, StaticCache.lightSectionsKept)
+            false
+        })
+        val frames = Sections.frame - startFrame
+        val slow = StaticCache.totals[1] - startTotals[1]
+        val lightUpdates = StaticCache.totals[2] - startTotals[2]
+        val extraPerFrame = slow.toDouble() / frames.coerceAtLeast(1) - baselineSlow.toDouble() / baselineFrames.coerceAtLeast(1)
+        check(
+            "gallery: light updates elsewhere keep the fast path",
+            lightUpdates > 0 && extraPerFrame < 0.5,
+            String.format(
+                Locale.ROOT, "%d light updates, %d full checks in %d frames (before: %d in %d), %+.2f per frame",
+                lightUpdates, slow, frames, baselineSlow, baselineFrames, extraPerFrame
+            )
+        )
+        yield(upTo("light sections pruned", 60) { StaticCache.lightSectionsKept < kept })
+        check(
+            "gallery: the sweep forgets light updates every entry has seen",
+            kept > 0 && StaticCache.lightSectionsKept < kept,
+            "at most $kept sections kept while toggling, ${StaticCache.lightSectionsKept} after the sweep"
+        )
+    }
+
+    /** Render states keep a reference to their entity only for the types the cache takes (not the player's). */
+    private fun entityLinks(minecraft: Minecraft) {
+        val level = minecraft.level ?: return
+        val dispatcher = minecraft.entityRenderDispatcher
+        val player = checkNotNull(minecraft.player)
+        val playerLink = (dispatcher.extractEntity(player, 1f) as EntityStateSource).`mobium$entity`()
+        val frame = level.entitiesForRendering().firstOrNull { EntityPolicy.ruleFor(it) === ItemFrames }
+        val frameLink = frame?.let { (dispatcher.extractEntity(it, 1f) as EntityStateSource).`mobium$entity`() }
+        check(
+            "gallery: only cached types' render states keep their entity",
+            playerLink == null && frame != null && frameLink === frame,
+            "player linked ${playerLink != null}, item frame ${if (frame == null) "missing" else "linked ${frameLink === frame}"}"
+        )
     }
 
     /** Cached item frames, armor stands and displays, as "frames stands displays". */
@@ -810,6 +883,20 @@ object SelfCheck {
         check("shader pack: entities cached", entityCounts() == GALLERY_ENTITIES, "${entityCounts()}; ${StaticCache.debugLine()}")
         val sizes = StaticCache.vertexSizes()
         check("shader pack: captures use Iris's vertex formats", sizes.isNotEmpty() && 36 !in sizes && 28 !in sizes, "vertex sizes $sizes")
+        // Iris's shadow pass has timers of its own; its stages run inside it, so they add up to at most its total.
+        Sections.forceTimers = true
+        yield(ticks(3 * TICKS_PER_SECOND))
+        val shadow = Sections.averageMillis(Sections.SHADOW)
+        val parts = Sections.averageMillis(Sections.SHADOW_EXTRACT) + Sections.averageMillis(Sections.SHADOW_SUBMIT) +
+            Sections.averageMillis(Sections.SHADOW_PREPARE) + Sections.averageMillis(Sections.SHADOW_DRAW)
+        check(
+            "shader pack: shadow pass timed",
+            shadow > 0.0 && Sections.averageMillis(Sections.SHADOW_PREPARE) > 0.0 &&
+                Sections.averageMillis(Sections.SHADOW_DRAW) > 0.0 && parts <= shadow,
+            shadowTimings()
+        )
+        results += "NOTE shadow pass in the gallery: ${shadowTimings()}"
+        Sections.forceTimers = false
         comparePair(minecraft, "shader pack: gallery", "shaderpack-gallery")
         // Shader packs add noise of their own from frame to frame (dithering); two vanilla frames show how much.
         KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
@@ -829,7 +916,14 @@ object SelfCheck {
         yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
         yield(ticks(2 * TICKS_PER_SECOND))
         check("cache back on vanilla formats", StaticCache.active && StaticCache.vertexSizes().all { it == 36 || it == 28 }, "vertex sizes ${StaticCache.vertexSizes()}")
+        Sections.forceTimers = true
+        yield(ticks(2 * TICKS_PER_SECOND))
+        check("no shadow pass timed without a shader pack", Sections.averageMillis(Sections.SHADOW) == 0.0, shadowTimings())
+        Sections.forceTimers = false
     }
+
+    private fun shadowTimings(): String = Sections.NAMES.indices.filter { Sections.NAMES[it].startsWith("shadow") }
+        .joinToString { String.format(Locale.ROOT, "%s %.3f ms", Sections.NAMES[it], Sections.averageMillis(it)) }
 
     /**
      * Applies a change on the server while the cache is warm, waits [seconds], then compares Mobium's picture with
