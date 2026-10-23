@@ -58,7 +58,7 @@ Mobium works out of the box; the static cache is on by default.
 - **A/B key:** switches all of Mobium off and on live, so you can compare in the same spot. It is the key right of
   <kbd>P</kbd>: <kbd>]</kbd> on a US keyboard, <kbd>+</kbd> on a German one (rebind it in the controls).
 - **F3:** the debug entries `mobium:modules` (what is on, and why something is off) and `mobium:timings` (where the
-  frame time goes) can be enabled in the debug options.
+  frame time goes, with a shader pack also in Iris's shadow pass) can be enabled in the debug options.
 
 If something goes wrong inside Mobium, it switches the affected part off for the rest of the session, shows one
 message and lets the game draw everything as usual.

@@ -13,9 +13,10 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10 are merged; `main` has M0–M5 (#7, `m5-static-cache`,
-  merged on 22 Oct 2026 at Anton's request once Gate B had passed and the checks were green) and the release prep (#8)
-  and new icon (#10). From M6 on: one branch from `main` per milestone, one PR against `main`; merging is Anton's call.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#12 are merged; `main` has M0–M5 (#7, `m5-static-cache`,
+  merged on 22 Oct 2026 at Anton's request once Gate B had passed and the checks were green), the release prep (#8),
+  the new icon (#10) and the beta2 work (#11 post-release, #12 cache follow-ups and shadow-pass timers, both merged on
+  23 Oct 2026). From M6 on: one branch from `main` per milestone, one PR against `main`; merging is Anton's call.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
   `.github/workflows/build-commit.yml`); `release.yml` does the same. If CI hangs or fails, read the job log first
@@ -33,8 +34,9 @@ Read this first when picking the work up in a new session.
 - **Next: `0.1.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
   Module 1 follow-ups below plus shadow-pass timers (`Sections.SHADOW…`, `compat/iris/ShadowRendererMixin`), so that
   Anton's next benchmark round on beta2 also measures what Iris's shadow pass costs, and fixes for whatever beta1
-  testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`). Branch `beta2-cache-followups` (#12), on top of
-  `post-release-beta1` (#11). Self-check on both loaders passed on 23 Oct (Fabric 74/74 with Complementary and Fresh
+  testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`; none so far). The work is on `main` (#11, #12, merged on 23
+  Oct, build `a6997e5`); the release prep is branch `release-0.1.0-beta2`, which also takes the benchmark round's
+  results. The Prism instances A–D run build `a6997e5` (23 Oct). Self-check on both loaders passed on 23 Oct (Fabric 74/74 with Complementary and Fresh
   Animations, NeoForge 67/67; every Mobium-vs-vanilla comparison 0 changed pixels; 90 light updates 56 blocks from the
   gallery added no full checks, and the sweep pruned the 8 sections kept back to 0). The self-check now switches vsync
   off: with it the dev window behind other windows ran at ~17 FPS on Wayland, which paused the armor stands (at 17
@@ -87,7 +89,11 @@ Read this first when picking the work up in a new session.
   installed build, finds instances whose folder Prism renamed ("Mobium Bench A (Sodium)", "Mobium Bench D (all)"),
   refreshes the datapack in their worlds, installs and selects Complementary Reimagined r5.9.3 (B, D) and Fresh
   Animations 1.11.1 (C, D) and sets `-Dmobium.bench.expect` so the suite refuses the wrong setup. Every `summary.csv`
-  row names its build (`build`). A new world comes from `./gradlew :26.3-fabric:runBenchWorld` followed by deleting
+  row names its build (`build`). Until 23 Oct the script appended `JvmArgs` to the end of `instance.cfg`, which put it
+  into Prism's `[UI]` section, where Prism ignores it (no expected-setup check in the rounds of 21–22 Oct), and a run
+  on 22 Oct made new `mobium-bench-a`/`-d` folders next to the renamed ones and updated those from then on (moved to
+  `PrismLauncher/mobium-bench-duplicates-20261023/`). Now it writes `[General]` and, when several instances carry
+  one name, uses the one Prism launched last and names the others. A new world comes from `./gradlew :26.3-fabric:runBenchWorld` followed by deleting
   `saves/Mobium Bench` in the instances.
 - **Measurement pitfalls found so far** (details in `docs/benchmarks.md`):
   - the default 120 FPS cap and vanilla's idle frame limit (the bench handles the second);
@@ -818,7 +824,8 @@ benchmark numbers if performance changed.
 
 `0.1.0-beta2` (Module 1 follow-ups, shadow-pass timers):
 
-- [ ] `changelog.md` contains only beta2's notes.
+- [x] `changelog.md` contains only beta2's notes (23 Oct 2026, no tester reports to add).
+- [x] `docs/compat.md` and `README.md` mention the shadow-pass timers.
 - [x] Self-check on both loaders: every Mobium-vs-vanilla comparison 0 changed pixels (23 Oct 2026: Fabric 74/74
       with Complementary and Fresh Animations, NeoForge 67/67 without the shader pack, see *Current state*).
 - [ ] Benchmark round A–D on beta2 (with the shadow-pass timers), committed to `docs/benchmarks.md`.
