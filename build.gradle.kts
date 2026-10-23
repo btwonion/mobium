@@ -264,6 +264,9 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.launcher)
+    // Loom puts Minecraft's libraries on the unit tests' runtime classpath, ModDevGradle does not; the classes under test
+    // use fastutil (LightStamps, MemoryBudget), so the NeoForge targets add it at Minecraft's version.
+    prop("vers.deps.fastutil") { testRuntimeOnly("it.unimi.dsi:fastutil:$it") }
 }
 
 tasks {

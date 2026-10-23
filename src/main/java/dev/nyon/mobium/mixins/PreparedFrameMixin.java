@@ -14,7 +14,8 @@ import org.spongepowered.asm.mixin.Mixin;
 
 /**
  * Times the CPU side of the level's feature draws: every phase of the prepared frame goes through {@code executePhase}.
- * Only counted while {@code RenderSystem.isRenderingLevel}, so hand, GUI and picture-in-picture draws are left out.
+ * Only counted while {@code RenderSystem.isRenderingLevel}, so hand, GUI and picture-in-picture draws are left out;
+ * Iris's shadow pass, which runs inside the level render, counts as its own section.
  * Behaviour is unchanged; with timers off the wrapper only calls through.
  */
 @Mixin(FeatureRenderDispatcher.PreparedFrame.class)
@@ -31,6 +32,6 @@ public class PreparedFrameMixin {
     ) {
         long start = RenderSystem.isRenderingLevel ? Sections.begin() : 0L;
         original.call(phase, context, stage, renderPass);
-        Sections.end(Sections.DRAW, start);
+        Sections.end(Sections.inShadowPass ? Sections.SHADOW_DRAW : Sections.DRAW, start);
     }
 }

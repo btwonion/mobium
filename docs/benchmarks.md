@@ -74,9 +74,22 @@ instance it is the instance's `minecraft/` folder.
 | `tessellate_*` | `Model.renderToBuffer` inside `prepareModel`: walking the part tree and writing every vertex on the CPU |
 | `prepare` | The level's whole prepare stage: pose + tessellate above, plus items, block models, text, sorting and the upload of all vertices |
 | `draw` | CPU time issuing the level's feature draws (every phase, including the three OIT stages). GPU time is not measured; it shows up in `frame_ms` |
+| `shadow` | Iris's whole shadow pass (`ShadowRenderer.renderShadows`): shadow terrain, entities, block entities and their draws, issued from inside the level render. 0 without a shader pack |
+| `shadow_extract` / `shadow_submit` | Iris's own entity and block entity extraction and submit loops (`ShadowRenderer.extractVisibleEntities` / `extractVisibleBlockEntities`, `renderEntities` / `renderBlockEntities`) |
+| `shadow_pose` / `shadow_tessellate_entities` / `shadow_tessellate_block_entities` | `setupAnim` and `renderToBuffer` as above, inside the shadow pass's prepare |
+| `shadow_prepare` / `shadow_draw` | The shadow pass's prepare stage (pose and tessellate included) and its feature draws |
 
-All timers are CPU wall-clock time on the render thread and only count the main level pass (not the hand, the GUI or
-Iris's shadow pass). See `docs/vanilla-notes.md` §0 for the stages.
+All timers are CPU wall-clock time on the render thread. The level timers count only the main level pass (not the hand,
+the GUI or Iris's shadow pass); the `shadow_*` timers count Iris's shadow pass, and their stages are part of `shadow`.
+The `shadow_*` timers exist since 0.1.0-beta2. Before, the shadow pass was not timed at all, and `draw` included the
+shadow pass's feature draws (setups B and D; `draw` was 0.15–0.22 ms there in the 21–22 Oct round). See
+`docs/vanilla-notes.md` §0 for the stages.
+
+What the shadow pass draws is up to the shader pack. Complementary Reimagined r5.9.3 at its defaults, as B and D run it
+(`ENTITY_SHADOW` 1, also in its HIGH to ULTRA profiles), sets `shadowBlockEntities = false` in `shaders.properties`:
+entities cast shadows, block entities do not, so `shadow_tessellate_block_entities` reads 0 there (0.000 ms in the
+self-check's gallery on 23 Oct, with the whole shadow pass at 2.0–2.8 ms). Its POTATO to MEDIUM profiles
+(`ENTITY_SHADOW` -1) leave entities out as well; `ENTITY_SHADOW` 2 shadows both.
 
 ## Protocol
 

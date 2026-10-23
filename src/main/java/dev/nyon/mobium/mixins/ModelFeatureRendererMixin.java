@@ -15,8 +15,8 @@ import org.spongepowered.asm.mixin.injection.At;
 
 /**
  * Times posing ({@code Model.setupAnim}) and tessellation ({@code Model.renderToBuffer}) inside
- * {@code ModelFeatureRenderer.prepareModel}, only during the level's own prepare stage. Behaviour is unchanged; with
- * timers off the wrappers only call through.
+ * {@code ModelFeatureRenderer.prepareModel}, during the level's own prepare stage and, as separate sections, Iris's
+ * shadow pass's. Behaviour is unchanged; with timers off the wrappers only call through.
  */
 @Mixin(ModelFeatureRenderer.class)
 public class ModelFeatureRendererMixin {
@@ -30,9 +30,9 @@ public class ModelFeatureRendererMixin {
         Operation<Void> original,
         @Local(argsOnly = true) ModelFeatureRenderer.Submit<?> submit
     ) {
-        long start = Sections.inLevelPrepare ? Sections.begin() : 0L;
+        long start = Sections.inTimedPrepare() ? Sections.begin() : 0L;
         original.call(model, state);
-        Sections.end(mobium$isBlockEntity(submit) ? Sections.POSE_BLOCK_ENTITIES : Sections.POSE_ENTITIES, start);
+        Sections.end(Sections.poseSection(mobium$isBlockEntity(submit)), start);
     }
 
     @WrapOperation(
@@ -52,12 +52,9 @@ public class ModelFeatureRendererMixin {
         Operation<Void> original,
         @Local(argsOnly = true) ModelFeatureRenderer.Submit<?> submit
     ) {
-        long start = Sections.inLevelPrepare ? Sections.begin() : 0L;
+        long start = Sections.inTimedPrepare() ? Sections.begin() : 0L;
         original.call(model, poseStack, buffer, lightCoords, overlayCoords, color);
-        Sections.end(
-            mobium$isBlockEntity(submit) ? Sections.TESSELLATE_BLOCK_ENTITIES : Sections.TESSELLATE_ENTITIES,
-            start
-        );
+        Sections.end(Sections.tessellateSection(mobium$isBlockEntity(submit)), start);
     }
 
     @Unique

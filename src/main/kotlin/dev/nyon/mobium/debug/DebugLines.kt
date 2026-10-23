@@ -34,6 +34,15 @@ object DebugLines : DebugScreenEntry {
             "Mobium prepare ${ms(Sections.PREPARE)} | draw ${ms(Sections.DRAW)} ms" +
                 " | ${Sections.averageEntities()} entities, ${Sections.averageBlockEntities()} block entities"
         )
+        if (Sections.averageMillis(Sections.SHADOW) > 0.0) {
+            displayer.addLine(
+                "Mobium shadow ${ms(Sections.SHADOW)} | extract ${ms(Sections.SHADOW_EXTRACT)}" +
+                    " | submit ${ms(Sections.SHADOW_SUBMIT)} | pose ${ms(Sections.SHADOW_POSE)}" +
+                    " | tessellate E ${ms(Sections.SHADOW_TESSELLATE_ENTITIES)}" +
+                    " BE ${ms(Sections.SHADOW_TESSELLATE_BLOCK_ENTITIES)}" +
+                    " | prepare ${ms(Sections.SHADOW_PREPARE)} | draw ${ms(Sections.SHADOW_DRAW)} ms"
+            )
+        }
     }
 
     private fun ms(section: Int) = String.format(Locale.ROOT, "%.2f", Sections.averageMillis(section))

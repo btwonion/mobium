@@ -1,5 +1,7 @@
 package dev.nyon.mobium.cache
 
+import it.unimi.dsi.fastutil.doubles.DoubleArrays
+
 /**
  * Module 1's memory budget (`cache.memoryBudgetMb`, default 128 MB), without Minecraft classes, unit-tested. It counts
  * the cached vertex data, which lives once in a GPU buffer and once in system memory (the CPU copy is what the
@@ -41,20 +43,29 @@ class MemoryBudget(budgetBytes: Long) {
 
     /**
      * Picks the objects to evict: farthest first ([distancesSq], squared distance to the camera), until usage is at
-     * most [TARGET_FRACTION] of the budget. Returns their indices into the first [count] elements of the arrays.
+     * most [TARGET_FRACTION] of the budget. Considers the first [count] elements of the arrays, writes the indices of
+     * the evicted objects, farthest first, to the start of [out] (at least [count] long) and returns how many there are.
      */
-    fun selectEvictions(distancesSq: DoubleArray, bytes: LongArray, count: Int): IntArray {
-        if (!isOver) return IntArray(0)
+    fun selectEvictions(distancesSq: DoubleArray, bytes: LongArray, count: Int, out: IntArray): Int {
+        if (!isOver) return 0
         val target = (budgetBytes * TARGET_FRACTION).toLong()
-        val order = (0 until count).sortedByDescending { distancesSq[it] }
-        var used = usedBytes
-        val result = ArrayList<Int>()
-        for (index in order) {
-            if (used <= target) break
-            used -= bytes[index]
-            result += index
+        for (i in 0 until count) out[i] = i
+        DoubleArrays.quickSortIndirect(out, distancesSq, 0, count)
+        // Nearest first after the sort; reversed, the farthest are at the start.
+        var low = 0
+        var high = count - 1
+        while (low < high) {
+            val swap = out[low]
+            out[low++] = out[high]
+            out[high--] = swap
         }
-        return result.toIntArray()
+        var used = usedBytes
+        var evicted = 0
+        while (evicted < count && used > target) {
+            used -= bytes[out[evicted]]
+            evicted++
+        }
+        return evicted
     }
 
     companion object {
