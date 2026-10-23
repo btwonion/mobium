@@ -12,7 +12,7 @@ class MemoryBudgetTest {
         val budget = MemoryBudget(1000)
         budget.add(1000)
         assertFalse(budget.isOver)
-        assertEquals(0, budget.selectEvictions(doubleArrayOf(1.0), longArrayOf(1000), 1).size)
+        assertEquals(0, budget.evictions(doubleArrayOf(1.0), longArrayOf(1000), 1).size)
     }
 
     @Test
@@ -22,7 +22,7 @@ class MemoryBudgetTest {
         val distances = doubleArrayOf(4.0, 100.0, 1.0, 50.0)
         val bytes = longArrayOf(300, 300, 300, 300)
         // 1200 -> 900 after the farthest (index 1); 900 is the target (90 % of 1000).
-        assertArrayEquals(intArrayOf(1), budget.selectEvictions(distances, bytes, 4))
+        assertArrayEquals(intArrayOf(1), budget.evictions(distances, bytes, 4))
     }
 
     @Test
@@ -31,14 +31,14 @@ class MemoryBudgetTest {
         budget.add(2000)
         val distances = doubleArrayOf(4.0, 100.0, 1.0, 50.0)
         val bytes = longArrayOf(500, 500, 500, 500)
-        assertArrayEquals(intArrayOf(1, 3, 0), budget.selectEvictions(distances, bytes, 4))
+        assertArrayEquals(intArrayOf(1, 3, 0), budget.evictions(distances, bytes, 4))
     }
 
     @Test
     fun `only the given count of entries is considered`() {
         val budget = MemoryBudget(100)
         budget.add(300)
-        val evicted = budget.selectEvictions(doubleArrayOf(1.0, 2.0, 999.0), longArrayOf(150, 150, 150), 2)
+        val evicted = budget.evictions(doubleArrayOf(1.0, 2.0, 999.0), longArrayOf(150, 150, 150), 2)
         assertArrayEquals(intArrayOf(1, 0), evicted)
     }
 
@@ -57,5 +57,21 @@ class MemoryBudgetTest {
         budget.add(800)
         budget.resize(500)
         assertTrue(budget.isOver)
+    }
+
+    @Test
+    fun `the result goes into the caller's array`() {
+        val budget = MemoryBudget(1000)
+        budget.add(2000)
+        val out = intArrayOf(-1, -1, -1, -1, -1, -1)
+        val evicted = budget.selectEvictions(doubleArrayOf(4.0, 100.0, 1.0, 50.0), longArrayOf(500, 500, 500, 500), 4, out)
+        assertEquals(3, evicted)
+        assertArrayEquals(intArrayOf(1, 3, 0), out.copyOf(evicted))
+        assertEquals(-1, out[4])
+    }
+
+    private fun MemoryBudget.evictions(distances: DoubleArray, bytes: LongArray, count: Int): IntArray {
+        val out = IntArray(distances.size)
+        return out.copyOf(selectEvictions(distances, bytes, count, out))
     }
 }

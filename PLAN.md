@@ -31,24 +31,44 @@ Read this first when picking the work up in a new session.
   closed unmerged). The beta1 jars carry the old cube icon; the project icons are set on Modrinth and CurseForge by
   hand. Never run `release.yml` or `releaseMod` yourself.
 - **Next: `0.1.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
-  Module 1 follow-ups below plus shadow-pass timers, so that Anton's next benchmark round on beta2 also measures what
-  Iris's shadow pass costs, and fixes for whatever beta1 testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`).
+  Module 1 follow-ups below plus shadow-pass timers (`Sections.SHADOW…`, `compat/iris/ShadowRendererMixin`), so that
+  Anton's next benchmark round on beta2 also measures what Iris's shadow pass costs, and fixes for whatever beta1
+  testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`). Branch `beta2-cache-followups`, on top of
+  `post-release-beta1` (#11). Self-check on both loaders passed on 23 Oct (Fabric 74/74 with Complementary and Fresh
+  Animations, NeoForge 67/67; every Mobium-vs-vanilla comparison 0 changed pixels; 90 light updates 56 blocks from the
+  gallery added no full checks, and the sweep pruned the 8 sections kept back to 0). The self-check now switches vsync
+  off: with it the dev window behind other windows ran at ~17 FPS on Wayland, which paused the armor stands (at 17
+  FPS the 60 frames after a capture last 3.5 s, and their state still changed in them) and put a client tick between
+  most picture pairs. Left: Anton's benchmark round A–D on the branch and his visual check (§10), then the release.
 - **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis in `docs/benchmarks.md`: with Fresh Animations
   tessellation is 3.8–4.5 ms of the mob pens in C (pose 0.16 ms); in D the mob pens are 65–70 ms against 27–38 ms for
   `control`, and the timers do not count Iris's shadow pass, so M6 needs shadow-pass timers first. In D, removing all
   of the main pass's tessellation (9.3 ms of 65.5 ms in `mob_pen_live`) would give 1.17×; whether Gate C's 1.5× is in
   reach depends on the shadow pass's share and on how GPU-bound D is (`control` 27 ms). Decide Gate C with Anton once
   those numbers exist, as for Gate B.
-- **Follow-ups for Module 1** (from the #7 review, not blocking, none affects what is drawn; planned for beta2):
-  - one light epoch for the whole level: any client light update sends every cached object through the full check
-    that frame (`StaticCache.extractCached`); in normal play (chunk loading, torches) the fast path rarely hits. Keep
-    per-section versions only, or an epoch per section.
-  - `StaticCache.lightVersions` gets a key for every section that ever had a light update and is only cleared with the
-    cache; prune it in the 600-frame sweep.
-  - the sweep, the budget eviction and `removeType` use Kotlin collection operators and lambdas (CLAUDE.md hot paths).
-  - entity render states keep a strong reference to their entity (`EntityRenderStateMixin`) until overwritten.
+- **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
+  `beta2-cache-followups`, 23 Oct 2026):
+  - [x] one light epoch for the whole level sent every cached object through the full check after any light update.
+    Now `cache/LightStamps.kt`: the epoch of each section's last light update; an entry keeps the epoch it last read
+    its light at and reads it again only if one of its sections was updated after that, so an update elsewhere costs
+    one or two lookups per object and no full check.
+  - [x] the per-section light versions only grew. The 600-frame sweep now forgets the sections whose last update every
+    remaining entry has seen (a stamp cannot repeat after pruning, unlike a per-section counter).
+  - [x] the sweep, the budget eviction and `removeType` used Kotlin collection operators and lambdas; now loops, map
+    iterators and reused arrays (`MemoryBudget.selectEvictions` sorts indirectly with fastutil's `DoubleArrays`).
+  - [x] entity render states referenced their entity. Vanilla makes states per frame and clears the level's list after
+    submitting; what keeps states longer is Iris's shadow renderer (until its next pass), the player's avatar state and
+    item pickup particles (`docs/vanilla-notes.md` §15). Only cached types outside the shadow pass get the link now.
   - `display_build` at 1920×1080 is GPU-bound on this iGPU: entities cached save 0.4–2 ms of CPU but no frame time
     there; the per-entity check costs about 0.3 µs per display.
+  - Iris's shadow pass draws cached objects through vanilla (the cache leaves that pass alone). Complementary at its
+    defaults (`ENTITY_SHADOW` 1, as in B and D) leaves block entities out of the shadow map (`shadowBlockEntities =
+    false`; `shadow_tessellate_block_entities` 0.000 ms in the self-check), so there it costs nothing; a pack or setting
+    that shadows block entities tessellates every cached chest once more per frame (`docs/benchmarks.md`, timers).
+  - F3 `mobium:modules`: vanilla puts the third of its lines, the static cache line, into the right column, and that
+    line is wider than the room next to the left column's first line, so the two overlap (seen in the self-check's
+    `f3-modules.png`; beta2's "sections with light updates kept" made it longer). The numbers at its end stay readable.
+    Shorter lines, or a line group of its own.
   - later: cache armor (keep submit orders), renderer API item meshes (`ExtendedItemSubmit`).
 - **A/B key:** a physical key position (SDL scancode, the key right of P): `+` on Anton's German keyboard, `]` on a
   US one; chat and action-bar messages name the bound key.
@@ -799,7 +819,8 @@ benchmark numbers if performance changed.
 `0.1.0-beta2` (Module 1 follow-ups, shadow-pass timers):
 
 - [ ] `changelog.md` contains only beta2's notes.
-- [ ] Self-check on both loaders: every Mobium-vs-vanilla comparison 0 changed pixels.
+- [x] Self-check on both loaders: every Mobium-vs-vanilla comparison 0 changed pixels (23 Oct 2026: Fabric 74/74
+      with Complementary and Fresh Animations, NeoForge 67/67 without the shader pack, see *Current state*).
 - [ ] Benchmark round A–D on beta2 (with the shadow-pass timers), committed to `docs/benchmarks.md`.
 - [ ] Anton's visual checks of the beta2 PR's *How to verify*.
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).

@@ -3,6 +3,7 @@
     "mobium.bench.started": "Benchmark %s (%s): warming up for %s s, then recording for %s s",
     "mobium.bench.finished": "Benchmark %s (%s): %s frames, avg %s FPS, 1%% low %s FPS, avg %s ms, p95 %s ms",
     "mobium.bench.sections": "Average ms per frame: extract %s, submit %s, pose %s, tessellate %s, prepare %s, draw %s",
+    "mobium.bench.shadow": "Iris shadow pass %s ms per frame: extract %s, submit %s, pose %s, tessellate %s, prepare %s, draw %s",
     "mobium.bench.saved": "Saved %s",
     "mobium.bench.stopped": "Benchmark stopped, nothing was saved",
     "mobium.bench.idle": "No benchmark is running",
