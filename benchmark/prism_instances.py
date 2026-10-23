@@ -101,14 +101,85 @@ def write_config(instance: Path, name: str, notes: str) -> None:
     )
 
 
+def unquote(value: str) -> str:
+    """A QSettings INI value as text: Prism quotes values with special characters and escapes quotes and backslashes."""
+    if value.startswith('"'):
+        value = value[1:-1] if len(value) > 1 and value.endswith('"') else value[1:]
+        value = re.sub(r"\\(.)", r"\1", value)
+    return value
+
+
+def quote(value: str) -> str:
+    if re.fullmatch(r"[\w.+-]*", value):
+        return value
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def general_keys(config: Path) -> dict[str, str]:
+    """The [General] keys of a Prism instance.cfg (a QSettings INI file); empty if there is none."""
+    values = {}
+    section = "[General]"
+    for line in config.read_text().splitlines() if config.exists() else []:
+        if line.startswith("["):
+            section = line.strip()
+        elif section == "[General]" and "=" in line:
+            key, value = line.split("=", 1)
+            values[key] = unquote(value)
+    return values
+
+
+def set_general_keys(config: Path, values: dict[str, str]) -> None:
+    """Sets keys in the [General] section of a Prism instance.cfg, where Prism reads instance settings. Earlier versions
+    of this script appended them to the end of the file, which put them into the section Prism had added last ([UI]),
+    where Prism ignores them; those copies are dropped."""
+    sections: list[list[str]] = [[]]
+    for line in config.read_text().splitlines():
+        if line.startswith("["):
+            sections.append([line])
+        else:
+            sections[-1].append(line)
+    general = next((section for section in sections[1:] if section[0].strip() == "[General]"), None)
+    if general is None:
+        general = ["[General]"]
+        sections.insert(1, general)
+    for section in sections:
+        if section is not general:
+            section[:] = [line for line in section if line.split("=", 1)[0] not in values]
+    for key, value in values.items():
+        line = f"{key}={quote(value)}"
+        for index, existing in enumerate(general):
+            if existing.split("=", 1)[0] == key:
+                general[index] = line
+                break
+        else:
+            end = len(general)
+            while end > 1 and not general[end - 1].strip():
+                end -= 1
+            general.insert(end, line)
+    config.write_text("\n".join(line for section in sections for line in section) + "\n")
+
+
+def last_launch(instance: Path) -> int:
+    value = general_keys(instance / "instance.cfg").get("lastLaunchTime", "0")
+    return int(value) if value.isdigit() else 0
+
+
 def find_instance(instances: Path, folder: str, name: str) -> Path:
-    """The instance's folder: Prism renames an instance's folder to its display name, so look for the name as well."""
-    if (instances / folder).exists():
+    """The instance's folder. Prism renames an instance's folder to its display name, so folders with that name count
+    too; if there are several (a run that made the folder again after Prism had renamed it), the one Prism launched last
+    is used and the others are named, so they can be removed in Prism."""
+    candidates = [instances / folder] if (instances / folder).exists() else []
+    for config in sorted(instances.glob("*/instance.cfg")):
+        if config.parent not in candidates and general_keys(config).get("name") == name:
+            candidates.append(config.parent)
+    if not candidates:
         return instances / folder
-    for config in instances.glob("*/instance.cfg"):
-        if f"\nname={name}\n" in "\n" + config.read_text() + "\n":
-            return config.parent
-    return instances / folder
+    chosen = max(candidates, key=last_launch)
+    for other in candidates:
+        if other != chosen:
+            launched = "never launched" if last_launch(other) == 0 else "launched less recently"
+            print(f"  another instance named {name!r} in {other.name}/ ({launched}) is left alone; remove it in Prism")
+    return chosen
 
 
 def git(*args: str) -> str | None:
@@ -228,10 +299,8 @@ def install_resource_pack(game: Path, pack: Path) -> None:
 def write_expected_setup(instance: Path, setup: str) -> None:
     """Mobium's benchmark refuses to run when the active setup differs from this (BenchEnvironment.expectedSetup)."""
     config = instance / "instance.cfg"
-    text = config.read_text()
-    match = re.search(r"^JvmArgs=(.*)$", text, re.MULTILINE)
-    args = re.sub(r"\s*-Dmobium\.bench\.expect=\S*", "", match.group(1) if match else "").strip()
-    set_keys(config, "=", {"OverrideJavaArgs": "true", "JvmArgs": f"{args} -Dmobium.bench.expect={setup}".strip()})
+    args = re.sub(r"\s*-Dmobium\.bench\.expect=\S*", "", general_keys(config).get("JvmArgs", "")).strip()
+    set_general_keys(config, {"OverrideJavaArgs": "true", "JvmArgs": f"{args} -Dmobium.bench.expect={setup}".strip()})
 
 
 def sync_datapack(kit: Path, game: Path) -> bool:
@@ -308,7 +377,8 @@ def main() -> None:
             print(f"  missing {' and '.join(missing)}: run without --no-download; /mobium suite refuses to run until then")
 
     print(f"Mobium build {build} installed")
-    running = subprocess.run(["pgrep", "-fi", "prismlauncher"], capture_output=True).returncode == 0
+    # The process name, not the command line: a shell whose command mentions Prism's data directory matched as well.
+    running = subprocess.run(["pgrep", "-ix", "prismlauncher"], capture_output=True).returncode == 0
     if running:
         print("Prism is running: restart it to see new instances.")
 
