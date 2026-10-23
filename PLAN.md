@@ -9,13 +9,13 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 ---
 
-## Current state (updated 22 Oct 2026)
+## Current state (updated 23 Oct 2026)
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#7 are merged; `main` has M0–M5 (#7, `m5-static-cache`, merged on
-  22 Oct 2026 at Anton's request once Gate B had passed and the checks were green). From M6 on: one branch from `main`
-  per milestone, one PR against `main`; merging is Anton's call.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10 are merged; `main` has M0–M5 (#7, `m5-static-cache`,
+  merged on 22 Oct 2026 at Anton's request once Gate B had passed and the checks were green) and the release prep (#8)
+  and new icon (#10). From M6 on: one branch from `main` per milestone, one PR against `main`; merging is Anton's call.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
   `.github/workflows/build-commit.yml`); `release.yml` does the same. If CI hangs or fails, read the job log first
@@ -24,17 +24,22 @@ Read this first when picking the work up in a new session.
   §M5). Module 1, the static cache, caches chests, signs (with text), skulls, decorated pots, shelves, item frames,
   armor stands without armor and `FIXED` display entities; on by default. Self-check on both loaders: every
   Mobium-vs-vanilla comparison 0 changed pixels (Complementary on Fabric: within the pack's own noise).
-- **Next: release `0.1.0-beta1`** (§10). Everything in the repository is ready (README, changelog, `release.yml`,
-  version `0.1.0-beta1` from `gradle.properties`). Anton created the projects on 22 Oct 2026: Modrinth slug `mobium`,
-  CurseForge slug `mobium-perf` (`mod.curseforge-slug`), summary "Draws chests, signs and
-  item frames from the GPU" (also `mod.description`). Project IDs: Modrinth `8i5oedw8`, CurseForge `1759818`, in
-  `build.gradle.kts`, `release.yml` and `readme-modrinth-sync.yml` (which syncs README.md on every push to `main`
-  again). Anton's visual checks of #7 are done (22 Oct 2026). Left for Anton: the repository secrets, then he
-  dispatches `release.yml` on `main`. Never run `release.yml` or `releaseMod` yourself.
+- **Released: `0.1.0-beta1`** on 22 Oct 2026 (`release.yml` run 39831233395, Fabric/Quilt and NeoForge, beta on
+  Modrinth `mobium` = `8i5oedw8` and CurseForge `mobium-perf` = `1759818`, GitHub pre-releases
+  `v0.1.0-beta1-26.3+fabric` / `+neoforge`). The first run failed before building: the runner image's apt source for
+  `packages.microsoft.com` answered 403 during an Actions outage; the re-run passed unchanged (#9, a workaround, was
+  closed unmerged). The beta1 jars carry the old cube icon; the project icons are set on Modrinth and CurseForge by
+  hand. Never run `release.yml` or `releaseMod` yourself.
+- **Next: `0.1.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
+  Module 1 follow-ups below plus shadow-pass timers, so that Anton's next benchmark round on beta2 also measures what
+  Iris's shadow pass costs, and fixes for whatever beta1 testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`).
 - **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis in `docs/benchmarks.md`: with Fresh Animations
   tessellation is 3.8–4.5 ms of the mob pens in C (pose 0.16 ms); in D the mob pens are 65–70 ms against 27–38 ms for
-  `control`, and the timers do not count Iris's shadow pass, so M6 needs shadow-pass timers first.
-- **Follow-ups for Module 1** (from the #7 review, not blocking, none affects what is drawn):
+  `control`, and the timers do not count Iris's shadow pass, so M6 needs shadow-pass timers first. In D, removing all
+  of the main pass's tessellation (9.3 ms of 65.5 ms in `mob_pen_live`) would give 1.17×; whether Gate C's 1.5× is in
+  reach depends on the shadow pass's share and on how GPU-bound D is (`control` 27 ms). Decide Gate C with Anton once
+  those numbers exist, as for Gate B.
+- **Follow-ups for Module 1** (from the #7 review, not blocking, none affects what is drawn; planned for beta2):
   - one light epoch for the whole level: any client light update sends every cached object through the full check
     that frame (`StaticCache.extractCached`); in normal play (chunk loading, torches) the fast path rarely hits. Keep
     per-section versions only, or an epoch per section.
@@ -786,9 +791,18 @@ benchmark numbers if performance changed.
 - [x] Modrinth and CurseForge project IDs set in `build.gradle.kts` (`modrinth.projectId`, `curseforge.projectId`),
       `release.yml` and `readme-modrinth-sync.yml` (there also the push trigger on `README.md`, as in autodrop):
       Modrinth `mobium` = `8i5oedw8`, CurseForge `mobium-perf` = `1759818` (22 Oct 2026).
-- [ ] Repository secrets for `release.yml`: `MODRINTH_API_KEY`, `CURSEFORGE_API_KEY`, `NYON_USERNAME`,
+- [x] Repository secrets for `release.yml`: `MODRINTH_API_KEY`, `CURSEFORGE_API_KEY`, `NYON_USERNAME`,
       `NYON_PASSWORD`, `DISCORD_WEBHOOK`, `DISCORD_ROLE_ID` (as in autodrop).
-- [ ] Run `release.yml` (manual dispatch on `main`): builds, `releaseMod`, Discord post, README sync.
+- [x] Run `release.yml` (manual dispatch on `main`): builds, `releaseMod`, Discord post, README sync. Released on
+      22 Oct 2026 (run 39831233395).
+
+`0.1.0-beta2` (Module 1 follow-ups, shadow-pass timers):
+
+- [ ] `changelog.md` contains only beta2's notes.
+- [ ] Self-check on both loaders: every Mobium-vs-vanilla comparison 0 changed pixels.
+- [ ] Benchmark round A–D on beta2 (with the shadow-pass timers), committed to `docs/benchmarks.md`.
+- [ ] Anton's visual checks of the beta2 PR's *How to verify*.
+- [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
 ---
 

@@ -1,0 +1,75 @@
+name: Bug report
+description: Something looks different with Mobium on, the game crashes, or Mobium switched itself off
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Mobium may change how geometry reaches the GPU, never what ends up on screen. If something looks different with
+        Mobium on, that is a bug. Press the A/B key (right of P: `]` on US, `+` on German keyboards) to switch Mobium off
+        and on live and check whether the difference goes away.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What you see, and what you expected to see. Screenshots with Mobium on and off help most.
+    validations:
+      required: true
+  - type: dropdown
+    id: ab-key
+    attributes:
+      label: Does the A/B key change it?
+      options:
+        - "Yes: with Mobium off it looks right"
+        - "No: it looks the same with Mobium off"
+        - "Not tried / not a visual problem"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: The blocks or entities involved and what you did (open a chest, edit a sign, change the time of day, ...).
+  - type: input
+    id: mobium-version
+    attributes:
+      label: Mobium version
+      placeholder: 0.1.0-beta1
+    validations:
+      required: true
+  - type: dropdown
+    id: loader
+    attributes:
+      label: Loader
+      options:
+        - Fabric
+        - Quilt
+        - NeoForge
+    validations:
+      required: true
+  - type: textarea
+    id: mods
+    attributes:
+      label: Other mods, resource packs and shader pack
+      description: At least Sodium, Iris (with the shader pack and its version), Entity Model Features, Entity Texture Features, Fresh Animations and other rendering mods, with versions.
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU, driver and operating system
+      placeholder: "AMD RX 7600, Mesa 25.2, Fedora 44"
+    validations:
+      required: true
+  - type: textarea
+    id: modules
+    attributes:
+      label: F3 debug screen
+      description: The `mobium:modules` lines from the F3 screen (each module's state and why it is off; enable the entry in the debug options).
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Log or crash report
+      description: "`logs/latest.log`, or the crash report from `crash-reports/`. Paste a link (mclo.gs, a gist) for long logs."
+      render: text
