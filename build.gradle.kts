@@ -43,7 +43,7 @@ modstitch {
         prop("mod.group") { modGroup = it }
 
         modVersion = project.version.toString()
-        modLicense = "GNU Lesser General Public License v3.0"
+        modLicense = "GNU General Public License v3.0"
         modAuthor = "btwonion"
 
         prop("mod.repo") { replacementProperties.put("repo", it) }
