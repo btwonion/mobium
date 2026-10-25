@@ -18,11 +18,14 @@ import java.util.Locale
  * Dev check of Module 2 (self-check and gametests, never in normal play): while [PartTransform.validating] is set,
  * every part Module 2 takes over is also compiled the vanilla way (the same `compile`, into a builder of the same
  * format, through the same sprite; Iris extends it as it would the staged one), and after the expand pass the GPU's
- * vertices are read back and compared with those byte for byte. Byte 35, the normal's padding that vanilla never
- * writes, is left out. Slow (a GPU read per staged buffer); render thread only.
+ * vertices are read back and compared with those byte for byte. Left out are the bytes the CPU path never writes, so
+ * that they hold whatever the memory held before: byte 35, the normal's padding, and in Iris's format bytes 42 and 43,
+ * the fourth short of `iris_Entity`, which Iris's Sodium serializer leaves alone (its per-vertex path writes 0, as the
+ * expand pass does). Slow (a GPU read per staged buffer); render thread only.
  */
 object PartValidation {
-    private const val SKIPPED_BYTE = 35
+    private const val NORMAL_PADDING = 35
+    private const val IRIS_ID_PADDING = 42
     private const val MAX_REPORTED = 8
 
     /** Vertices compared and how many differed in at least one byte, since [reset]. */
@@ -130,7 +133,7 @@ object PartValidation {
                 val actual = readback + base + v.toLong() * entry.vertexSize
                 var differs = false
                 for (b in 0 until entry.vertexSize) {
-                    if (b == SKIPPED_BYTE) continue
+                    if (skipped(b, entry.vertexSize)) continue
                     if (MemoryUtil.memGetByte(expected + b) != MemoryUtil.memGetByte(actual + b)) {
                         differs = true
                         break
@@ -156,6 +159,9 @@ object PartValidation {
         }
     }
 
+    private fun skipped(byte: Int, vertexSize: Int): Boolean =
+        byte == NORMAL_PADDING || (vertexSize == 56 && (byte == IRIS_ID_PADDING || byte == IRIS_ID_PADDING + 1))
+
     fun summary(): String = "$compared vertices compared, $mismatched differ, $unmatchedParts parts unmatched"
 
     /** The vertex's fields that differ, CPU against GPU. */
@@ -165,7 +171,7 @@ object PartValidation {
         for ((name, offset, length) in fields) {
             var same = true
             for (b in offset until offset + length) {
-                if (b != SKIPPED_BYTE && MemoryUtil.memGetByte(expected + b) != MemoryUtil.memGetByte(actual + b)) same = false
+                if (!skipped(b, vertexSize) && MemoryUtil.memGetByte(expected + b) != MemoryUtil.memGetByte(actual + b)) same = false
             }
             if (same) continue
             parts += when (name) {

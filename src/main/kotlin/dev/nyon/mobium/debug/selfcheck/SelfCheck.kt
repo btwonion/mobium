@@ -441,8 +441,8 @@ object SelfCheck {
 
     /**
      * `--mode profile-mobs`: `mob_pen_live` with vanilla models (no packs; the dev client still has EMF, ETF and Iris),
-     * with Fresh Animations (setup C), then also with the first shader pack (setup D), each as drawn and with the
-     * models' vertex writes skipped ([recordMobs]); one JFR recording per setup goes to
+     * with Fresh Animations (setup C), then also with the first shader pack (setup D), each with Module 2 off and on and
+     * with the models' vertex writes skipped ([recordMobs]); one JFR recording per setup goes to
      * `mobium-selfcheck/mob_pen_live-{plain,c,d}.jfr`. The measurement basis for Module 2: how much of the model
      * tessellation is the vertex work it replaces.
      */
@@ -495,31 +495,35 @@ object SelfCheck {
     }
 
     /**
-     * [MOB_SCENE] for 4 × 8 s, alternating as drawn and with [Sections.skipModelVertices] (the models write no
-     * vertices, so they vanish), with the stage timers sampled once a second (each a 64-frame average). The difference
-     * is what the vertex work costs, the most Module 2 can take off the CPU. The first as-drawn run is recorded with
-     * Java Flight Recorder (method samples every millisecond).
+     * [MOB_SCENE] for 6 × 8 s, alternating Module 2 off, Module 2 on and [Sections.skipModelVertices] (the models write
+     * no vertices, so they vanish), with the stage timers sampled once a second (each a 64-frame average). The last is
+     * the most Module 2 can take off the CPU. The first run with Module 2 is recorded with Java Flight Recorder (method
+     * samples every millisecond).
      */
     private suspend fun SequenceScope<Wait>.recordMobs(minecraft: Minecraft, setup: String) {
         yield(ticks(10 * TICKS_PER_SECOND))
         Sections.forceTimers = true
-        val sums = Array(2) { DoubleArray(Sections.COUNT) }
-        val frameMs = DoubleArray(2)
-        for (round in 0 until 4) {
-            val skip = round % 2 == 1
-            Sections.skipModelVertices = skip
+        val names = listOf("Module 2 off", "Module 2 on", "no vertices")
+        val sums = Array(names.size) { DoubleArray(Sections.COUNT) }
+        val frameMs = DoubleArray(names.size)
+        val partsBefore = config.parts.enabled
+        for (round in 0 until 6) {
+            val condition = round % names.size
+            config.parts.enabled = condition == 1
+            ModuleStates.refresh("self-check")
+            Sections.skipModelVertices = condition == 2
             yield(ticks(2 * TICKS_PER_SECOND))
-            val recording = if (round == 0) Recording(Configuration.getConfiguration("profile")) else null
+            val recording = if (round == 1) Recording(Configuration.getConfiguration("profile")) else null
             recording?.enable("jdk.ExecutionSample")?.withPeriod(Duration.ofMillis(1))
             val framesBefore = Sections.frame
             val start = System.nanoTime()
             recording?.start()
             repeat(8) {
                 yield(ticks(TICKS_PER_SECOND))
-                for (i in 0 until Sections.COUNT) sums[if (skip) 1 else 0][i] += Sections.averageMillis(i) / 16
+                for (i in 0 until Sections.COUNT) sums[condition][i] += Sections.averageMillis(i) / 16
             }
             recording?.stop()
-            frameMs[if (skip) 1 else 0] += (System.nanoTime() - start) / 1e6 / (Sections.frame - framesBefore) / 2
+            frameMs[condition] += (System.nanoTime() - start) / 1e6 / (Sections.frame - framesBefore) / 2
             if (recording != null) {
                 val file = directory.resolve("$MOB_SCENE-$setup.jfr")
                 recording.dump(file)
@@ -529,8 +533,10 @@ object SelfCheck {
         }
         Sections.skipModelVertices = false
         Sections.forceTimers = false
+        config.parts.enabled = partsBefore
+        ModuleStates.refresh("self-check")
         val window = minecraft.window
-        for ((index, name) in listOf("drawn", "no vertices").withIndex()) {
+        for ((index, name) in names.withIndex()) {
             results += String.format(Locale.ROOT, "NOTE setup %s, %s, window %dx%d: frame %.2f ms; ", setup, name, window.width, window.height, frameMs[index]) +
                 Sections.NAMES.indices.filter { sums[index][it] > 0.0005 }
                     .joinToString { String.format(Locale.ROOT, "%s %.3f", Sections.NAMES[it], sums[index][it]) }
@@ -538,10 +544,9 @@ object SelfCheck {
     }
 
     /**
-     * `--mode parts`: Module 2 in `mob_pen_live`, with vanilla models, with Fresh Animations and with the first shader
-     * pack. In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
-     * byte), then Mobium's picture against vanilla's (with the pack, two vanilla frames show the pack's own noise).
-     * Vanilla models with Sodium keep Sodium's cube path, so there nothing is taken over yet.
+     * `--mode parts`: Module 2 in `mob_pen_live` with the models of the four benchmark setups (vanilla, with the first
+     * shader pack, with the pack and Fresh Animations, with Fresh Animations). In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
+     * byte), then Mobium's picture against vanilla's behind a pause screen, and two vanilla frames as the floor.
      */
     private fun parts(minecraft: Minecraft) = sequence {
         snapshotOptions(minecraft)
@@ -560,8 +565,21 @@ object SelfCheck {
         repository.reload()
         val fresh = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
         if (buildScene(minecraft, MOB_SCENE)) {
-            validateParts("vanilla models", expectParts = !Compat.isLoaded(CompatMod.SODIUM))
+            // The four benchmark setups' models in turn: A (vanilla models), B (with the shader pack), D (and Fresh
+            // Animations), C (Fresh Animations without the pack).
+            validateParts("vanilla models", expectParts = true)
             comparePaused(minecraft, "parts: vanilla models", "parts-vanilla")
+            val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            var restorePack: (() -> Unit)? = null
+            if (pack == null) {
+                results += "NOTE no shader pack, the shader pack checks were skipped"
+            } else {
+                restorePack = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                yield(ticks(5 * TICKS_PER_SECOND))
+                validateParts("vanilla models with $pack", expectParts = true)
+                comparePaused(minecraft, "parts: vanilla models, shader pack", "parts-vanilla-shaderpack")
+            }
             if (fresh == null) {
                 results += "NOTE no Fresh Animations zip in resourcepacks/, the Fresh Animations checks were skipped"
             } else {
@@ -570,20 +588,19 @@ object SelfCheck {
                 yield(ticks(10))
                 yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
                 yield(ticks(5 * TICKS_PER_SECOND))
+                if (restorePack != null) {
+                    validateParts("Fresh Animations with $pack", expectParts = true)
+                    comparePaused(minecraft, "parts: Fresh Animations, shader pack", "parts-fresh-shaderpack")
+                }
+            }
+            if (restorePack != null) {
+                restorePack()
+                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+                yield(ticks(3 * TICKS_PER_SECOND))
+            }
+            if (fresh != null) {
                 validateParts("Fresh Animations", expectParts = true)
                 comparePaused(minecraft, "parts: Fresh Animations", "parts-fresh")
-                val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
-                if (pack == null) {
-                    results += "NOTE no shader pack, the shader pack checks were skipped"
-                } else {
-                    val restore = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
-                    yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
-                    yield(ticks(5 * TICKS_PER_SECOND))
-                    validateParts("Fresh Animations with $pack", expectParts = true)
-                    comparePaused(minecraft, "parts: shader pack", "parts-shaderpack")
-                    restore()
-                    yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
-                }
                 repository.removePack(fresh)
                 minecraft.options.updateResourcePacks(repository)
                 yield(ticks(10))

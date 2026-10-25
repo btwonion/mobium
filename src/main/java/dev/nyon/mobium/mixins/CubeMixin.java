@@ -14,6 +14,9 @@ public class CubeMixin implements PartMeshHolder {
     @Unique
     private int mobium$meshQuad;
 
+    @Unique
+    private int mobium$meshQuads;
+
     @Override
     public int mobium$meshGeneration() {
         return this.mobium$meshGeneration;
@@ -25,8 +28,14 @@ public class CubeMixin implements PartMeshHolder {
     }
 
     @Override
-    public void mobium$setMesh(int generation, int quad) {
+    public int mobium$meshQuads() {
+        return this.mobium$meshQuads;
+    }
+
+    @Override
+    public void mobium$setMesh(int generation, int quad, int quads) {
         this.mobium$meshGeneration = generation;
         this.mobium$meshQuad = quad;
+        this.mobium$meshQuads = quads;
     }
 }

@@ -73,5 +73,12 @@ interface PartMeshHolder {
     /** The mesh's first quad in the pool, or -1 if the cube cannot be expanded on the GPU. */
     fun `mobium$meshQuad`(): Int
 
-    fun `mobium$setMesh`(generation: Int, quad: Int)
+    fun `mobium$meshQuads`(): Int
+
+    fun `mobium$setMesh`(generation: Int, quad: Int, quads: Int)
+}
+
+/** Added to `PoseStack.Pose` by `PoseAccessor`: whether its normals need no normalisation. */
+interface PoseNormals {
+    fun `mobium$trustedNormals`(): Boolean
 }

@@ -5,10 +5,11 @@ import org.lwjgl.system.MemoryUtil
 
 /**
  * One staged vertex buffer's records for the expand pass of this frame (`expand_parts.comp`, which documents the
- * layout): per compiled part one part record of [PART_WORDS] words (pose, the vanilla normal per direction, colour,
- * overlay, light, flags, draw slot, sprite, Iris's ids), per cube one cube record of [CUBE_WORDS] words (first quad
- * in the dispatch, first quad of its mesh, its part, its first vertex in the draw), and per draw that got records a
- * slot. Off-heap and reused from frame to frame; grows by doubling. Render thread only.
+ * layout): per compiled part one part record of [PART_WORDS] words (pose, normal matrix, colour, overlay, light,
+ * flags, draw slot, sprite, Iris's ids), per cube one cube record of [CUBE_WORDS] words (first quad in the dispatch,
+ * first quad of its mesh, its part, its first vertex in the draw), and per draw that got records a slot with the byte
+ * ranges reserved in it, which the upload leaves out ([ReservedRanges]). Off-heap and reused from frame to frame;
+ * grows by doubling. Render thread only.
  */
 class PartBatch {
     @JvmField
@@ -28,6 +29,9 @@ class PartBatch {
     /** The draws by slot; [slots] holds their first vertex once uploaded. */
     @JvmField
     val draws = ArrayList<StagedVertexBuffer.Draw>()
+
+    /** Per slot, the byte ranges of the draw that Module 2 reserved; kept across frames and reused by slot. */
+    private val reserved = ArrayList<ReservedRanges>()
     private var slots = MemoryUtil.nmemAlloc(INITIAL_SLOTS.toLong() * 4)
     private var slotCapacity = INITIAL_SLOTS
 
@@ -51,7 +55,18 @@ class PartBatch {
         val added = draws.size
         draws.add(draw)
         partDraw.`mobium$setSlot`(added)
+        if (reserved.size == added) reserved.add(ReservedRanges())
+        reserved[added].clear()
         return added
+    }
+
+    /** The reserved ranges of the draw in [slot]. */
+    fun reserved(slot: Int): ReservedRanges = reserved[slot]
+
+    /** The slot of [draw] if it has one in this batch this frame, else -1. */
+    fun existingSlot(draw: StagedVertexBuffer.Draw): Int {
+        val slot = (draw as PartDraw).`mobium$slot`()
+        return if (slot >= 0 && slot < draws.size && draws[slot] === draw) slot else -1
     }
 
     /** Address of a new part record; the caller fills all [PART_WORDS] words. */
@@ -108,13 +123,13 @@ class PartBatch {
         // Part record words, as in expand_parts.comp.
         const val P_MATRIX = 0
         const val P_NORMALS = 12
-        const val P_COLOR = 18
-        const val P_OVERLAY = 19
-        const val P_LIGHT = 20
-        const val P_FLAGS = 21
-        const val P_SLOT = 22
-        const val P_SPRITE = 23
-        const val P_IDS = 27
+        const val P_COLOR = 21
+        const val P_OVERLAY = 22
+        const val P_LIGHT = 23
+        const val P_FLAGS = 24
+        const val P_SLOT = 25
+        const val P_SPRITE = 26
+        const val P_IDS = 30
 
         const val KIND_GENERIC = 0
         const val KIND_TRANSLATION = 1
@@ -122,5 +137,7 @@ class PartBatch {
         const val FLAG_SPRITE = 4
         const val FLAG_IRIS = 8
         const val FLAG_IRIS_FACE_NORMAL = 16
+        const val FLAG_PACKED_NORMALS = 32
+        const val FLAG_TRUSTED_NORMALS = 64
     }
 }

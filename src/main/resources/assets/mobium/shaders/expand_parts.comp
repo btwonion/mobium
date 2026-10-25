@@ -7,9 +7,10 @@
 // float division), which GPUs do not do on their own: see sqrtFloat.
 //
 // Buffers, all arrays of 32-bit words:
-//   meshes   per quad 21 words: 4 x (x/16, y/16, z/16, u, v), then the face's Direction ordinal
+//   meshes   per quad 21 words (MeshPool.kt): 4 x (x/16, y/16, z/16, u, v), then the face's Direction ordinal; or in
+//            Sodium's layout corner origin xyz, sizes xyz, 4 x (corner, u, v), 2 unused, Direction | 0x100
 //   frame    cubes at cubeOffset (4 words: first quad, mesh quad, part, first vertex in its draw),
-//            parts at partOffset (32 words, PartRecords.kt), draw slots at slotOffset (1 word: the draw's first vertex)
+//            parts at partOffset (32 words, PartBatch.kt), draw slots at slotOffset (1 word: the draw's first vertex)
 //   vertices the staged vertex buffer vanilla uploaded this frame; this pass fills the ranges Mobium reserved in it
 
 layout(local_size_x = 64) in;
@@ -29,21 +30,23 @@ const uint MESH_QUAD_WORDS = 21u;
 const uint CUBE_WORDS = 4u;
 const uint PART_WORDS = 32u;
 
-// Part record words (PartRecords.kt).
+// Part record words (PartBatch.kt).
 const uint P_MATRIX = 0u;      // m00 m01 m02 m10 m11 m12 m20 m21 m22 m30 m31 m32
-const uint P_NORMALS = 12u;    // vanilla's packed normal per Direction ordinal
-const uint P_COLOR = 18u;      // ABGR
-const uint P_OVERLAY = 19u;
-const uint P_LIGHT = 20u;
-const uint P_FLAGS = 21u;
-const uint P_SLOT = 22u;
-const uint P_SPRITE = 23u;     // u0, u1 - u0, v0, v1 - v0
-const uint P_IDS = 27u;        // entity | block entity << 16, item
+const uint P_NORMALS = 12u;    // the normal matrix m00 m01 m02 m10 ... m22, or vanilla's packed normal per Direction
+const uint P_COLOR = 21u;      // ABGR
+const uint P_OVERLAY = 22u;
+const uint P_LIGHT = 23u;
+const uint P_FLAGS = 24u;
+const uint P_SLOT = 25u;
+const uint P_SPRITE = 26u;     // u0, u1 - u0, v0, v1 - v0
+const uint P_IDS = 30u;        // entity | block entity << 16, item
 
 const uint FLAG_KIND_MASK = 3u;          // JOML matrix properties: 0 generic, 1 translation only, 2 identity
 const uint FLAG_SPRITE = 4u;             // UVs go through a sprite (SpriteCoordinateExpander)
 const uint FLAG_IRIS = 8u;               // Iris's 56-byte entity format
 const uint FLAG_IRIS_FACE_NORMAL = 16u;  // Iris replaces the normal with the face normal (rendering the level)
+const uint FLAG_PACKED_NORMALS = 32u;    // P_NORMALS holds the six packed normals (the CPU computed them)
+const uint FLAG_TRUSTED_NORMALS = 64u;   // PoseStack.Pose.trustedNormals: no normalisation
 
 float partFloat(uint p, uint word) {
     return uintBitsToFloat(frame[p + word]);
@@ -172,6 +175,127 @@ uint infinityByte(float c) {
     return c > 0.0 ? 0xFFu : 0u;
 }
 
+// BufferBuilder.normalIntValue: `(int) (Mth.clamp(c, -1, 1) * 127) & 0xFF`.
+uint vanillaByte(float c) {
+    precise float scaled = clamp(c, -1.0, 1.0) * 127.0;
+    return javaByte(scaled);
+}
+
+// Cube.compile's normal for a face: pose.transformNormal(direction's unit vector), packed by BufferBuilder. For a unit
+// vector the transform is plus or minus a column of the normal matrix (bit for bit up to the sign of zeros), then
+// JOML's normalize() unless the pose's normals are trusted.
+uint vanillaNormal(uint p, uint flags, uint direction) {
+    if ((flags & FLAG_PACKED_NORMALS) != 0u) return frame[p + P_NORMALS + direction];
+    // Direction ordinals DOWN, UP, NORTH, SOUTH, WEST, EAST: the Y, Z and X columns.
+    uint column = direction < 2u ? 1u : (direction < 4u ? 2u : 0u);
+    precise float x = partFloat(p, P_NORMALS + column * 3u);
+    precise float y = partFloat(p, P_NORMALS + column * 3u + 1u);
+    precise float z = partFloat(p, P_NORMALS + column * 3u + 2u);
+    if (direction == 0u || direction == 2u || direction == 4u) {
+        x = -x;
+        y = -y;
+        z = -z;
+    }
+    if ((flags & FLAG_TRUSTED_NORMALS) == 0u) {
+        precise float length2 = x * x + (y * y + z * z);
+        if (length2 == 0.0) {
+            // Times 1 / sqrt(0): NaN for 0 (packs to 0), +-Infinity, which the clamp makes +-1.
+            uint bx = x == 0.0 ? 0u : (x > 0.0 ? 0x7Fu : 0x81u);
+            uint by = y == 0.0 ? 0u : (y > 0.0 ? 0x7Fu : 0x81u);
+            uint bz = z == 0.0 ? 0u : (z > 0.0 ? 0x7Fu : 0x81u);
+            return bx | by << 8 | bz << 16;
+        }
+        precise float scalar = divideFloat(1.0, sqrtFloat(length2));
+        x = x * scalar;
+        y = y * scalar;
+        z = z * scalar;
+    }
+    return vanillaByte(x) | vanillaByte(y) << 8 | vanillaByte(z) << 16;
+}
+
+// Sodium's EntityRenderer.prepareVertices: corner 000 by MatrixHelper.transformPosition (no shortcuts), the axis
+// vectors scaled by the sizes, the other corners by a fixed chain of additions.
+vec3 sodiumCorner(uint p, uint m, uint corner) {
+    precise float ox = uintBitsToFloat(meshes[m]);
+    precise float oy = uintBitsToFloat(meshes[m + 1u]);
+    precise float oz = uintBitsToFloat(meshes[m + 2u]);
+    precise float sx = uintBitsToFloat(meshes[m + 3u]);
+    precise float sy = uintBitsToFloat(meshes[m + 4u]);
+    precise float sz = uintBitsToFloat(meshes[m + 5u]);
+    precise float cx = partFloat(p, P_MATRIX + 0u) * ox + (partFloat(p, P_MATRIX + 3u) * oy + (partFloat(p, P_MATRIX + 6u) * oz + partFloat(p, P_MATRIX + 9u)));
+    precise float cy = partFloat(p, P_MATRIX + 1u) * ox + (partFloat(p, P_MATRIX + 4u) * oy + (partFloat(p, P_MATRIX + 7u) * oz + partFloat(p, P_MATRIX + 10u)));
+    precise float cz = partFloat(p, P_MATRIX + 2u) * ox + (partFloat(p, P_MATRIX + 5u) * oy + (partFloat(p, P_MATRIX + 8u) * oz + partFloat(p, P_MATRIX + 11u)));
+    // Corner bits: 1 = +x, 2 = +y (2 and 3 go through c100 / c010), 4 = +z; ModelCuboid's numbering.
+    // 0 c000, 1 c100, 2 c110, 3 c010, 4 c001, 5 c101, 6 c111, 7 c011.
+    bool px = corner == 1u || corner == 2u || corner == 5u || corner == 6u;
+    bool py = corner == 2u || corner == 3u || corner == 6u || corner == 7u;
+    bool pz = corner >= 4u;
+    if (px) {
+        cx = cx + partFloat(p, P_MATRIX + 0u) * sx;
+        cy = cy + partFloat(p, P_MATRIX + 1u) * sx;
+        cz = cz + partFloat(p, P_MATRIX + 2u) * sx;
+    }
+    if (py) {
+        cx = cx + partFloat(p, P_MATRIX + 3u) * sy;
+        cy = cy + partFloat(p, P_MATRIX + 4u) * sy;
+        cz = cz + partFloat(p, P_MATRIX + 5u) * sy;
+    }
+    if (pz) {
+        cx = cx + partFloat(p, P_MATRIX + 6u) * sz;
+        cy = cy + partFloat(p, P_MATRIX + 7u) * sz;
+        cz = cz + partFloat(p, P_MATRIX + 8u) * sz;
+    }
+    return vec3(cx, cy, cz);
+}
+
+// Iris's NormalHelper.computeTangent from vertices 0 to 2 and a normal. [zeroIsMinusOne]: the overload Iris's Sodium
+// serializer calls returns -1 for a tangent of length 0. [finiteNormal]: false for the NaN normal of a quad without
+// area, where the dot product is NaN and Java picks a handedness of 1.
+uint irisTangent(vec3 p0, vec3 p1, vec3 p2, vec2 t0, vec2 t1, vec2 t2, float nx, float ny, float nz, bool finiteNormal, bool zeroIsMinusOne) {
+    precise float e1x = p1.x - p0.x;
+    precise float e1y = p1.y - p0.y;
+    precise float e1z = p1.z - p0.z;
+    precise float e2x = p2.x - p0.x;
+    precise float e2y = p2.y - p0.y;
+    precise float e2z = p2.z - p0.z;
+    precise float du1 = t1.x - t0.x;
+    precise float dv1 = t1.y - t0.y;
+    precise float du2 = t2.x - t0.x;
+    precise float dv2 = t2.y - t0.y;
+    precise float denominator = du1 * dv2 - du2 * dv1;
+    precise float f = denominator == 0.0 ? 1.0 : divideFloat(1.0, denominator);
+    precise float tx = f * (dv2 * e1x - dv1 * e2x);
+    precise float ty = f * (dv2 * e1y - dv1 * e2y);
+    precise float tz = f * (dv2 * e1z - dv1 * e2z);
+    precise float tcoeff = irisRsqrt(tx * tx + ty * ty + tz * tz);
+    tx = tx * tcoeff;
+    ty = ty * tcoeff;
+    tz = tz * tcoeff;
+    if (zeroIsMinusOne && tx == 0.0 && ty == 0.0 && tz == 0.0) return 0xFFFFFFFFu;
+    precise float bx = f * (-du2 * e1x + du1 * e2x);
+    precise float by = f * (-du2 * e1y + du1 * e2y);
+    precise float bz = f * (-du2 * e1z + du1 * e2z);
+    precise float bcoeff = irisRsqrt(bx * bx + by * by + bz * bz);
+    bx = bx * bcoeff;
+    by = by * bcoeff;
+    bz = bz * bcoeff;
+    float handedness = 1.0;
+    if (finiteNormal) {
+        precise float pbx = ty * nz - tz * ny;
+        precise float pby = tz * nx - tx * nz;
+        precise float pbz = tx * ny - ty * nx;
+        precise float dot = bx * pbx + by * pby + bz * pbz;
+        if (dot < 0.0) handedness = -1.0;
+    }
+    return irisPack(tx, ty, tz, handedness);
+}
+
+// NormI8.unpack*: the signed byte times 0.007874016F.
+float unpackNormal(uint word, uint shift) {
+    precise float value = float(int(word << (24u - shift)) >> 24) * uintBitsToFloat(0x3C010204u);
+    return value;
+}
+
 void main() {
     uint quad = quadBase + gl_GlobalInvocationID.x;
     if (quad >= quadCount) return;
@@ -192,14 +316,26 @@ void main() {
     bool iris = (flags & FLAG_IRIS) != 0u;
     uint stride = iris ? 14u : 9u;
     uint firstVertex = frame[slotOffset + frame[p + P_SLOT]] + frame[c + 3u] + inCube * 4u;
+    uint last = meshes[m + 20u];
+    bool sodiumLayout = (last & 0x100u) != 0u;
+    uint direction = last & 0xFFu;
 
     vec3 position[4];
     vec2 uv[4];
     for (uint i = 0u; i < 4u; i++) {
-        uint v = m + i * 5u;
-        position[i] = transformPosition(p, kind, uintBitsToFloat(meshes[v]), uintBitsToFloat(meshes[v + 1u]), uintBitsToFloat(meshes[v + 2u]));
-        precise float u = uintBitsToFloat(meshes[v + 3u]);
-        precise float w = uintBitsToFloat(meshes[v + 4u]);
+        precise float u;
+        precise float w;
+        if (sodiumLayout) {
+            uint v = m + 6u + i * 3u;
+            position[i] = sodiumCorner(p, m, meshes[v]);
+            u = uintBitsToFloat(meshes[v + 1u]);
+            w = uintBitsToFloat(meshes[v + 2u]);
+        } else {
+            uint v = m + i * 5u;
+            position[i] = transformPosition(p, kind, uintBitsToFloat(meshes[v]), uintBitsToFloat(meshes[v + 1u]), uintBitsToFloat(meshes[v + 2u]));
+            u = uintBitsToFloat(meshes[v + 3u]);
+            w = uintBitsToFloat(meshes[v + 4u]);
+        }
         if ((flags & FLAG_SPRITE) != 0u) {
             // TextureAtlasSprite.getU/getV: u0 + (u1 - u0) * u
             u = partFloat(p, P_SPRITE) + partFloat(p, P_SPRITE + 1u) * u;
@@ -207,8 +343,9 @@ void main() {
         }
         uv[i] = vec2(u, w);
     }
-    uint direction = meshes[m + 20u];
-    uint normal = frame[p + P_NORMALS + direction];
+    // Iris replaces the normals of vertices written one by one; Sodium's pushed cubes keep theirs.
+    bool faceNormal = iris && !sodiumLayout && (flags & FLAG_IRIS_FACE_NORMAL) != 0u;
+    uint normal = faceNormal ? 0u : vanillaNormal(p, flags, direction);
 
     uint ids = 0u;
     uint item = 0u;
@@ -218,83 +355,60 @@ void main() {
     if (iris) {
         ids = frame[p + P_IDS];
         item = frame[p + P_IDS + 1u] & 0xFFFFu;
-
-        // MixinBufferBuilder.fillExtendedData: the mean UV, summed from 0 in vertex order.
-        precise float su = 0.0 + uv[0].x;
-        su = su + uv[1].x;
-        su = su + uv[2].x;
-        su = su + uv[3].x;
-        su = su * 0.25;
-        precise float sv = 0.0 + uv[0].y;
-        sv = sv + uv[1].y;
-        sv = sv + uv[2].y;
-        sv = sv + uv[3].y;
-        sv = sv * 0.25;
+        precise float su;
+        precise float sv;
+        if (sodiumLayout) {
+            // ModelToEntityVertexSerializer: (u0 + u1 + u2 + u3) * 0.25, tangent from the unpacked normal.
+            su = uv[0].x + uv[1].x;
+            su = su + uv[2].x;
+            su = su + uv[3].x;
+            su = su * 0.25;
+            sv = uv[0].y + uv[1].y;
+            sv = sv + uv[2].y;
+            sv = sv + uv[3].y;
+            sv = sv * 0.25;
+            tangent = irisTangent(position[0], position[1], position[2], uv[0], uv[1], uv[2],
+                unpackNormal(normal, 0u), unpackNormal(normal, 8u), unpackNormal(normal, 16u), true, true);
+        } else {
+            // MixinBufferBuilder.fillExtendedData: the mean UV summed from 0 in vertex order, the face normal (cross
+            // product of the diagonals, NormalHelper.computeFaceNormalManual, then JOML's normalize()), the tangent.
+            su = 0.0 + uv[0].x;
+            su = su + uv[1].x;
+            su = su + uv[2].x;
+            su = su + uv[3].x;
+            su = su * 0.25;
+            sv = 0.0 + uv[0].y;
+            sv = sv + uv[1].y;
+            sv = sv + uv[2].y;
+            sv = sv + uv[3].y;
+            sv = sv * 0.25;
+            precise float dx0 = position[2].x - position[0].x;
+            precise float dy0 = position[2].y - position[0].y;
+            precise float dz0 = position[2].z - position[0].z;
+            precise float dx1 = position[3].x - position[1].x;
+            precise float dy1 = position[3].y - position[1].y;
+            precise float dz1 = position[3].z - position[1].z;
+            precise float nx = dy0 * dz1 - dz0 * dy1;
+            precise float ny = dz0 * dx1 - dx0 * dz1;
+            precise float nz = dx0 * dy1 - dy0 * dx1;
+            precise float length2 = nx * nx + (ny * ny + nz * nz);
+            bool finiteNormal = length2 != 0.0;
+            uint packedFace;
+            if (finiteNormal) {
+                precise float scalar = divideFloat(1.0, sqrtFloat(length2));
+                nx = nx * scalar;
+                ny = ny * scalar;
+                nz = nz * scalar;
+                packedFace = irisPack(nx, ny, nz, 0.0);
+            } else {
+                // A quad without area: Java multiplies by 1 / sqrt(0) = Infinity.
+                packedFace = infinityByte(nx) | infinityByte(ny) << 8 | infinityByte(nz) << 16;
+            }
+            if (faceNormal) normal = packedFace;
+            tangent = irisTangent(position[0], position[1], position[2], uv[0], uv[1], uv[2], nx, ny, nz, finiteNormal, false);
+        }
         midU = floatBitsToUint(su);
         midV = floatBitsToUint(sv);
-
-        // NormalHelper.computeFaceNormalManual: cross product of the diagonals, then JOML's normalize().
-        precise float dx0 = position[2].x - position[0].x;
-        precise float dy0 = position[2].y - position[0].y;
-        precise float dz0 = position[2].z - position[0].z;
-        precise float dx1 = position[3].x - position[1].x;
-        precise float dy1 = position[3].y - position[1].y;
-        precise float dz1 = position[3].z - position[1].z;
-        precise float nx = dy0 * dz1 - dz0 * dy1;
-        precise float ny = dz0 * dx1 - dx0 * dz1;
-        precise float nz = dx0 * dy1 - dy0 * dx1;
-        precise float length2 = nx * nx + (ny * ny + nz * nz);
-        bool finiteNormal = length2 != 0.0;
-        uint faceNormal;
-        if (finiteNormal) {
-            precise float scalar = divideFloat(1.0, sqrtFloat(length2));
-            nx = nx * scalar;
-            ny = ny * scalar;
-            nz = nz * scalar;
-            faceNormal = irisPack(nx, ny, nz, 0.0);
-        } else {
-            // A quad without area: Java multiplies by 1 / sqrt(0) = Infinity.
-            faceNormal = infinityByte(nx) | infinityByte(ny) << 8 | infinityByte(nz) << 16;
-        }
-        if ((flags & FLAG_IRIS_FACE_NORMAL) != 0u) normal = faceNormal;
-
-        // NormalHelper.computeTangent(normal, polygon) with vertices 0 to 2.
-        precise float e1x = position[1].x - position[0].x;
-        precise float e1y = position[1].y - position[0].y;
-        precise float e1z = position[1].z - position[0].z;
-        precise float e2x = position[2].x - position[0].x;
-        precise float e2y = position[2].y - position[0].y;
-        precise float e2z = position[2].z - position[0].z;
-        precise float du1 = uv[1].x - uv[0].x;
-        precise float dv1 = uv[1].y - uv[0].y;
-        precise float du2 = uv[2].x - uv[0].x;
-        precise float dv2 = uv[2].y - uv[0].y;
-        precise float denominator = du1 * dv2 - du2 * dv1;
-        precise float f = denominator == 0.0 ? 1.0 : divideFloat(1.0, denominator);
-        precise float tx = f * (dv2 * e1x - dv1 * e2x);
-        precise float ty = f * (dv2 * e1y - dv1 * e2y);
-        precise float tz = f * (dv2 * e1z - dv1 * e2z);
-        precise float tcoeff = irisRsqrt(tx * tx + ty * ty + tz * tz);
-        tx = tx * tcoeff;
-        ty = ty * tcoeff;
-        tz = tz * tcoeff;
-        precise float bx = f * (-du2 * e1x + du1 * e2x);
-        precise float by = f * (-du2 * e1y + du1 * e2y);
-        precise float bz = f * (-du2 * e1z + du1 * e2z);
-        precise float bcoeff = irisRsqrt(bx * bx + by * by + bz * bz);
-        bx = bx * bcoeff;
-        by = by * bcoeff;
-        bz = bz * bcoeff;
-        float handedness = 1.0;
-        // With a NaN normal (a quad without area) the dot product is NaN and Java picks 1.
-        if (finiteNormal) {
-            precise float pbx = ty * nz - tz * ny;
-            precise float pby = tz * nx - tx * nz;
-            precise float pbz = tx * ny - ty * nx;
-            precise float dot = bx * pbx + by * pby + bz * pbz;
-            if (dot < 0.0) handedness = -1.0;
-        }
-        tangent = irisPack(tx, ty, tz, handedness);
     }
 
     uint color = frame[p + P_COLOR];
