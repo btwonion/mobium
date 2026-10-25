@@ -91,6 +91,8 @@ object SelfCheck {
     private const val GALLERY = "cache_gallery"
     private const val IRIS_WITHOUT_MOBIUM = "iris-without-mobium"
     private const val PROFILE = "profile"
+    private const val PROFILE_MOBS = "profile-mobs"
+    private const val MOB_SCENE = "mob_pen_live"
     private const val GATE_B = "gateb"
     private const val GALLERY_ONLY = "gallery"
     private const val CHESTS = 1000
@@ -137,6 +139,7 @@ object SelfCheck {
         steps = when (mode) {
             IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
             PROFILE -> profile(minecraft)
+            PROFILE_MOBS -> profileMobs(minecraft)
             GATE_B -> gateB(minecraft)
             GALLERY_ONLY -> galleryOnly(minecraft)
             else -> scenario(minecraft)
@@ -429,6 +432,104 @@ object SelfCheck {
         minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
         yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
         finish(minecraft)
+    }
+
+    /**
+     * `--mode profile-mobs`: `mob_pen_live` with vanilla models (no packs; the dev client still has EMF, ETF and Iris),
+     * with Fresh Animations (setup C), then also with the first shader pack (setup D), each as drawn and with the
+     * models' vertex writes skipped ([recordMobs]); one JFR recording per setup goes to
+     * `mobium-selfcheck/mob_pen_live-{plain,c,d}.jfr`. The measurement basis for Module 2: how much of the model
+     * tessellation is the vertex work it replaces.
+     */
+    private fun profileMobs(minecraft: Minecraft) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config())
+        minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
+        minecraft.options.enableVsync().set(false)
+        minecraft.createWorldOpenFlows().openWorld(WORLD) { }
+        yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        minecraft.options.cloudStatus().set(CloudStatus.OFF)
+        if (!minecraft.gui.hud.isHidden) minecraft.gui.hud.toggle()
+        val repository = minecraft.resourcePackRepository
+        repository.reload()
+        val fresh = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
+        if (fresh == null) results += "NOTE no Fresh Animations zip in resourcepacks/, setup C runs without it"
+        if (buildScene(minecraft, MOB_SCENE)) {
+            recordMobs(minecraft, "plain")
+            if (fresh != null) {
+                repository.addPack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
+            }
+            recordMobs(minecraft, "c")
+            val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            if (pack == null) {
+                results += "NOTE no shader pack, setup D skipped"
+            } else {
+                val restore = IrisCheck.select(pack, emptyMap())
+                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                recordMobs(minecraft, "d")
+                restore()
+                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+            }
+            if (fresh != null) {
+                repository.removePack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
+            }
+        }
+        applyConfig(saved)
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        finish(minecraft)
+    }
+
+    /**
+     * [MOB_SCENE] for 4 × 8 s, alternating as drawn and with [Sections.skipModelVertices] (the models write no
+     * vertices, so they vanish), with the stage timers sampled once a second (each a 64-frame average). The difference
+     * is what the vertex work costs, the most Module 2 can take off the CPU. The first as-drawn run is recorded with
+     * Java Flight Recorder (method samples every millisecond).
+     */
+    private suspend fun SequenceScope<Wait>.recordMobs(minecraft: Minecraft, setup: String) {
+        yield(ticks(10 * TICKS_PER_SECOND))
+        Sections.forceTimers = true
+        val sums = Array(2) { DoubleArray(Sections.COUNT) }
+        val frameMs = DoubleArray(2)
+        for (round in 0 until 4) {
+            val skip = round % 2 == 1
+            Sections.skipModelVertices = skip
+            yield(ticks(2 * TICKS_PER_SECOND))
+            val recording = if (round == 0) Recording(Configuration.getConfiguration("profile")) else null
+            recording?.enable("jdk.ExecutionSample")?.withPeriod(Duration.ofMillis(1))
+            val framesBefore = Sections.frame
+            val start = System.nanoTime()
+            recording?.start()
+            repeat(8) {
+                yield(ticks(TICKS_PER_SECOND))
+                for (i in 0 until Sections.COUNT) sums[if (skip) 1 else 0][i] += Sections.averageMillis(i) / 16
+            }
+            recording?.stop()
+            frameMs[if (skip) 1 else 0] += (System.nanoTime() - start) / 1e6 / (Sections.frame - framesBefore) / 2
+            if (recording != null) {
+                val file = directory.resolve("$MOB_SCENE-$setup.jfr")
+                recording.dump(file)
+                recording.close()
+                check("recorded $file", Files.size(file) > 0)
+            }
+        }
+        Sections.skipModelVertices = false
+        Sections.forceTimers = false
+        val window = minecraft.window
+        for ((index, name) in listOf("drawn", "no vertices").withIndex()) {
+            results += String.format(Locale.ROOT, "NOTE setup %s, %s, window %dx%d: frame %.2f ms; ", setup, name, window.width, window.height, frameMs[index]) +
+                Sections.NAMES.indices.filter { sums[index][it] > 0.0005 }
+                    .joinToString { String.format(Locale.ROOT, "%s %.3f", Sections.NAMES[it], sums[index][it]) }
+        }
     }
 
     /**
