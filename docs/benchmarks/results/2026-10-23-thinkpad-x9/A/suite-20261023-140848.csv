@@ -1,0 +1,8 @@
+scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms,extract_entities_ms,extract_block_entities_ms,submit_entities_ms,submit_block_entities_ms,pose_entities_ms,pose_block_entities_ms,tessellate_entities_ms,tessellate_block_entities_ms,prepare_ms,draw_ms,shadow_ms,shadow_extract_ms,shadow_submit_ms,shadow_pose_ms,shadow_tessellate_entities_ms,shadow_tessellate_block_entities_ms,shadow_prepare_ms,shadow_draw_ms
+mob_pen_static,sodium+cache,3,3.0715,325.57,176.07,3.8856,0.5613,0.0010,0.2340,0.0003,0.0908,0.0000,1.1039,0.0000,1.7961,0.0233,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+mob_pen_live,sodium+cache,3,3.1898,313.50,164.39,3.9541,0.5620,0.0010,0.2461,0.0003,0.0946,0.0000,1.1817,0.0000,1.9083,0.0241,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+storage_room,sodium+cache,3,1.5635,639.61,377.99,1.9683,0.0025,0.1212,0.0001,0.0002,0.0000,0.0000,0.0000,0.0000,0.0063,0.0426,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+map_wall,sodium+cache,3,4.1153,242.99,110.61,4.6270,0.7153,0.0847,0.3326,0.1033,0.0000,0.0000,0.0000,0.0000,1.9815,0.4661,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+display_build,sodium+cache,3,1.6367,610.97,273.71,1.8224,0.5397,0.0006,0.0878,0.0002,0.0010,0.0000,0.0088,0.0000,0.0856,0.0221,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+control,sodium+cache,3,1.1341,881.75,544.97,1.4364,0.0015,0.0003,0.0001,0.0001,0.0000,0.0000,0.0000,0.0000,0.0025,0.0001,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
+# build,a6997e5
