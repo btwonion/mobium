@@ -4,18 +4,25 @@ import net.minecraft.client.model.geom.ModelPart
 import org.lwjgl.system.MemoryUtil
 
 /**
- * Module 2's cube meshes: the first time a cube is drawn, its polygons are written once in the cube's local space,
- * one quad of [QUAD_WORDS] words each (four vertices `x/16, y/16, z/16, u, v` as the cube compiles them, then the
- * face's `Direction` ordinal), in polygon order. The cube remembers where (`PartMeshHolder`, so a lookup is two
- * field reads); new quads collect in [pending] until the expand pass uploads them. EMF's parts are cubes too.
- * Render thread only.
+ * Module 2's cube meshes: the first time a cube is drawn, its faces are written once in the cube's local space, one
+ * quad of [QUAD_WORDS] words each, in the layout of the path that would have drawn it (`expand_parts.comp`):
+ * - vanilla and EMF cubes as `Cube.compile` writes them: four vertices `x/16, y/16, z/16, u, v` from the polygons, in
+ *   polygon order, then the face's `Direction` ordinal;
+ * - vanilla cubes with Sodium as Sodium's `EntityRenderer.renderCuboid` writes them from its `ModelCuboid`
+ *   ([SodiumCubes]): the corner origin and sizes, four vertices `corner, u, v`, in Sodium's face order, then the
+ *   `Direction` ordinal with [SODIUM_LAYOUT] set.
+ * The cube remembers where (`PartMeshHolder`, so a lookup is a few field reads); new quads collect in [pending] until
+ * the expand pass uploads them. EMF's parts are cubes too. Render thread only.
  *
- * A cube that cannot be expanded (a polygon with other than four vertices, or a normal that is not one of the six
- * axis directions) is remembered as such and stays on the vanilla path. [clear] (resource reload, level change)
- * starts the pool over: every cube is written again when next drawn.
+ * A cube that cannot be expanded (a polygon with other than four vertices, a normal that is not one of the six axis
+ * directions, no `ModelCuboid`) is remembered as such and stays on the vanilla path. [clear] (resource reload, level
+ * change) starts the pool over: every cube is written again when next drawn.
  */
 object MeshPool {
     const val QUAD_WORDS = 21
+
+    /** Set in a quad's last word when the quad has Sodium's layout. */
+    const val SODIUM_LAYOUT = 0x100
     private const val QUAD_BYTES = QUAD_WORDS * 4
     private const val INITIAL_PENDING_QUADS = 4096
 
@@ -38,14 +45,20 @@ object MeshPool {
     val pendingAddress: Long
         get() = pending
 
-    /** The first quad of [cube]'s mesh, writing it on first sight; -1 if the cube stays on the vanilla path. */
-    fun firstQuad(cube: ModelPart.Cube): Int {
+    /**
+     * The first quad of [cube]'s mesh, writing it on first sight in Sodium's layout if [sodium]; -1 if the cube stays
+     * on the vanilla path. A cube's layout never changes: its class and Sodium's presence decide it.
+     */
+    fun firstQuad(cube: ModelPart.Cube, sodium: Boolean): Int {
         val holder = cube as PartMeshHolder
         if (holder.`mobium$meshGeneration`() == generation) return holder.`mobium$meshQuad`()
-        val quad = write(cube)
-        holder.`mobium$setMesh`(generation, quad)
+        val quad = if (sodium) writeSodium(cube) else write(cube)
+        holder.`mobium$setMesh`(generation, quad, if (quad < 0) 0 else quadCount - quad)
         return quad
     }
+
+    /** The number of quads of [cube]'s mesh; only valid after [firstQuad] returned a quad. */
+    fun quads(cube: ModelPart.Cube): Int = (cube as PartMeshHolder).`mobium$meshQuads`()
 
     /** Called after the pending quads were uploaded. */
     fun uploaded() {
@@ -80,6 +93,37 @@ object MeshPool {
             address += 4
         }
         quadCount = first + polygons.size
+        return first
+    }
+
+    private fun writeSodium(cube: ModelPart.Cube): Int {
+        val cuboid = SodiumCubes.cuboid(cube) ?: return -1
+        var faces = 0
+        for (face in 0 until 6) if (cuboid.shouldDrawFace(face)) faces++
+        val first = quadCount
+        ensurePending(first - uploadedQuads + faces)
+        var address = pending + (first - uploadedQuads).toLong() * QUAD_BYTES
+        for (face in 0 until 6) {
+            if (!cuboid.shouldDrawFace(face)) continue
+            MemoryUtil.memPutFloat(address, cuboid.originX)
+            MemoryUtil.memPutFloat(address + 4, cuboid.originY)
+            MemoryUtil.memPutFloat(address + 8, cuboid.originZ)
+            MemoryUtil.memPutFloat(address + 12, cuboid.sizeX)
+            MemoryUtil.memPutFloat(address + 16, cuboid.sizeY)
+            MemoryUtil.memPutFloat(address + 20, cuboid.sizeZ)
+            for (v in 0 until 4) {
+                // ModelCuboid.textures packs (u, v) as Int2: u's bits low, v's high (little endian).
+                val texture = cuboid.textures[face * 4 + v]
+                MemoryUtil.memPutInt(address + 24 + v * 12L, cuboid.positions[face * 4 + v])
+                MemoryUtil.memPutInt(address + 28 + v * 12L, texture.toInt())
+                MemoryUtil.memPutInt(address + 32 + v * 12L, (texture ushr 32).toInt())
+            }
+            MemoryUtil.memPutInt(address + 72, 0)
+            MemoryUtil.memPutInt(address + 76, 0)
+            MemoryUtil.memPutInt(address + 80, SodiumCubes.NORMAL_DIRECTIONS[cuboid.normals[face]] or SODIUM_LAYOUT)
+            address += QUAD_BYTES
+        }
+        quadCount = first + faces
         return first
     }
 

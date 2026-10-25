@@ -32,6 +32,7 @@
         "ModelPartAccessor",
         "ModelPartMixin",
         "ModelSubmitMixin",
+        "PoseAccessor",
         "PreparedFrameMixin",
         "RenderTypeFeatureRendererInvoker",
         "RenderTypeFeatureRendererMixin",

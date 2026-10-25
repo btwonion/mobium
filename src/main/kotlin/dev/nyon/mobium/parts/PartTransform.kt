@@ -21,10 +21,13 @@ import net.minecraft.client.renderer.StagedVertexBuffer
 import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.util.ARGB
 import net.minecraft.util.Mth
+import org.joml.Matrix3f
 import org.joml.Matrix4f
 import org.joml.Vector3f
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
+import java.nio.ByteBuffer
+import kotlin.math.abs
 
 /**
  * Module 2, the GPU part transform (PLAN.md M6): a model part's cubes are not written vertex by vertex on the CPU;
@@ -33,10 +36,10 @@ import org.lwjgl.system.MemoryUtil
  * (`expand_parts.comp`, docs/vanilla-notes.md §16). Posing, the part walk and EMF's and ETF's hooks run as before;
  * vanilla's draws draw the vertices.
  *
- * Taken over: parts whose cubes are all EMF's `EMFCube` (Fresh Animations), or vanilla cubes without Sodium (with
- * Sodium they take Sodium's own path, not reproduced yet), written to a staged draw in the entity format or Iris's
- * extended one, unsorted quads, directly or through an atlas sprite. Everything else returns false and compiles as
- * before. Render thread only.
+ * Taken over: parts whose cubes are vanilla cubes (as vanilla or, with Sodium, as Sodium's cube path writes them) or
+ * EMF's `EMFCube`s (Fresh Animations), written to a staged draw in the entity format or Iris's extended one, unsorted
+ * quads, directly or through an atlas sprite. Everything else returns false and compiles as before. Render thread
+ * only.
  */
 object PartTransform {
     /** Set from the module state ([setActive]). */
@@ -57,7 +60,8 @@ object PartTransform {
     private var parts = 0
     private var quads = 0
 
-    private val sodium = Compat.isLoaded(CompatMod.SODIUM)
+    /** With Sodium, vanilla cubes are drawn by Sodium's cube path, so Module 2 reproduces that one ([SodiumCubes]). */
+    private val sodiumCubes = Compat.isLoaded(CompatMod.SODIUM)
     private val emfCube: Class<*>? = if (Compat.isLoaded(CompatMod.EMF)) {
         runCatching { Class.forName("traben.entity_model_features.models.parts.EMFModelPartCustom\$EMFCube") }.getOrNull()
     } else {
@@ -138,9 +142,10 @@ object PartTransform {
         for (i in 0 until cubes.size) {
             val cube = cubes[i]
             val type = cube.javaClass
-            if (type !== emfCube && (type !== ModelPart.Cube::class.java || sodium)) return false
-            if (MeshPool.firstQuad(cube) < 0) return false
-            quadTotal += cube.polygons.size
+            // EMF's cubes write vanilla-style; vanilla cubes take Sodium's path when Sodium is there.
+            val sodiumLayout = if (type === emfCube) false else if (type === ModelPart.Cube::class.java) sodiumCubes else return false
+            if (MeshPool.firstQuad(cube, sodiumLayout) < 0) return false
+            quadTotal += MeshPool.quads(cube)
         }
         if (quadTotal == 0) return false
         if (target.`mobium$vertexCount`() + quadTotal * 4 > MAX_VERTICES) return false
@@ -155,11 +160,14 @@ object PartTransform {
 
         val batch = batchOf(staged)
         val partIndex = batch.partCount
-        writePart(batch.addPart(), pose, light, overlay, color, sprite, iris, batch.slotOf(draw))
+        val slot = batch.slotOf(draw)
+        val drawBytes = target.`mobium$drawBytesBefore`() + offset
+        batch.reserved(slot).add(drawBytes, drawBytes + quadTotal * 4 * vertexSize)
+        writePart(batch.addPart(), pose, light, overlay, color, sprite, iris, slot)
         for (i in 0 until cubes.size) {
             val cube = cubes[i]
-            val cubeQuads = cube.polygons.size
-            batch.addCube(MeshPool.firstQuad(cube), cubeQuads, partIndex, firstVertex)
+            val cubeQuads = MeshPool.quads(cube)
+            batch.addCube((cube as PartMeshHolder).`mobium$meshQuad`(), cubeQuads, partIndex, firstVertex)
             firstVertex += cubeQuads * 4
         }
         parts++
@@ -192,20 +200,40 @@ object PartTransform {
         MemoryUtil.memPutFloat(address + 40, matrix.m31())
         MemoryUtil.memPutFloat(address + 44, matrix.m32())
 
-        // Cube.compile: pose.transformNormal(polygon normal) per polygon, packed by BufferBuilder. The polygon normals
-        // are axis unit vectors, and the transform of -e is -(transform of e) bit for bit up to the sign of zeros
-        // (the length and its square root are the same, truncation is symmetric), so three transforms cover all six.
-        packNormal(pose, 1f, 0f, 0f, DIRECTION_EAST, DIRECTION_WEST)
-        packNormal(pose, 0f, 1f, 0f, DIRECTION_UP, DIRECTION_DOWN)
-        packNormal(pose, 0f, 0f, 1f, DIRECTION_SOUTH, DIRECTION_NORTH)
-        for (d in 0 until 6) MemoryUtil.memPutInt(address + (PartBatch.P_NORMALS + d) * 4L, normals[d])
+        // Cube.compile's normals (pose.transformNormal per polygon, packed by BufferBuilder) and Sodium's (the same math)
+        // come from the normal matrix on the GPU; a matrix the GPU's math is not written for (not finite, or so large
+        // that squares overflow) is done here instead. Iris replaces vanilla-style quads' normals with the face normal
+        // while it renders the level; Sodium-style quads keep theirs.
+        var flags = 0
+        val faceNormalOnly = iris && IrisCompat.isRenderingLevel()
+        val n = pose.normal()
+        if (gpuNormals(n)) {
+            MemoryUtil.memPutFloat(address + PartBatch.P_NORMALS * 4L, n.m00())
+            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 1) * 4L, n.m01())
+            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 2) * 4L, n.m02())
+            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 3) * 4L, n.m10())
+            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 4) * 4L, n.m11())
+            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 5) * 4L, n.m12())
+            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 6) * 4L, n.m20())
+            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 7) * 4L, n.m21())
+            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 8) * 4L, n.m22())
+            if ((pose as PoseNormals).`mobium$trustedNormals`()) flags = flags or PartBatch.FLAG_TRUSTED_NORMALS
+        } else {
+            // The polygon normals are axis unit vectors, and the transform of -e is -(transform of e) bit for bit
+            // up to the sign of zeros (same length, symmetric truncation), so three transforms cover all six.
+            packNormal(pose, 1f, 0f, 0f, DIRECTION_EAST, DIRECTION_WEST)
+            packNormal(pose, 0f, 1f, 0f, DIRECTION_UP, DIRECTION_DOWN)
+            packNormal(pose, 0f, 0f, 1f, DIRECTION_SOUTH, DIRECTION_NORTH)
+            for (d in 0 until 6) MemoryUtil.memPutInt(address + (PartBatch.P_NORMALS + d) * 4L, normals[d])
+            flags = flags or PartBatch.FLAG_PACKED_NORMALS
+        }
 
         MemoryUtil.memPutInt(address + PartBatch.P_COLOR * 4L, ARGB.toABGR(color))
         MemoryUtil.memPutInt(address + PartBatch.P_OVERLAY * 4L, overlay)
         MemoryUtil.memPutInt(address + PartBatch.P_LIGHT * 4L, light)
 
         val properties = matrix.properties()
-        var flags = when {
+        flags = flags or when {
             properties and PROPERTY_IDENTITY != 0 -> PartBatch.KIND_IDENTITY
             properties and PROPERTY_TRANSLATION != 0 -> PartBatch.KIND_TRANSLATION
             else -> PartBatch.KIND_GENERIC
@@ -221,7 +249,7 @@ object PartTransform {
         var item = 0
         if (iris) {
             flags = flags or PartBatch.FLAG_IRIS
-            if (IrisCompat.isRenderingLevel()) flags = flags or PartBatch.FLAG_IRIS_FACE_NORMAL
+            if (faceNormalOnly) flags = flags or PartBatch.FLAG_IRIS_FACE_NORMAL
             ids = (IrisCompat.currentEntity() and 0xFFFF) or (IrisCompat.currentBlockEntity() shl 16)
             item = IrisCompat.currentItem() and 0xFFFF
         }
@@ -230,6 +258,12 @@ object PartTransform {
         MemoryUtil.memPutInt(address + PartBatch.P_IDS * 4L, ids)
         MemoryUtil.memPutInt(address + (PartBatch.P_IDS + 1) * 4L, item)
     }
+
+    /** Whether the GPU can do this normal matrix: every entry finite and small enough that no square overflows. */
+    private fun gpuNormals(n: Matrix3f): Boolean =
+        abs(n.m00()) < NORMAL_LIMIT && abs(n.m01()) < NORMAL_LIMIT && abs(n.m02()) < NORMAL_LIMIT &&
+            abs(n.m10()) < NORMAL_LIMIT && abs(n.m11()) < NORMAL_LIMIT && abs(n.m12()) < NORMAL_LIMIT &&
+            abs(n.m20()) < NORMAL_LIMIT && abs(n.m21()) < NORMAL_LIMIT && abs(n.m22()) < NORMAL_LIMIT
 
     private fun packNormal(pose: PoseStack.Pose, x: Float, y: Float, z: Float, positive: Int, negative: Int) {
         pose.transformNormal(x, y, z, normal)
@@ -276,6 +310,20 @@ object PartTransform {
         }
     }
 
+    /**
+     * `StagedVertexBuffer.uploadDrawsToBuffers` copies one builder slice of [draw] into the staging buffer: leaves out
+     * the reserved bytes (the expand pass writes them). False if [draw] has none, and the copy runs as before.
+     */
+    @JvmStatic
+    fun copyWithoutReserved(staged: StagedVertexBuffer, target: ByteBuffer, slice: ByteBuffer, draw: StagedVertexBuffer.Draw): Boolean {
+        val batch = (staged as PartStaged).`mobium$batch`() ?: return false
+        if (batch.isEmpty) return false
+        val slot = batch.existingSlot(draw)
+        if (slot < 0) return false
+        batch.reserved(slot).copyWithout(target, slice, target.position() - (draw as PartDraw).`mobium$vertexOffset`())
+        return true
+    }
+
     /** Drops what [staged] collected without an upload (its frame ended early). */
     @JvmStatic
     fun discard(staged: StagedVertexBuffer) {
@@ -317,6 +365,9 @@ object PartTransform {
     fun endValidation() = PartValidation.end()
 
     private const val MAX_VERTICES = 16777215
+
+    /** Below this (and so finite) the three squares of a normal matrix column add up without overflow. */
+    private const val NORMAL_LIMIT = 1.0e18f
     private const val PROPERTY_IDENTITY = 1 shl 2
     private const val PROPERTY_TRANSLATION = 1 shl 3
 
