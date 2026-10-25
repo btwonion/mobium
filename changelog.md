@@ -8,3 +8,4 @@
 - `/mobium bench`, the suites and the F3 entry `mobium:timings` also time Iris's shadow pass (new `shadow_*` columns);
   `draw` no longer counts the shadow pass's draws
 - bug reports: a form on GitHub asks for what is needed (A/B key result, loader, mods, GPU, the `mobium:modules` lines)
+- license: Mobium is now licensed under the GNU General Public License v3.0 instead of the LGPL-3.0
