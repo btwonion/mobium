@@ -43,13 +43,13 @@ Read this first when picking the work up in a new session.
   60 frames after a capture last 3.5 s, and their state still changed in them) and put a client tick between most
   picture pairs. **Benchmark round done** (A–C 23 Oct, C and D 25 Oct, build `a6997e5`; `docs/benchmarks.md`
   "23–25 Oct 2026"): nothing slower than on 21–22 Oct beyond the usual spread, the shadow pass timed in B and D.
-  Left: Anton's visual checks of #12 (§10), merging #13, then `release.yml`.
+  #13 (release prep, results) merged on 25 Oct 2026. Left: Anton's visual checks of #12 (§10), then `release.yml`.
 - **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis (`docs/benchmarks.md`, "23–25 Oct 2026",
   *Gate C: what M6 can reach*): in D `mob_pen_live` is 68.1 ms against 28.9 ms for `control`; tessellation is 9.1 ms
   in the main pass and 2.2 ms in Iris's shadow pass, all timed entity work 19.8 ms. Removing all tessellation gives at
   most 1.20×, removing every timed entity stage 1.41×: **Gate C's 1.5× in D is out of reach on this machine**. In C
   (no shader pack) tessellation is 4.45 of 8.98 ms (at most 1.98×), in A 1.18 of 3.19 ms (at most 1.59×). **Gate C
-  needs redefining with Anton before M6 starts** (options under M6).
+  redefined with Anton on 25 Oct 2026:** `mob_pen_live` at least 1.5× faster in setup C, and no slower in D (§M6).
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
   `beta2-cache-followups`, 23 Oct 2026):
   - [x] one light epoch for the whole level sent every cached object through the full check after any light update.
@@ -755,17 +755,22 @@ projects and their IDs, then `release.yml` (§10).
 - [ ] Reference test: a pure-Kotlin implementation of the expand math, unit-tested against vertices captured
       from vanilla in a gametest; the compute shader must match it.
 - [ ] Banners, bells, conduits and lecterns move onto this path.
+- [ ] `/mobium gatec`: records `mob_pen_live` with Module 2 off and on in one session (three runs each, medians, as
+      `/mobium gateb`) and prints both Gate C ratios; run in setup C, then in D.
 
-**Gate C:** `mob_pen_live` at least 1.5× faster with Sodium + Iris + Fresh Animations; zero screenshot
-differences. Then release.
-**To redefine with Anton before M6 starts** (measured 23–25 Oct 2026, `docs/benchmarks.md`): in D the frame can get
-at most 1.20× faster from removing tessellation (9.1 ms main pass + 2.2 ms shadow pass of 68.1 ms; the rest is mostly
-GPU work of the shader pack), so the definition above cannot pass on this machine. Options:
-- (a) the same gate in setup C (Fresh Animations, no shader pack: tessellation 4.45 of 8.98 ms, at most 1.98×), and
-  in D no slower than before (reported, no target);
-- (b) a CPU target in D, as Gate B's second definition: the mob pens' timed entity work (main-pass extract, submit,
-  prepare and draw plus the shadow pass, 19.8 ms) at least 1.5× lower, the frame reported;
-- (c) keep D with a target in reach, e.g. 1.15×.
+**Gate C** (redefined with Anton on 25 Oct 2026, option (a) below):
+- in setup C (Sodium + EMF/ETF + Fresh Animations, no shader pack), `mob_pen_live` at least **1.5× faster** with
+  Module 2 than without it (frame time, medians of three 60-second runs, one session);
+- in setup D (C + Iris with Complementary Reimagined), `mob_pen_live` **no slower** with Module 2: at most 1.03×
+  the frame time without it (the noise allowance of Gate B's `control` check); the ratio is reported;
+- zero screenshot differences (self-check and gametests, both loaders). Then release.
+
+Why not 1.5× in D, the first definition (measured 23–25 Oct 2026, `docs/benchmarks.md`): there the frame can get at
+most 1.20× faster from removing tessellation (9.1 ms main pass + 2.2 ms shadow pass of 68.1 ms), and 1.41× even if
+every timed entity stage took no time; the rest is mostly the shader pack's GPU work. In C tessellation is 4.45 of
+8.98 ms (at most 1.98×), so 1.5× needs M6 to save 3.0 ms there, two thirds of it after paying for the compute pass.
+The options were (a) this gate, (b) a CPU target in D (the mob pens' timed entity work, 19.8 ms, at least 1.5×
+lower), (c) D with a target in reach (about 1.15×).
 
 ### M7 · Phase 3: Vulkan, Aperture, Module 3, 26.4
 - [ ] Add `26.4-fabric` / `26.4-neoforge` Stonecutter targets when 26.4 releases (track its snapshots in a branch

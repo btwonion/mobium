@@ -621,7 +621,8 @@ cache takes, so this round's numbers are what M6 starts from. D, 25 Oct:
 - One effect cannot be measured before M6 exists. The iGPU ran at 600 MHz in D's mob pens and at 900–940 MHz in
   `control`, and CPU and GPU share one power budget, so less CPU work may let the GPU clock up and save more than the
   CPU time alone.
-- The gate is to be redefined with Anton, as Gate B was. The options are in `PLAN.md` M6.
+- **Gate C redefined with Anton on 25 Oct 2026** (`PLAN.md` M6), as Gate B was: `mob_pen_live` at least 1.5× faster
+  with Module 2 in setup C, and in D at most 1.03× the frame time without it (no slower).
 
 ### Measurement pitfalls
 
