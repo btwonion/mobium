@@ -33,6 +33,8 @@ import dev.nyon.mobium.debug.AbToggle
 import dev.nyon.mobium.debug.ModuleLines
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.debug.Validation
+import dev.nyon.mobium.parts.PartTransform
+import dev.nyon.mobium.parts.PartValidation
 import jdk.jfr.Configuration
 import jdk.jfr.Recording
 import net.minecraft.client.CloudStatus
@@ -40,6 +42,7 @@ import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Options
 import net.minecraft.client.Screenshot
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer
 import net.minecraft.client.gui.components.debug.DebugScreenEntryStatus
@@ -92,6 +95,7 @@ object SelfCheck {
     private const val IRIS_WITHOUT_MOBIUM = "iris-without-mobium"
     private const val PROFILE = "profile"
     private const val PROFILE_MOBS = "profile-mobs"
+    private const val PARTS = "parts"
     private const val MOB_SCENE = "mob_pen_live"
     private const val GATE_B = "gateb"
     private const val GALLERY_ONLY = "gallery"
@@ -140,6 +144,7 @@ object SelfCheck {
             IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
             PROFILE -> profile(minecraft)
             PROFILE_MOBS -> profileMobs(minecraft)
+            PARTS -> parts(minecraft)
             GATE_B -> gateB(minecraft)
             GALLERY_ONLY -> galleryOnly(minecraft)
             else -> scenario(minecraft)
@@ -530,6 +535,125 @@ object SelfCheck {
                 Sections.NAMES.indices.filter { sums[index][it] > 0.0005 }
                     .joinToString { String.format(Locale.ROOT, "%s %.3f", Sections.NAMES[it], sums[index][it]) }
         }
+    }
+
+    /**
+     * `--mode parts`: Module 2 in `mob_pen_live`, with vanilla models, with Fresh Animations and with the first shader
+     * pack. In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
+     * byte), then Mobium's picture against vanilla's (with the pack, two vanilla frames show the pack's own noise).
+     * Vanilla models with Sodium keep Sodium's cube path, so there nothing is taken over yet.
+     */
+    private fun parts(minecraft: Minecraft) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config())
+        minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
+        minecraft.options.enableVsync().set(false)
+        minecraft.createWorldOpenFlows().openWorld(WORLD) { }
+        yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        minecraft.options.cloudStatus().set(CloudStatus.OFF)
+        if (!minecraft.gui.hud.isHidden) minecraft.gui.hud.toggle()
+        check("part transform active", ModuleStates.isActive(Module.PART_TRANSFORM), ModuleStates.status(Module.PART_TRANSFORM).describe())
+        val repository = minecraft.resourcePackRepository
+        repository.reload()
+        val fresh = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
+        if (buildScene(minecraft, MOB_SCENE)) {
+            validateParts("vanilla models", expectParts = !Compat.isLoaded(CompatMod.SODIUM))
+            comparePaused(minecraft, "parts: vanilla models", "parts-vanilla")
+            if (fresh == null) {
+                results += "NOTE no Fresh Animations zip in resourcepacks/, the Fresh Animations checks were skipped"
+            } else {
+                repository.addPack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
+                yield(ticks(5 * TICKS_PER_SECOND))
+                validateParts("Fresh Animations", expectParts = true)
+                comparePaused(minecraft, "parts: Fresh Animations", "parts-fresh")
+                val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+                if (pack == null) {
+                    results += "NOTE no shader pack, the shader pack checks were skipped"
+                } else {
+                    val restore = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+                    yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                    yield(ticks(5 * TICKS_PER_SECOND))
+                    validateParts("Fresh Animations with $pack", expectParts = true)
+                    comparePaused(minecraft, "parts: shader pack", "parts-shaderpack")
+                    restore()
+                    yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+                }
+                repository.removePack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
+            }
+        }
+        applyConfig(saved)
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        finish(minecraft)
+    }
+
+    /**
+     * Mobium's picture against vanilla's like [comparePair], but with the game paused behind a screen that draws
+     * nothing ([StillScreen]): Fresh Animations' animations run on EMF's frame time, which only stops while the game is
+     * paused (with ticks frozen two vanilla frames still differed in about 600 pixels). Two vanilla frames follow as a
+     * note, the floor of what changes on its own (a shader pack's dithering).
+     */
+    private suspend fun SequenceScope<Wait>.comparePaused(minecraft: Minecraft, name: String, file: String) {
+        minecraft.gui.setScreen(StillScreen())
+        yield(until("game paused ($name)", 10) { minecraft.isPaused })
+        yield(ticks(TICKS_PER_SECOND))
+        val pair = Validation.capturePair()
+        yield(until("pictures ($name)", 10) { pair.done })
+        val mobium = pair.first
+        val vanilla = pair.second
+        if (mobium == null || vanilla == null) {
+            check("$name: pictures taken", false)
+        } else {
+            mobium.writeToFile(directory.resolve("screenshots").resolve("$file-mobium.png"))
+            vanilla.writeToFile(directory.resolve("screenshots").resolve("$file-vanilla.png"))
+            compare("$name: Mobium and vanilla pictures match", mobium, vanilla)
+            mobium.close()
+            vanilla.close()
+        }
+        // The pair switched to vanilla and back; switch to vanilla for two vanilla frames.
+        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
+        yield(ticks(TICKS_PER_SECOND / 2))
+        val floor = Validation.capturePair(toggle = false)
+        yield(until("noise pictures ($name)", 10) { floor.done })
+        val first = floor.first
+        val second = floor.second
+        if (first != null && second != null) {
+            results += "NOTE $name, two vanilla frames: ${Validation.compare(first, second)}"
+            first.close()
+            second.close()
+        }
+        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
+        yield(ticks(TICKS_PER_SECOND / 2))
+        minecraft.gui.setScreen(null)
+        yield(ticks(TICKS_PER_SECOND))
+    }
+
+    /** A pause screen that draws nothing: the game pauses, the world stays visible and unblurred. */
+    private class StillScreen : Screen(Component.empty()) {
+        override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {}
+
+        override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {}
+    }
+
+    /** One second of [PartValidation] over everything Module 2 takes over. */
+    private suspend fun SequenceScope<Wait>.validateParts(name: String, expectParts: Boolean) {
+        PartValidation.reset()
+        PartTransform.validating = true
+        yield(ticks(TICKS_PER_SECOND))
+        PartTransform.validating = false
+        val passed = PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0 &&
+            (PartValidation.compared > 0 || !expectParts)
+        check("parts, $name: GPU vertices equal the CPU's", passed, PartValidation.summary() + "; " + PartTransform.debugLine() +
+            PartValidation.reports.joinToString("") { " | $it" })
     }
 
     /**
@@ -1051,10 +1175,10 @@ object SelfCheck {
      * vanilla's lightmap flickers block light randomly every tick (`LightmapRenderStateExtractor`). Ticks are frozen
      * as well, so that what vanilla animates (the powered dragon head) stands still.
      */
-    private suspend fun SequenceScope<Wait>.comparePair(minecraft: Minecraft, name: String, file: String) {
+    private suspend fun SequenceScope<Wait>.comparePair(minecraft: Minecraft, name: String, file: String, cache: Boolean = true) {
         serverCommand(minecraft, "tick freeze")
         yield(ticks(TICKS_PER_SECOND / 2))
-        check("cache draws ($name)", StaticCache.active && StaticCache.lastDrawn > 0, StaticCache.debugLine())
+        if (cache) check("cache draws ($name)", StaticCache.active && StaticCache.lastDrawn > 0, StaticCache.debugLine())
         var attempt = 1
         while (true) {
             val pair = Validation.capturePair()

@@ -19,8 +19,9 @@ enum class GraphicsBackend {
 /**
  * What the GPU and the active backend can do, as far as the modules care.
  *
- * @param glCompute is true when the OpenGL context has compute shaders and SSBOs (core 4.3 or both ARB extensions).
- * Always false on Vulkan until Mobium has a Vulkan compute path (PLAN.md M7).
+ * @param glCompute is true when the OpenGL context has compute shaders and SSBOs (core 4.3 or both ARB extensions)
+ * and double precision in shaders (core 4.0), which Module 2's expand pass uses for correctly rounded square roots and
+ * divisions. Always false on Vulkan until Mobium has a Vulkan compute path (PLAN.md M7).
  * @param multiDrawIndirect is Renderpearl's own `DeviceFeatures.multiDrawIndirect()`.
  */
 class Capabilities(
@@ -65,7 +66,8 @@ class Capabilities(
         // Renderpearl creates the LWJGL capabilities on the render thread (GlDevice constructor), so they are current here.
         private fun hasGlCompute(): Boolean = runCatching {
             val caps = GL.getCapabilities()
-            caps.OpenGL43 || (caps.GL_ARB_compute_shader && caps.GL_ARB_shader_storage_buffer_object)
+            (caps.OpenGL43 || (caps.GL_ARB_compute_shader && caps.GL_ARB_shader_storage_buffer_object)) &&
+                (caps.OpenGL40 || caps.GL_ARB_gpu_shader_fp64)
         }.getOrDefault(false)
     }
 }

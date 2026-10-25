@@ -13,7 +13,9 @@
         "BlockEntityMixin",
         "BlockEntityRenderDispatcherMixin",
         "BlockModelRenderStateAccessor",
+        "BufferBuilderMixin",
         "ClientChunkCacheMixin",
+        "CubeMixin",
         "compat.emf.EmfModelPartMixin",
         "compat.iris.ShadowRendererMixin",
         "DebugScreenEntriesAccessor",
@@ -27,10 +29,13 @@
         "LevelRendererMixin",
         "MinecraftMixin",
         "ModelFeatureRendererMixin",
+        "ModelPartAccessor",
         "ModelPartMixin",
         "ModelSubmitMixin",
         "PreparedFrameMixin",
         "RenderTypeFeatureRendererInvoker",
-        "RenderTypeFeatureRendererMixin"
+        "RenderTypeFeatureRendererMixin",
+        "StagedDrawMixin",
+        "StagedVertexBufferMixin"
     ]
 }

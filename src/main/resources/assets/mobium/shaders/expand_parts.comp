@@ -1,0 +1,322 @@
+#version 430 core
+
+// Module 2 (PLAN.md M6): expands part records into the vertices vanilla's CPU path would have written, bit for bit.
+// One invocation per quad. Every float operation is `precise` and written in the order of the Java code it replaces
+// (docs/vanilla-notes.md §16): JOML without fused multiply-adds for positions and the face normal, Iris 1.11.7's
+// NormalHelper for the tangent. Square roots and divisions are correctly rounded as in Java (`(float) Math.sqrt(double)`,
+// float division), which GPUs do not do on their own: see sqrtFloat.
+//
+// Buffers, all arrays of 32-bit words:
+//   meshes   per quad 21 words: 4 x (x/16, y/16, z/16, u, v), then the face's Direction ordinal
+//   frame    cubes at cubeOffset (4 words: first quad, mesh quad, part, first vertex in its draw),
+//            parts at partOffset (32 words, PartRecords.kt), draw slots at slotOffset (1 word: the draw's first vertex)
+//   vertices the staged vertex buffer vanilla uploaded this frame; this pass fills the ranges Mobium reserved in it
+
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) readonly buffer Meshes { uint meshes[]; };
+layout(std430, binding = 1) readonly buffer Frame { uint frame[]; };
+layout(std430, binding = 2) writeonly buffer Vertices { uint vertices[]; };
+
+layout(location = 0) uniform uint quadCount;
+layout(location = 1) uniform uint cubeCount;
+layout(location = 2) uniform uint cubeOffset;
+layout(location = 3) uniform uint partOffset;
+layout(location = 4) uniform uint slotOffset;
+layout(location = 5) uniform uint quadBase;     // dispatches of more than 65535 groups are split
+
+const uint MESH_QUAD_WORDS = 21u;
+const uint CUBE_WORDS = 4u;
+const uint PART_WORDS = 32u;
+
+// Part record words (PartRecords.kt).
+const uint P_MATRIX = 0u;      // m00 m01 m02 m10 m11 m12 m20 m21 m22 m30 m31 m32
+const uint P_NORMALS = 12u;    // vanilla's packed normal per Direction ordinal
+const uint P_COLOR = 18u;      // ABGR
+const uint P_OVERLAY = 19u;
+const uint P_LIGHT = 20u;
+const uint P_FLAGS = 21u;
+const uint P_SLOT = 22u;
+const uint P_SPRITE = 23u;     // u0, u1 - u0, v0, v1 - v0
+const uint P_IDS = 27u;        // entity | block entity << 16, item
+
+const uint FLAG_KIND_MASK = 3u;          // JOML matrix properties: 0 generic, 1 translation only, 2 identity
+const uint FLAG_SPRITE = 4u;             // UVs go through a sprite (SpriteCoordinateExpander)
+const uint FLAG_IRIS = 8u;               // Iris's 56-byte entity format
+const uint FLAG_IRIS_FACE_NORMAL = 16u;  // Iris replaces the normal with the face normal (rendering the level)
+
+float partFloat(uint p, uint word) {
+    return uintBitsToFloat(frame[p + word]);
+}
+
+// JOML `Vector3f.mulPosition`: identity and translation-only matrices take shortcuts, the rest
+// m00 * x + (m10 * y + (m20 * z + m30)) without fused multiply-adds (joml.useMathFma is off).
+vec3 transformPosition(uint p, uint kind, float x, float y, float z) {
+    precise float rx;
+    precise float ry;
+    precise float rz;
+    if (kind == 2u) {
+        rx = x;
+        ry = y;
+        rz = z;
+    } else if (kind == 1u) {
+        rx = x + partFloat(p, P_MATRIX + 9u);
+        ry = y + partFloat(p, P_MATRIX + 10u);
+        rz = z + partFloat(p, P_MATRIX + 11u);
+    } else {
+        rx = partFloat(p, P_MATRIX + 0u) * x + (partFloat(p, P_MATRIX + 3u) * y + (partFloat(p, P_MATRIX + 6u) * z + partFloat(p, P_MATRIX + 9u)));
+        ry = partFloat(p, P_MATRIX + 1u) * x + (partFloat(p, P_MATRIX + 4u) * y + (partFloat(p, P_MATRIX + 7u) * z + partFloat(p, P_MATRIX + 10u)));
+        rz = partFloat(p, P_MATRIX + 2u) * x + (partFloat(p, P_MATRIX + 5u) * y + (partFloat(p, P_MATRIX + 8u) * z + partFloat(p, P_MATRIX + 11u)));
+    }
+    return vec3(rx, ry, rz);
+}
+
+// The neighbouring floats of a positive float.
+float nextUp(float x) {
+    return uintBitsToFloat(floatBitsToUint(x) + 1u);
+}
+
+float nextDown(float x) {
+    return uintBitsToFloat(floatBitsToUint(x) - 1u);
+}
+
+// `(float) Math.sqrt((double) x)` for a positive finite x: the correctly rounded square root. GPUs do not round double
+// square roots and divisions correctly (Mesa on Intel was a bit off), so the double result is only a first guess and
+// is moved to the neighbouring float while x lies beyond a midpoint. The residuals are exact in double: s * s has 48
+// bits, s * ulp and ulp * ulp / 4 are powers of two times s, and their sum stays within 53 bits.
+float sqrtFloat(float x) {
+    float s = float(sqrt(double(x)));
+    for (int i = 0; i < 3; i++) {
+        precise double ds = double(s);
+        precise double up = double(nextUp(s)) - ds;
+        precise double down = ds - double(nextDown(s));
+        precise double residual = ds * ds - double(x);
+        precise double aboveUpper = residual + ds * up + up * up * 0.25lf;
+        precise double belowLower = residual - ds * down + down * down * 0.25lf;
+        if (aboveUpper < 0.0lf) {
+            s = nextUp(s);
+        } else if (belowLower > 0.0lf) {
+            s = nextDown(s);
+        } else {
+            break;
+        }
+    }
+    return s;
+}
+
+// Float division `a / b` for finite a, b != 0 with a normal quotient, correctly rounded the same way: a - q * b is
+// exact in double (48-bit product, then a difference of nearby values).
+float divideFloat(float a, float b) {
+    float q = abs(float(double(a) / double(b)));
+    if (q == 0.0) return float(double(a) / double(b));
+    precise double da = abs(double(a));
+    precise double db = abs(double(b));
+    for (int i = 0; i < 3; i++) {
+        precise double dq = double(q);
+        precise double up = double(nextUp(q)) - dq;
+        precise double down = dq - double(nextDown(q));
+        precise double residual = da - dq * db;
+        if (residual > db * up * 0.5lf) {
+            q = nextUp(q);
+        } else if (-residual > db * down * 0.5lf) {
+            q = nextDown(q);
+        } else {
+            break;
+        }
+    }
+    return (a < 0.0) != (b < 0.0) ? -q : q;
+}
+
+// Iris's NormalHelper.rsqrt: `value == 0 ? 1 : (float) (1.0 / Math.sqrt(value))`, i.e. 1 / sqrt(value) correctly
+// rounded to float. Corrected like sqrtFloat: the midpoints have 25 bits, their squares 50, and the product with value
+// is compared with 1 in double.
+float irisRsqrt(float value) {
+    if (value == 0.0) return 1.0;
+    float q = float(1.0lf / sqrt(double(value)));
+    if (q == 0.0) return q;
+    precise double dv = double(value);
+    for (int i = 0; i < 3; i++) {
+        precise double dq = double(q);
+        precise double upper = dq + (double(nextUp(q)) - dq) * 0.5lf;
+        precise double lower = dq - (dq - double(nextDown(q))) * 0.5lf;
+        if (upper * upper * dv < 1.0lf) {
+            q = nextUp(q);
+        } else if (lower * lower * dv > 1.0lf) {
+            q = nextDown(q);
+        } else {
+            break;
+        }
+    }
+    return q;
+}
+
+// Java's `(int) x & 0xFF` for a finite float.
+uint javaByte(float x) {
+    if (x >= 2147483648.0) return 0xFFu;
+    if (x <= -2147483648.0) return 0u;
+    return uint(int(x)) & 0xFFu;
+}
+
+// Iris's NormI8.pack(x, y, z, w): truncated, not clamped.
+uint irisPack(float x, float y, float z, float w) {
+    precise float sx = x * 127.0;
+    precise float sy = y * 127.0;
+    precise float sz = z * 127.0;
+    precise float sw = w * 127.0;
+    return javaByte(sx) | javaByte(sy) << 8 | javaByte(sz) << 16 | javaByte(sw) << 24;
+}
+
+// One packed component of `c * (1 / sqrt(0))` = c * +Infinity: NaN for 0 (packs to 0), otherwise +-Infinity.
+uint infinityByte(float c) {
+    if (c == 0.0) return 0u;
+    return c > 0.0 ? 0xFFu : 0u;
+}
+
+void main() {
+    uint quad = quadBase + gl_GlobalInvocationID.x;
+    if (quad >= quadCount) return;
+
+    // The last cube whose first quad is at or before this one.
+    uint low = 0u;
+    uint high = cubeCount - 1u;
+    while (low < high) {
+        uint middle = (low + high + 1u) >> 1;
+        if (frame[cubeOffset + middle * CUBE_WORDS] <= quad) low = middle; else high = middle - 1u;
+    }
+    uint c = cubeOffset + low * CUBE_WORDS;
+    uint inCube = quad - frame[c];
+    uint m = (frame[c + 1u] + inCube) * MESH_QUAD_WORDS;
+    uint p = partOffset + frame[c + 2u] * PART_WORDS;
+    uint flags = frame[p + P_FLAGS];
+    uint kind = flags & FLAG_KIND_MASK;
+    bool iris = (flags & FLAG_IRIS) != 0u;
+    uint stride = iris ? 14u : 9u;
+    uint firstVertex = frame[slotOffset + frame[p + P_SLOT]] + frame[c + 3u] + inCube * 4u;
+
+    vec3 position[4];
+    vec2 uv[4];
+    for (uint i = 0u; i < 4u; i++) {
+        uint v = m + i * 5u;
+        position[i] = transformPosition(p, kind, uintBitsToFloat(meshes[v]), uintBitsToFloat(meshes[v + 1u]), uintBitsToFloat(meshes[v + 2u]));
+        precise float u = uintBitsToFloat(meshes[v + 3u]);
+        precise float w = uintBitsToFloat(meshes[v + 4u]);
+        if ((flags & FLAG_SPRITE) != 0u) {
+            // TextureAtlasSprite.getU/getV: u0 + (u1 - u0) * u
+            u = partFloat(p, P_SPRITE) + partFloat(p, P_SPRITE + 1u) * u;
+            w = partFloat(p, P_SPRITE + 2u) + partFloat(p, P_SPRITE + 3u) * w;
+        }
+        uv[i] = vec2(u, w);
+    }
+    uint direction = meshes[m + 20u];
+    uint normal = frame[p + P_NORMALS + direction];
+
+    uint ids = 0u;
+    uint item = 0u;
+    uint midU = 0u;
+    uint midV = 0u;
+    uint tangent = 0u;
+    if (iris) {
+        ids = frame[p + P_IDS];
+        item = frame[p + P_IDS + 1u] & 0xFFFFu;
+
+        // MixinBufferBuilder.fillExtendedData: the mean UV, summed from 0 in vertex order.
+        precise float su = 0.0 + uv[0].x;
+        su = su + uv[1].x;
+        su = su + uv[2].x;
+        su = su + uv[3].x;
+        su = su * 0.25;
+        precise float sv = 0.0 + uv[0].y;
+        sv = sv + uv[1].y;
+        sv = sv + uv[2].y;
+        sv = sv + uv[3].y;
+        sv = sv * 0.25;
+        midU = floatBitsToUint(su);
+        midV = floatBitsToUint(sv);
+
+        // NormalHelper.computeFaceNormalManual: cross product of the diagonals, then JOML's normalize().
+        precise float dx0 = position[2].x - position[0].x;
+        precise float dy0 = position[2].y - position[0].y;
+        precise float dz0 = position[2].z - position[0].z;
+        precise float dx1 = position[3].x - position[1].x;
+        precise float dy1 = position[3].y - position[1].y;
+        precise float dz1 = position[3].z - position[1].z;
+        precise float nx = dy0 * dz1 - dz0 * dy1;
+        precise float ny = dz0 * dx1 - dx0 * dz1;
+        precise float nz = dx0 * dy1 - dy0 * dx1;
+        precise float length2 = nx * nx + (ny * ny + nz * nz);
+        bool finiteNormal = length2 != 0.0;
+        uint faceNormal;
+        if (finiteNormal) {
+            precise float scalar = divideFloat(1.0, sqrtFloat(length2));
+            nx = nx * scalar;
+            ny = ny * scalar;
+            nz = nz * scalar;
+            faceNormal = irisPack(nx, ny, nz, 0.0);
+        } else {
+            // A quad without area: Java multiplies by 1 / sqrt(0) = Infinity.
+            faceNormal = infinityByte(nx) | infinityByte(ny) << 8 | infinityByte(nz) << 16;
+        }
+        if ((flags & FLAG_IRIS_FACE_NORMAL) != 0u) normal = faceNormal;
+
+        // NormalHelper.computeTangent(normal, polygon) with vertices 0 to 2.
+        precise float e1x = position[1].x - position[0].x;
+        precise float e1y = position[1].y - position[0].y;
+        precise float e1z = position[1].z - position[0].z;
+        precise float e2x = position[2].x - position[0].x;
+        precise float e2y = position[2].y - position[0].y;
+        precise float e2z = position[2].z - position[0].z;
+        precise float du1 = uv[1].x - uv[0].x;
+        precise float dv1 = uv[1].y - uv[0].y;
+        precise float du2 = uv[2].x - uv[0].x;
+        precise float dv2 = uv[2].y - uv[0].y;
+        precise float denominator = du1 * dv2 - du2 * dv1;
+        precise float f = denominator == 0.0 ? 1.0 : divideFloat(1.0, denominator);
+        precise float tx = f * (dv2 * e1x - dv1 * e2x);
+        precise float ty = f * (dv2 * e1y - dv1 * e2y);
+        precise float tz = f * (dv2 * e1z - dv1 * e2z);
+        precise float tcoeff = irisRsqrt(tx * tx + ty * ty + tz * tz);
+        tx = tx * tcoeff;
+        ty = ty * tcoeff;
+        tz = tz * tcoeff;
+        precise float bx = f * (-du2 * e1x + du1 * e2x);
+        precise float by = f * (-du2 * e1y + du1 * e2y);
+        precise float bz = f * (-du2 * e1z + du1 * e2z);
+        precise float bcoeff = irisRsqrt(bx * bx + by * by + bz * bz);
+        bx = bx * bcoeff;
+        by = by * bcoeff;
+        bz = bz * bcoeff;
+        float handedness = 1.0;
+        // With a NaN normal (a quad without area) the dot product is NaN and Java picks 1.
+        if (finiteNormal) {
+            precise float pbx = ty * nz - tz * ny;
+            precise float pby = tz * nx - tx * nz;
+            precise float pbz = tx * ny - ty * nx;
+            precise float dot = bx * pbx + by * pby + bz * pbz;
+            if (dot < 0.0) handedness = -1.0;
+        }
+        tangent = irisPack(tx, ty, tz, handedness);
+    }
+
+    uint color = frame[p + P_COLOR];
+    uint overlay = frame[p + P_OVERLAY];
+    uint light = frame[p + P_LIGHT];
+    for (uint i = 0u; i < 4u; i++) {
+        uint o = (firstVertex + i) * stride;
+        vertices[o] = floatBitsToUint(position[i].x);
+        vertices[o + 1u] = floatBitsToUint(position[i].y);
+        vertices[o + 2u] = floatBitsToUint(position[i].z);
+        vertices[o + 3u] = color;
+        vertices[o + 4u] = floatBitsToUint(uv[i].x);
+        vertices[o + 5u] = floatBitsToUint(uv[i].y);
+        vertices[o + 6u] = overlay;
+        vertices[o + 7u] = light;
+        vertices[o + 8u] = normal;
+        if (iris) {
+            vertices[o + 9u] = ids;
+            vertices[o + 10u] = item;
+            vertices[o + 11u] = midU;
+            vertices[o + 12u] = midV;
+            vertices[o + 13u] = tangent;
+        }
+    }
+}
