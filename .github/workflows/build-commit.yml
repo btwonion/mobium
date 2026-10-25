@@ -7,7 +7,6 @@ on:
     paths-ignore:
       - "README.md"
       - "LICENSE"
-      - "COPYING"
       - ".gitignore"
       - "changelog.md"
       - ".editorconfig"
@@ -18,7 +17,6 @@ on:
     paths-ignore:
       - "README.md"
       - "LICENSE"
-      - "COPYING"
       - ".gitignore"
       - "changelog.md"
       - ".editorconfig"

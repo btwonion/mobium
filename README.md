@@ -122,4 +122,4 @@ If you need help with any of my mods, join my [Discord server](https://nyon.dev/
 ## License
 
 Mobium is licensed under the
-[GNU Lesser General Public License v3.0](https://github.com/btwonion/mobium/blob/main/LICENSE).
+[GNU General Public License v3.0](https://github.com/btwonion/mobium/blob/main/LICENSE).
