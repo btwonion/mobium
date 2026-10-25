@@ -526,8 +526,109 @@ B and D (Complementary, GPU-bound) differ from 20 Oct by −5 to +14 % per scene
 runs (B `mob_pen_live` on 20 Oct: 49.9–60.4 ms); C's mob pens were 5–9 % faster, and C has a `control` (1.05 ms) for
 the first time. The per-setup medians are in the folder's `suite-*.csv` files.
 
+### 23–25 Oct 2026, 0.1.0-beta2 with shadow-pass timers, all four setups
+
+Machine and settings as on 20 Oct · every run fullscreen at 1920×1080 on the AOC (240 Hz), on mains power, uncapped,
+VSync off · Mobium 0.1.0-beta2, **build a6997e5** (`main` after #12: light checks per section, shadow-pass timers) ·
+A, B and C on 23 Oct afternoon, C again and D on 25 Oct evening (C's second suite gives D a reference from its own
+session) · `-Dmobium.bench.expect` in effect again (it was not on 21–22 Oct, *Measurement pitfalls*) · Raw data:
+[`results/2026-10-23-thinkpad-x9/`](benchmarks/results/2026-10-23-thinkpad-x9/).
+
+#### Suites
+
+Median of three 60-second runs, static cache on, ms per frame; extract, submit, pose and tessellate add entities and
+block entities. *Shadow* is Iris's whole shadow pass and *Shadow tess. E* its entity tessellation; its block entity
+tessellation was 0.000 ms in every scene (below). The *21–22 Oct* column is the same scene on build 6fb45dc.
+
+| Scene | Setup | Avg FPS | 1% low | Avg ms | 21–22 Oct | p95 ms | Extract | Submit | Pose | Tessellate | Prepare | Draw | Shadow | Shadow tess. E | GPU MHz |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mob_pen_static | A | 326 | 176 | 3.07 | 3.08 | 3.89 | 0.56 | 0.23 | 0.09 | 1.10 | 1.80 | 0.02 | 0.00 | 0.00 | 650–753 |
+| mob_pen_live | A | 314 | 164 | 3.19 | 3.32 | 3.95 | 0.56 | 0.25 | 0.09 | 1.18 | 1.91 | 0.02 | 0.00 | 0.00 | 650–672 |
+| storage_room | A | 640 | 378 | 1.56 | 1.54 | 1.97 | 0.12 | 0.00 | 0.00 | 0.00 | 0.01 | 0.04 | 0.00 | 0.00 | 905–940 |
+| map_wall | A | 243 | 111 | 4.12 | 4.15 | 4.63 | 0.80 | 0.44 | 0.00 | 0.00 | 1.98 | 0.47 | 0.00 | 0.00 | 1133–1160 |
+| display_build | A | 611 | 274 | 1.64 | 1.63 | 1.82 | 0.54 | 0.09 | 0.00 | 0.01 | 0.09 | 0.02 | 0.00 | 0.00 | 700 |
+| control | A | 882 | 545 | 1.13 | 1.08 | 1.44 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 991–1020 |
+| mob_pen_static | B | 17 | 15 | 58.65 | 62.12 | 63.83 | 1.08 | 0.55 | 0.16 | 3.92 | 5.38 | 0.04 | 2.50 | 0.88 | 596–641 |
+| mob_pen_live | B | 19 | 16 | 51.99 | 57.21 | 61.03 | 0.83 | 0.43 | 0.15 | 3.57 | 4.85 | 0.04 | 2.29 | 0.89 | 663–672 |
+| storage_room | B | 27 | 21 | 36.41 | 34.21 | 44.49 | 0.24 | 0.00 | 0.00 | 0.00 | 0.02 | 0.25 | 0.47 | 0.00 | 813–978 |
+| map_wall | B | 19 | 15 | 53.39 | 56.77 | 57.66 | 2.19 | 0.89 | 0.00 | 0.00 | 4.66 | 0.65 | 2.83 | 0.00 | 540–594 |
+| display_build | B | 20 | 19 | 50.00 | 51.26 | 52.54 | 1.43 | 0.45 | 0.00 | 0.04 | 0.40 | 0.13 | 4.63 | 0.03 | 552–565 |
+| control | B | 32 | 26 | 31.60 | 33.84 | 36.07 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.00 | 0.46 | 0.00 | 802–1032 |
+| mob_pen_static | C (23 Oct) | 120 | 73 | 8.35 | 8.01 | 12.08 | 0.87 | 1.18 | 0.16 | 4.16 | 4.97 | 0.02 | 0.00 | 0.00 | 663–741 |
+| mob_pen_live | C (23 Oct) | 111 | 68 | 9.01 | 8.94 | 13.02 | 0.91 | 1.29 | 0.17 | 4.47 | 5.33 | 0.02 | 0.00 | 0.00 | 774–790 |
+| storage_room | C (23 Oct) | 625 | 391 | 1.60 | 1.52 | 1.96 | 0.12 | 0.00 | 0.00 | 0.00 | 0.01 | 0.04 | 0.00 | 0.00 | 883–913 |
+| map_wall | C (23 Oct) | 240 | 109 | 4.17 | 4.21 | 4.63 | 0.83 | 0.47 | 0.00 | 0.00 | 1.99 | 0.46 | 0.00 | 0.00 | 1110–1115 |
+| display_build | C (23 Oct) | 610 | 298 | 1.64 | 1.67 | 1.82 | 0.53 | 0.10 | 0.00 | 0.01 | 0.08 | 0.02 | 0.00 | 0.00 | 700–701 |
+| control | C (23 Oct) | 900 | 557 | 1.11 | 1.15 | 1.41 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1031–1074 |
+| mob_pen_static | C (25 Oct) | 115 | 74 | 8.70 | 8.01 | 12.43 | 0.87 | 1.16 | 0.16 | 4.52 | 5.35 | 0.02 | 0.00 | 0.00 | 869–886 |
+| mob_pen_live | C (25 Oct) | 111 | 69 | 8.98 | 8.94 | 12.98 | 0.92 | 1.26 | 0.17 | 4.45 | 5.32 | 0.02 | 0.00 | 0.00 | 887–904 |
+| storage_room | C (25 Oct) | 611 | 321 | 1.64 | 1.52 | 2.07 | 0.11 | 0.00 | 0.00 | 0.00 | 0.01 | 0.05 | 0.00 | 0.00 | 831–899 |
+| map_wall | C (25 Oct) | 235 | 110 | 4.25 | 4.21 | 4.75 | 0.84 | 0.47 | 0.00 | 0.00 | 2.02 | 0.48 | 0.00 | 0.00 | 1188–1211 |
+| display_build | C (25 Oct) | 589 | 267 | 1.70 | 1.67 | 2.09 | 0.49 | 0.13 | 0.00 | 0.01 | 0.09 | 0.03 | 0.00 | 0.00 | 700–704 |
+| control | C (25 Oct) | 793 | 380 | 1.26 | 1.15 | 1.61 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 904–958 |
+| mob_pen_static | D | 14 | 13 | 69.13 | 70.23 | 75.73 | 1.43 | 3.25 | 0.22 | 9.20 | 11.01 | 0.05 | 5.27 | 2.18 | 600–675 |
+| mob_pen_live | D | 15 | 12 | 68.14 | 65.51 | 75.82 | 1.14 | 3.11 | 0.22 | 9.12 | 10.85 | 0.04 | 5.04 | 2.16 | 600 |
+| storage_room | D | 32 | 26 | 31.40 | 30.26 | 36.50 | 0.28 | 0.00 | 0.00 | 0.00 | 0.02 | 0.21 | 0.45 | 0.00 | 991–1082 |
+| map_wall | D | 18 | 14 | 55.59 | 48.99 | 60.21 | 2.54 | 1.03 | 0.00 | 0.00 | 4.79 | 0.74 | 3.17 | 0.00 | 540–563 |
+| display_build | D | 22 | 18 | 46.27 | 47.79 | 52.59 | 1.40 | 0.43 | 0.00 | 0.05 | 0.39 | 0.10 | 4.17 | 0.03 | 578–611 |
+| control | D | 35 | 30 | 28.89 | 27.37 | 31.62 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.00 | 0.43 | 0.00 | 900–942 |
+
+What the round shows:
+
+- **Iris's shadow pass** costs 0.43–0.47 ms in `control` (B, D: shadow terrain, no entities) and up to 5.3 ms with
+  entities. In D's mob pens it is 5.0–5.3 ms: entity tessellation 2.2 ms, prepare 2.7 ms (tessellation included),
+  extract 0.46 ms, submit 0.44 ms, draw 0.11 ms. In B's it is 2.3–2.5 ms, with tessellation 0.9 ms: Fresh Animations
+  makes the shadow pass's tessellation 2.4× as expensive, as it does the main pass's (3.6–3.9 → 9.1–9.2 ms).
+- **Cached block entities cost the shadow pass nothing with Complementary's defaults.**
+  `shadow_tessellate_block_entities` is 0.000 ms in every scene of B and D (`shadowBlockEntities = false`, *What the
+  numbers mean*), and `storage_room`'s shadow pass equals `control`'s (0.45 against 0.43 ms in D).
+- **Cached entities do cost it.** `display_build`'s shadow pass is 4.2–4.6 ms (extract 1.1–1.2 ms, prepare 1.9–2.0
+  ms): the 500 displays the cache draws in the main pass (prepare 0.39–0.40 ms there) are prepared again by vanilla
+  for the shadow map. Caching them in the shadow pass as well could save most of that prepare with a shader pack.
+- **`draw` no longer holds the shadow pass's draws.** In B's and D's mob pens it is 0.04–0.05 ms, against
+  0.15–0.18 ms on 21–22 Oct. `draw` plus `shadow_draw` (0.12–0.16 ms) is close to the old value, so the split moved
+  the shadow pass's draws.
+- **Otherwise unchanged.** A and C on 23 Oct are within 5 % of 21–22 Oct. On 25 Oct the laptop was slower: C's
+  `control` took 1.26 ms against 1.11 ms two days before, and its light scenes were up to 10 % slower than on 21–22 Oct.
+  C's `mob_pen_live` was the same on both days (9.01 and 8.98 ms). B and D (GPU-bound) moved by −9 to +14 % per scene
+  (B's `mob_pen_live` 52.0 against 57.2 ms, D's `map_wall` 55.6 against 49.0 ms), the usual spread between sessions.
+  beta2's per-section light checks cannot show here: nothing changes light while a scene records (the self-check
+  measures them).
+
+#### Gate C: what M6 can reach
+
+Gate C (`PLAN.md` M6) asks for `mob_pen_live` at least 1.5× faster in setup D. The mob pens hold nothing the static
+cache takes, so this round's numbers are what M6 starts from. D, 25 Oct:
+
+| `mob_pen_live`, setup D | ms per frame |
+| --- | --- |
+| Frame | 68.14 |
+| `control`, same session | 28.89 |
+| Main pass: extract + submit + prepare + draw | 1.14 + 3.11 + 10.85 + 0.04 = 15.14 |
+| … of which tessellation (what M6 moves to the GPU) | 9.12 |
+| Shadow pass, less `control`'s 0.43 ms | 4.61 |
+| … of which tessellation | 2.16 |
+
+- M6 replaces CPU tessellation, at most 9.12 + 2.16 = 11.28 ms here. The frame would then be 56.9 ms at best: **at
+  most 1.20×**, and only if the frame is CPU-bound and the compute pass costs the GPU nothing.
+- Even if every timed entity stage took no time at all (15.14 + 4.61 = 19.75 ms), the frame would be 48.4 ms, 1.41×.
+  The other 19.5 ms between `mob_pen_live` and `control` is not CPU time Mobium measures. Most likely it is GPU work:
+  the pack draws every mob into its shadow map and its gbuffers.
+- **So 1.5× in D is out of reach on this machine, whatever M6 does.** In C (Fresh Animations, no shader pack)
+  `mob_pen_live` is 8.98 ms with tessellation 4.45 ms, so the upper bound is 1.98×; 1.5× needs M6 to save 3.0 ms, two
+  thirds of the tessellation after paying for the compute pass. In A (vanilla models): 3.19 ms, tessellation 1.18 ms,
+  at most 1.59×.
+- One effect cannot be measured before M6 exists. The iGPU ran at 600 MHz in D's mob pens and at 900–940 MHz in
+  `control`, and CPU and GPU share one power budget, so less CPU work may let the GPU clock up and save more than the
+  CPU time alone.
+- The gate is to be redefined with Anton, as Gate B was. The options are in `PLAN.md` M6.
+
 ### Measurement pitfalls
 
+- Instance settings Prism ignores: until 23 Oct 2026 `benchmark/prism_instances.py` appended `-Dmobium.bench.expect`
+  to the end of `instance.cfg`, where it landed in Prism's `[UI]` section, so the rounds of 21–22 Oct ran without the
+  setup check (their `setup` column shows the right setups). A run on 22 Oct also refreshed new duplicate folders
+  instead of the renamed A and D. The script now writes `[General]` and uses the folder Prism launched last.
 - Vanilla's default 120 FPS cap, and its idle frame limit after 60 s without input (the bench handles the second).
 - Battery power: vanilla `storage_room` 9 → 42 ms on the dev laptop (19 Oct 2026, gametest window); the bench now
   warns in chat.

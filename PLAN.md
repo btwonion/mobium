@@ -9,13 +9,14 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 ---
 
-## Current state (updated 23 Oct 2026)
+## Current state (updated 25 Oct 2026)
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10 are merged; `main` has M0–M5 (#7, `m5-static-cache`,
-  merged on 22 Oct 2026 at Anton's request once Gate B had passed and the checks were green) and the release prep (#8)
-  and new icon (#10). From M6 on: one branch from `main` per milestone, one PR against `main`; merging is Anton's call.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#12 are merged; `main` has M0–M5 (#7, `m5-static-cache`,
+  merged on 22 Oct 2026 at Anton's request once Gate B had passed and the checks were green), the release prep (#8),
+  the new icon (#10) and the beta2 work (#11 post-release, #12 cache follow-ups and shadow-pass timers, both merged on
+  23 Oct 2026). From M6 on: one branch from `main` per milestone, one PR against `main`; merging is Anton's call.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
   `.github/workflows/build-commit.yml`); `release.yml` does the same. If CI hangs or fails, read the job log first
@@ -33,19 +34,22 @@ Read this first when picking the work up in a new session.
 - **Next: `0.1.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
   Module 1 follow-ups below plus shadow-pass timers (`Sections.SHADOW…`, `compat/iris/ShadowRendererMixin`), so that
   Anton's next benchmark round on beta2 also measures what Iris's shadow pass costs, and fixes for whatever beta1
-  testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`). Branch `beta2-cache-followups` (#12), on top of
-  `post-release-beta1` (#11). Self-check on both loaders passed on 23 Oct (Fabric 74/74 with Complementary and Fresh
-  Animations, NeoForge 67/67; every Mobium-vs-vanilla comparison 0 changed pixels; 90 light updates 56 blocks from the
-  gallery added no full checks, and the sweep pruned the 8 sections kept back to 0). The self-check now switches vsync
-  off: with it the dev window behind other windows ran at ~17 FPS on Wayland, which paused the armor stands (at 17
-  FPS the 60 frames after a capture last 3.5 s, and their state still changed in them) and put a client tick between
-  most picture pairs. Left: Anton's benchmark round A–D on the branch and his visual check (§10), then the release.
-- **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis in `docs/benchmarks.md`: with Fresh Animations
-  tessellation is 3.8–4.5 ms of the mob pens in C (pose 0.16 ms); in D the mob pens are 65–70 ms against 27–38 ms for
-  `control`, and the timers do not count Iris's shadow pass, so M6 needs shadow-pass timers first. In D, removing all
-  of the main pass's tessellation (9.3 ms of 65.5 ms in `mob_pen_live`) would give 1.17×; whether Gate C's 1.5× is in
-  reach depends on the shadow pass's share and on how GPU-bound D is (`control` 27 ms). Decide Gate C with Anton once
-  those numbers exist, as for Gate B.
+  testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`; none so far). The work is on `main` (#11, #12, merged on 23
+  Oct, build `a6997e5`); the release prep is branch `release-0.1.0-beta2`, which also takes the benchmark round's
+  results (#13). Self-check on both loaders passed on 23 Oct (Fabric 74/74 with Complementary and Fresh Animations,
+  NeoForge 67/67; every Mobium-vs-vanilla comparison 0 changed pixels; 90 light updates 56 blocks from the gallery
+  added no full checks, and the sweep pruned the 8 sections kept back to 0). The self-check now switches vsync off:
+  with it the dev window behind other windows ran at ~17 FPS on Wayland, which paused the armor stands (at 17 FPS the
+  60 frames after a capture last 3.5 s, and their state still changed in them) and put a client tick between most
+  picture pairs. **Benchmark round done** (A–C 23 Oct, C and D 25 Oct, build `a6997e5`; `docs/benchmarks.md`
+  "23–25 Oct 2026"): nothing slower than on 21–22 Oct beyond the usual spread, the shadow pass timed in B and D.
+  Left: Anton's visual checks of #12 (§10), merging #13, then `release.yml`.
+- **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis (`docs/benchmarks.md`, "23–25 Oct 2026",
+  *Gate C: what M6 can reach*): in D `mob_pen_live` is 68.1 ms against 28.9 ms for `control`; tessellation is 9.1 ms
+  in the main pass and 2.2 ms in Iris's shadow pass, all timed entity work 19.8 ms. Removing all tessellation gives at
+  most 1.20×, removing every timed entity stage 1.41×: **Gate C's 1.5× in D is out of reach on this machine**. In C
+  (no shader pack) tessellation is 4.45 of 8.98 ms (at most 1.98×), in A 1.18 of 3.19 ms (at most 1.59×). **Gate C
+  needs redefining with Anton before M6 starts** (options under M6).
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
   `beta2-cache-followups`, 23 Oct 2026):
   - [x] one light epoch for the whole level sent every cached object through the full check after any light update.
@@ -63,8 +67,12 @@ Read this first when picking the work up in a new session.
     there; the per-entity check costs about 0.3 µs per display.
   - Iris's shadow pass draws cached objects through vanilla (the cache leaves that pass alone). Complementary at its
     defaults (`ENTITY_SHADOW` 1, as in B and D) leaves block entities out of the shadow map (`shadowBlockEntities =
-    false`; `shadow_tessellate_block_entities` 0.000 ms in the self-check), so there it costs nothing; a pack or setting
-    that shadows block entities tessellates every cached chest once more per frame (`docs/benchmarks.md`, timers).
+    false`; `shadow_tessellate_block_entities` 0.000 ms in every scene of the 23–25 Oct round), so for block entities
+    it costs nothing; a pack or setting that shadows them tessellates every cached chest once more per frame. Cached
+    entities do cost it: in `display_build` the shadow pass prepares the 500 displays again (prepare 1.9–2.0 ms of a
+    4.2–4.6 ms shadow pass, against 0.4 ms in the main pass with the cache). Candidate: draw cached entities in the
+    shadow pass from the cache too (needs the shadow pass's vertex format and render types; check with the self-check's
+    shader pack comparisons).
   - F3 `mobium:modules`: vanilla puts the third of its lines, the static cache line, into the right column, and that
     line is wider than the room next to the left column's first line, so the two overlap (seen in the self-check's
     `f3-modules.png`; beta2's "sections with light updates kept" made it longer). The numbers at its end stay readable.
@@ -87,7 +95,11 @@ Read this first when picking the work up in a new session.
   installed build, finds instances whose folder Prism renamed ("Mobium Bench A (Sodium)", "Mobium Bench D (all)"),
   refreshes the datapack in their worlds, installs and selects Complementary Reimagined r5.9.3 (B, D) and Fresh
   Animations 1.11.1 (C, D) and sets `-Dmobium.bench.expect` so the suite refuses the wrong setup. Every `summary.csv`
-  row names its build (`build`). A new world comes from `./gradlew :26.3-fabric:runBenchWorld` followed by deleting
+  row names its build (`build`). Until 23 Oct the script appended `JvmArgs` to the end of `instance.cfg`, which put it
+  into Prism's `[UI]` section, where Prism ignores it (no expected-setup check in the rounds of 21–22 Oct), and a run
+  on 22 Oct made new `mobium-bench-a`/`-d` folders next to the renamed ones and updated those from then on (moved to
+  `PrismLauncher/mobium-bench-duplicates-20261023/`). Now it writes `[General]` and, when several instances carry
+  one name, uses the one Prism launched last and names the others. A new world comes from `./gradlew :26.3-fabric:runBenchWorld` followed by deleting
   `saves/Mobium Bench` in the instances.
 - **Measurement pitfalls found so far** (details in `docs/benchmarks.md`):
   - the default 120 FPS cap and vanilla's idle frame limit (the bench handles the second);
@@ -746,8 +758,14 @@ projects and their IDs, then `release.yml` (§10).
 
 **Gate C:** `mob_pen_live` at least 1.5× faster with Sodium + Iris + Fresh Animations; zero screenshot
 differences. Then release.
-Before starting M6, measure setup D with the shader pack and Fresh Animations: without them, tessellation is 1.0 of
-3.0 ms in `mob_pen_live` (setup B), so even removing it entirely gives only 1.5×.
+**To redefine with Anton before M6 starts** (measured 23–25 Oct 2026, `docs/benchmarks.md`): in D the frame can get
+at most 1.20× faster from removing tessellation (9.1 ms main pass + 2.2 ms shadow pass of 68.1 ms; the rest is mostly
+GPU work of the shader pack), so the definition above cannot pass on this machine. Options:
+- (a) the same gate in setup C (Fresh Animations, no shader pack: tessellation 4.45 of 8.98 ms, at most 1.98×), and
+  in D no slower than before (reported, no target);
+- (b) a CPU target in D, as Gate B's second definition: the mob pens' timed entity work (main-pass extract, submit,
+  prepare and draw plus the shadow pass, 19.8 ms) at least 1.5× lower, the frame reported;
+- (c) keep D with a target in reach, e.g. 1.15×.
 
 ### M7 · Phase 3: Vulkan, Aperture, Module 3, 26.4
 - [ ] Add `26.4-fabric` / `26.4-neoforge` Stonecutter targets when 26.4 releases (track its snapshots in a branch
@@ -818,10 +836,12 @@ benchmark numbers if performance changed.
 
 `0.1.0-beta2` (Module 1 follow-ups, shadow-pass timers):
 
-- [ ] `changelog.md` contains only beta2's notes.
+- [x] `changelog.md` contains only beta2's notes (23 Oct 2026, no tester reports to add).
+- [x] `docs/compat.md` and `README.md` mention the shadow-pass timers.
 - [x] Self-check on both loaders: every Mobium-vs-vanilla comparison 0 changed pixels (23 Oct 2026: Fabric 74/74
       with Complementary and Fresh Animations, NeoForge 67/67 without the shader pack, see *Current state*).
-- [ ] Benchmark round A–D on beta2 (with the shadow-pass timers), committed to `docs/benchmarks.md`.
+- [x] Benchmark round A–D on beta2 (with the shadow-pass timers), committed to `docs/benchmarks.md` (23–25 Oct 2026,
+      build `a6997e5`, `docs/benchmarks/results/2026-10-23-thinkpad-x9/`).
 - [ ] Anton's visual checks of the beta2 PR's *How to verify*.
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
