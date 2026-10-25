@@ -84,6 +84,13 @@ object Sections {
     @JvmField
     var inLevelPrepare = false
 
+    /**
+     * Measurement for Module 2 (dev self-check only): model parts write no vertices while set, so the models vanish
+     * and the timers show what the vertex work costs (`ModelPartMixin`, `compat.emf.EmfModelPartMixin`).
+     */
+    @JvmField
+    var skipModelVertices = false
+
     /** True while Iris's shadow pass runs; its feature draws count as [SHADOW_DRAW], not [DRAW]. */
     @JvmField
     var inShadowPass = false
