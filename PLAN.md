@@ -43,7 +43,7 @@ Read this first when picking the work up in a new session.
   60 frames after a capture last 3.5 s, and their state still changed in them) and put a client tick between most
   picture pairs. **Benchmark round done** (A–C 23 Oct, C and D 25 Oct, build `a6997e5`; `docs/benchmarks.md`
   "23–25 Oct 2026"): nothing slower than on 21–22 Oct beyond the usual spread, the shadow pass timed in B and D.
-  Left: Anton's visual checks of #12 (§10), merging #13, then `release.yml`.
+  #13 (release prep, results) merged on 25 Oct 2026. Left: Anton's visual checks of #12 (§10), then `release.yml`.
 - **Then M6** (Module 2, GPU part transform → Gate C). Measurement basis (`docs/benchmarks.md`, "23–25 Oct 2026",
   *Gate C: what M6 can reach*): in D `mob_pen_live` is 68.1 ms against 28.9 ms for `control`; tessellation is 9.1 ms
   in the main pass and 2.2 ms in Iris's shadow pass, all timed entity work 19.8 ms. Removing all tessellation gives at
