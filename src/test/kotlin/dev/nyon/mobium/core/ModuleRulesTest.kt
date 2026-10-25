@@ -21,8 +21,13 @@ class ModuleRulesTest {
     }
 
     @Test
+    fun `part transform runs on OpenGL with compute, with or without a shader pack`() {
+        assertNull(reason(Module.PART_TRANSFORM))
+        assertNull(reason(Module.PART_TRANSFORM, environment = openGl.copy(shaderPack = true)))
+    }
+
+    @Test
     fun `modules that do not exist yet say so`() {
-        assertEquals(OffReason.NOT_BUILT, reason(Module.PART_TRANSFORM))
         assertEquals(OffReason.NOT_BUILT, reason(Module.ANIMATION_LOD, Config(lod = LodConfig(preset = LodPreset.SUBTLE))))
     }
 
@@ -54,7 +59,7 @@ class ModuleRulesTest {
         val status = ModuleRules.resolve(Module.STATIC_CACHE, defaults, overlap)
         assertEquals(OffReason.OVERLAP, status.reason)
         assertEquals("Enhanced Block Entities", status.detail)
-        assertEquals(OffReason.NOT_BUILT, reason(Module.PART_TRANSFORM, environment = overlap))
+        assertNull(reason(Module.PART_TRANSFORM, environment = overlap))
     }
 
     @Test
