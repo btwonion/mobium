@@ -171,7 +171,7 @@ requiring shader packs to be patched.
 | Maven group / package | `dev.nyon` / `dev.nyon.mobium` (mixins in `dev.nyon.mobium.mixins`) |
 | Author | `btwonion` |
 | Repository | `btwonion/mobium` *(assumed; change `mod.repo` if different)* |
-| License | LGPL-3.0 (`modLicense = "GNU Lesser General Public License v3.0"`) |
+| License | GPL-3.0 (`modLicense = "GNU General Public License v3.0"`) |
 | Loaders | Fabric (+ Quilt) and NeoForge from day one, one source tree via Stonecutter + modstitch |
 | First targets | `26.3-fabric`, `26.3-neoforge`; `26.4-*` added in M7 |
 | Side | Client only (`"environment": "client"`, NeoForge dependency `side = "CLIENT"`) |
@@ -195,8 +195,7 @@ mobium/
 │   └── readme-modrinth-sync.yml        # copy from autodrop
 ├── CLAUDE.md                           # agent guidance (commands, Stonecutter rules, architecture)
 ├── PLAN.md                             # this file
-├── LICENSE                             # LGPL-3.0 text
-├── COPYING                             # GPL-3.0 text (LGPL-3.0 builds on it)
+├── LICENSE                             # GPL-3.0 text
 ├── README.md                           # user-facing; synced to Modrinth/CurseForge
 ├── changelog.md                        # notes for the upcoming release only
 ├── settings.gradle.kts                 # Stonecutter targets
@@ -307,7 +306,7 @@ Maven coordinates: `maven.modrinth:sodium|iris|entity-model-features|entitytextu
 `entity_model_features`, `entity_texture_features`, `modmenu`.
 
 **build.gradle.kts** — autodrop's central script with these changes:
-- `modLicense = "GNU Lesser General Public License v3.0"`, `modAuthor = "btwonion"`.
+- `modLicense = "GNU General Public License v3.0"`, `modAuthor = "btwonion"`.
 - `mixin { addMixinsToModManifest = true; configs.register("mobium") }`.
 - Repositories: add `https://maven.caffeinemc.net/releases` (Sodium Config API) and `https://api.modrinth.com/maven`
   (Iris, EMF, ETF, Sodium as `maven.modrinth:<slug>:<version>`).
