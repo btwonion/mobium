@@ -14,11 +14,15 @@ import dev.nyon.mobium.core.Fallback
 import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.debug.Sections
+import dev.nyon.mobium.gpu.gl.GlCompute
 import net.caffeinemc.mods.sodium.api.vertex.buffer.VertexBufferWriter
 import net.minecraft.client.model.geom.ModelPart
 import net.minecraft.client.renderer.SpriteCoordinateExpander
 import net.minecraft.client.renderer.StagedVertexBuffer
 import net.minecraft.client.renderer.texture.TextureAtlasSprite
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.resources.Identifier
+import net.minecraft.world.entity.EntityType
 import net.minecraft.util.ARGB
 import net.minecraft.util.Mth
 import org.joml.Matrix3f
@@ -46,6 +50,17 @@ object PartTransform {
     @JvmField
     var active = false
 
+    /** True while `EntityRenderDispatcher.submit` runs the renderer of an entity type in [excludedTypes]. */
+    @JvmField
+    var submittingExcluded = false
+
+    /** True while a model submitted by an excluded entity type tessellates: its parts compile as vanilla's. */
+    @JvmField
+    var excluded = false
+
+    /** Entity types from `parts.excludedEntities` (ids that name no entity type are ignored). */
+    private var excludedTypes: Set<EntityType<*>> = emptySet()
+
     /** Dev validation ([PartValidation]): every part taken over is also compiled on the CPU and compared. */
     @JvmField
     var validating = false
@@ -59,6 +74,9 @@ object PartTransform {
 
     private var parts = 0
     private var quads = 0
+
+    /** A failure after a reservation: this frame's reserved vertices are blanked instead of expanded. */
+    private var failedThisFrame = false
 
     /** With Sodium, vanilla cubes are drawn by Sodium's cube path, so Module 2 reproduces that one ([SodiumCubes]). */
     private val sodiumCubes = Compat.isLoaded(CompatMod.SODIUM)
@@ -75,6 +93,20 @@ object PartTransform {
 
     /** A valid address for the empty push's source; nothing is read from it. */
     private val emptyPush = MemoryUtil.nmemAlloc(64)
+
+    /** Reads the excluded entity types from the config; called whenever the module states are resolved. */
+    fun configure(excludedEntities: List<String>) {
+        val types = HashSet<EntityType<*>>()
+        for (id in excludedEntities) {
+            val identifier = Identifier.tryParse(id) ?: continue
+            BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).ifPresent { types += it }
+        }
+        excludedTypes = types
+    }
+
+    /** Whether Module 2 leaves [type]'s models on the CPU path; per entity per frame, no allocation. */
+    @JvmStatic
+    fun excludes(type: EntityType<*>?): Boolean = type != null && excludedTypes.isNotEmpty() && type in excludedTypes
 
     fun setActive(active: Boolean) {
         if (this.active == active) return
@@ -96,10 +128,12 @@ object PartTransform {
         color: Int
     ): Boolean {
         if (Sections.skipModelVertices) return true
-        if (!active) return false
+        if (!active || excluded) return false
         try {
             return tryCompile(cubes, pose, consumer, light, overlay, color)
         } catch (e: Throwable) {
+            // Vertices this part reserved may be left without records; the upload hook blanks them ([afterUpload]).
+            failedThisFrame = true
             Fallback.moduleFailed(Module.PART_TRANSFORM, e)
             return false
         }
@@ -298,13 +332,18 @@ object PartTransform {
     fun afterUpload(staged: StagedVertexBuffer) {
         val batch = (staged as PartStaged).`mobium$batch`() ?: return
         if (batch.isEmpty) return
+        val vertexBuffer = staged.`mobium$vertexBuffer`() as GlBuffer
         try {
-            val vertexBuffer = staged.`mobium$vertexBuffer`() as GlBuffer
             batch.resolveSlots()
-            ExpandPass.dispatch(batch, vertexBuffer.handle())
-            if (validating) PartValidation.check(staged, vertexBuffer.handle())
+            if (failedThisFrame) {
+                blank(batch, vertexBuffer.handle())
+            } else {
+                ExpandPass.dispatch(batch, vertexBuffer.handle())
+                if (validating) PartValidation.check(staged, vertexBuffer.handle())
+            }
         } catch (e: Throwable) {
             Fallback.moduleFailed(Module.PART_TRANSFORM, e)
+            runCatching { blank(batch, vertexBuffer.handle()) }
         } finally {
             batch.clear()
         }
@@ -335,9 +374,25 @@ object PartTransform {
         if (validating) PartValidation.discard(staged)
     }
 
+    /**
+     * After a failure: zeroes the vertices reserved in [batch], which the upload left out, so that this one frame draws
+     * nothing for them (all at the origin, without area) instead of whatever the memory held. The parts that failed
+     * were compiled by vanilla as well; from the next frame on the module is off.
+     */
+    private fun blank(batch: PartBatch, vertexBuffer: Int) {
+        for (slot in 0 until batch.draws.size) {
+            val base = (batch.draws[slot] as PartDraw).`mobium$vertexOffset`().toLong()
+            val ranges = batch.reserved(slot)
+            for (i in 0 until ranges.count) {
+                GlCompute.clear(vertexBuffer, base + ranges.start(i), (ranges.end(i) - ranges.start(i)).toLong())
+            }
+        }
+    }
+
     /** Closes the frame's counters; called once per frame. */
     @JvmStatic
     fun endFrame() {
+        failedThisFrame = false
         lastParts = parts
         lastQuads = quads
         parts = 0

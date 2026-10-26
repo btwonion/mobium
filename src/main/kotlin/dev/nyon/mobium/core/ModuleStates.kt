@@ -61,8 +61,9 @@ object ModuleStates {
         if (shaderPackInUse() != shaderPack) refresh(if (shaderPack) "shader pack off" else "shader pack on")
     }
 
-    /** Hands the states to the module code. While a benchmark plan runs, it decides the static cache itself. */
+    /** Hands the states to the module code. While a benchmark plan runs, it decides the modules itself. */
     private fun apply() {
+        PartTransform.configure(config.parts.excludedEntities)
         if (BenchSuite.isActive) return
         StaticCache.setActive(isActive(Module.STATIC_CACHE) && StaticCache.anyTypeAllowed())
         PartTransform.setActive(isActive(Module.PART_TRANSFORM))

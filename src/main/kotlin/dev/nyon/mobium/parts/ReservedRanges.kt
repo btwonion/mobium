@@ -11,8 +11,14 @@ import java.nio.ByteBuffer
  */
 class ReservedRanges {
     private var bounds = IntArray(64)
-    private var count = 0
     private var cursor = 0
+
+    var count = 0
+        private set
+
+    fun start(range: Int): Int = bounds[range * 2]
+
+    fun end(range: Int): Int = bounds[range * 2 + 1]
 
     fun clear() {
         count = 0
