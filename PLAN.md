@@ -745,22 +745,47 @@ stale kit. Full round with entities cached (A–D) in `docs/benchmarks.md` (*21�
 projects and their IDs, then `release.yml` (§10).
 
 ### M6 · Module 2, GPU part transform (Phase 2) → Gate C
-- [ ] `MeshPool`: first time a `ModelPart` is seen, write its cuboids once in local space; keyed by part
-      identity so EMF parts work; cleared on resource reload.
-- [ ] `PartWalker` + `PartRecords`: after `setupAnim`, walk the tree exactly like vanilla (visibility, skip
-      flags, child order) and write one record per visible part into the off-heap ring buffer.
-- [ ] Per-submit safety checks: vertex consumer must be the frame's own buffer for a known render type, and the
-      active vertex format must be one `VertexFormats` knows; otherwise vanilla.
-- [ ] `ExpandPass`: GLSL 430 compute shader per output format (vanilla entity format, Iris extended), one dispatch
-      per render type, memory barrier, then draw the ring range through vanilla's draw call in vanilla's order.
-- [ ] Effects in the first version: light, hurt overlay, tint, UV mapping (armour trims, atlas sprites), ETF
-      emissive pass. Glint, outline and breaking overlay stay vanilla.
-- [ ] Reference test: a pure-Kotlin implementation of the expand math, unit-tested against vertices captured
-      from vanilla in a gametest; the compute shader must match it.
-- [ ] Banners, bells, conduits and lecterns move onto this path.
-- [ ] `/mobium gatec`: records `mob_pen_live` with Module 2 off and on in one session (three runs each, medians, as
+- [x] `MeshPool`: first time a cube is seen, write its faces once in local space; kept on the cube itself
+      (`PartMeshHolder`), so EMF's cubes work; written again after a resource reload, level change or render
+      distance change. *Changed in M6:* per cube, in the layout of the path that would have drawn it: polygons for
+      vanilla and EMF cubes, Sodium's `ModelCuboid` (corner origin, sizes, its face order) for vanilla cubes with
+      Sodium (`parts/MeshPool.kt`, `parts/SodiumCubes.kt`).
+- [x] `PartWalker` + `PartRecords`. *Changed in M6:* Module 2 does not walk the tree itself. EMF overrides
+      `ModelPart.render` and `compile` and animates inside `render`, so vanilla's and EMF's walks run as before and
+      Module 2 replaces each part's `compile` (`ModelPartMixin`, `compat.emf.EmfModelPartMixin`): it reserves the
+      part's vertices in the staged builder (as after a Sodium push, so Iris's per-vertex state stays as it would be)
+      and writes one part record (pose, normal matrix, light, overlay, colour, sprite, Iris's ids) and one record per
+      cube (`parts/PartTransform.kt`, `parts/PartBatch.kt`). The records are per staged buffer and frame, off-heap.
+- [x] Per-submit safety checks, per part: the consumer is a builder the frame's staged buffer opened (directly or
+      through an atlas sprite), its draw is unsorted, its format is the entity format or Iris's, every cube is a
+      vanilla cube or an `EMFCube`; otherwise vanilla compiles. Entity types in `parts.excludedEntities` stay vanilla.
+- [x] `ExpandPass`: one GLSL 430 compute shader (`assets/mobium/shaders/expand_parts.comp`) for both formats and
+      both cube layouts, one dispatch per staged buffer right after its `upload()` (the level's, Iris's shadow pass's,
+      the hand's, GUI ones), writing into the uploaded vertex buffer, then a vertex-attribute barrier; vanilla's own
+      draws draw it in vanilla's order. The upload leaves the reserved bytes out of its copy. Every float operation
+      is the Java code's own, in its order, with correctly rounded square roots and divisions (`docs/vanilla-notes.md`
+      §16).
+- [x] Effects in the first version: light, hurt overlay, tint, UV mapping (armour trims, atlas sprites), ETF's
+      emissive pass where it draws unsorted. Glint, outline and breaking overlay stay vanilla (other formats or
+      consumers).
+- [x] Reference test. *Changed in M6:* the CPU path itself is the reference. `parts/PartValidation.kt` compiles every
+      part Module 2 takes over on the CPU too and compares the GPU's vertices with it byte for byte: in the self-check
+      (`--mode parts`, the dev GPU) and in the Fabric gametests (Mesa's software renderer in CI). A Kotlin copy of the
+      shader's math would only have tested the copy; the 24k wrong normals Mesa's double square root produced on the
+      Arc 140V were found this way.
+- [x] Banners, bells, conduits and lecterns move onto this path: their models are model parts, so Module 2 takes
+      them like the mobs' (`part_gallery` scene: 0 differing vertices, pictures identical; translucent banner patterns
+      stay vanilla without improved transparency).
+- [x] `/mobium gatec`: records `mob_pen_live` with Module 2 off and on in one session (three runs each, medians, as
       `/mobium gateb`) and prints Gate C's numbers: `prepare` + `shadow_prepare` without over with Module 2 (target
       ≥ 1.5× in D) and the frame time with over without (target ≤ 1.03×); run in setup C, then in D.
+
+Status (26 Oct 2026): built on `m6-part-transform`. Self-check `--mode parts` on Fabric 25/25 (setups A, B, D, C:
+0 differing vertices; pictures identical, within the pack's own noise in the part gallery with Complementary), NeoForge
+without shader pack; the regular self-check passes on both loaders with Module 2 on (Fabric 74/74, NeoForge 67/67).
+Dev-client measurement (`--mode profile-mobs`, window 854×480, `docs/benchmarks.md` *Module 2, first measurement*):
+`prepare` + `shadow_prepare` in D 2.1× lower, frames 1.11× (D), 1.25× (C) and 1.22× (vanilla models) faster. Gate C
+waits for Anton's `/mobium gatec` in setups C and D.
 
 **Gate C** (redefined a second time with Anton on 25 Oct 2026, after measuring what Module 2 can reach):
 - in setup D (Sodium + EMF/ETF + Fresh Animations + Iris with Complementary Reimagined), `mob_pen_live`'s entity CPU
