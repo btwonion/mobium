@@ -339,7 +339,7 @@ object BenchSuite {
     /** Gate C's numbers from the medians, or null while one of the two sides has no run yet. */
     private fun gateC(medians: List<Medians>): GateC? {
         fun run(parts: Boolean): GateC.Run? {
-            val median = medians.firstOrNull { it.setup.endsWith(PARTS) == parts } ?: return null
+            val median = medians.firstOrNull { (PARTS in it.setup) == parts } ?: return null
             return GateC.Run(median.avgMs, median.prepareMs, median.shadowPrepareMs)
         }
         return GateC.of(run(false), run(true))

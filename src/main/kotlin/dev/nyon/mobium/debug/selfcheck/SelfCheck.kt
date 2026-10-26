@@ -141,10 +141,11 @@ object SelfCheck {
         this.directory = directory
         Files.createDirectories(directory.resolve("screenshots"))
         Mobium.LOGGER.info("Mobium self-check started ({} on {}{})", Compat.LOADER, minecraft.gameDirectory, if (mode.isEmpty()) "" else ", $mode")
-        steps = when (mode) {
+        val argument = mode.substringAfter(' ', "")
+        steps = when (mode.substringBefore(' ')) {
             IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
             PROFILE -> profile(minecraft)
-            PROFILE_MOBS -> profileMobs(minecraft)
+            PROFILE_MOBS -> profileMobs(minecraft, argument.ifEmpty { MOB_SCENE })
             PARTS -> parts(minecraft)
             GATE_B -> gateB(minecraft)
             GALLERY_ONLY -> galleryOnly(minecraft)
@@ -447,11 +448,13 @@ object SelfCheck {
      * `mobium-selfcheck/mob_pen_live-{plain,c,d}.jfr`. The measurement basis for Module 2: how much of the model
      * tessellation is the vertex work it replaces.
      */
-    private fun profileMobs(minecraft: Minecraft) = sequence {
+    private fun profileMobs(minecraft: Minecraft, scene: String) = sequence {
         snapshotOptions(minecraft)
         titleScreen(minecraft)
         val saved = config.deepCopy()
-        applyConfig(Config())
+        // Another scene than the mob pens measures what Module 2 does for its block entities: the static cache is off.
+        val mobs = scene == MOB_SCENE
+        applyConfig(Config().also { if (!mobs) it.cache.enabled = false })
         minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
         minecraft.options.enableVsync().set(false)
         minecraft.createWorldOpenFlows().openWorld(WORLD) { }
@@ -463,26 +466,28 @@ object SelfCheck {
         repository.reload()
         val fresh = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
         if (fresh == null) results += "NOTE no Fresh Animations zip in resourcepacks/, setup C runs without it"
-        if (buildScene(minecraft, MOB_SCENE)) {
-            recordMobs(minecraft, "plain")
-            if (fresh != null) {
+        if (buildScene(minecraft, scene)) {
+            recordMobs(minecraft, scene, "plain")
+            if (!mobs) {
+                // Only the vanilla models for other scenes.
+            } else if (fresh != null) {
                 repository.addPack(fresh)
                 minecraft.options.updateResourcePacks(repository)
                 yield(ticks(10))
                 yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
             }
-            recordMobs(minecraft, "c")
-            val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            if (mobs) recordMobs(minecraft, scene, "c")
+            val pack = if (mobs && Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
             if (pack == null) {
                 results += "NOTE no shader pack, setup D skipped"
             } else {
                 val restore = IrisCheck.select(pack, emptyMap())
                 yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
-                recordMobs(minecraft, "d")
+                recordMobs(minecraft, scene, "d")
                 restore()
                 yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
             }
-            if (fresh != null) {
+            if (mobs && fresh != null) {
                 repository.removePack(fresh)
                 minecraft.options.updateResourcePacks(repository)
                 yield(ticks(10))
@@ -501,7 +506,7 @@ object SelfCheck {
      * the most Module 2 can take off the CPU. The first run with Module 2 is recorded with Java Flight Recorder (method
      * samples every millisecond).
      */
-    private suspend fun SequenceScope<Wait>.recordMobs(minecraft: Minecraft, setup: String) {
+    private suspend fun SequenceScope<Wait>.recordMobs(minecraft: Minecraft, scene: String, setup: String) {
         yield(ticks(10 * TICKS_PER_SECOND))
         Sections.forceTimers = true
         val names = listOf("Module 2 off", "Module 2 on", "no vertices")
@@ -526,7 +531,7 @@ object SelfCheck {
             recording?.stop()
             frameMs[condition] += (System.nanoTime() - start) / 1e6 / (Sections.frame - framesBefore) / 2
             if (recording != null) {
-                val file = directory.resolve("$MOB_SCENE-$setup.jfr")
+                val file = directory.resolve("$scene-$setup.jfr")
                 recording.dump(file)
                 recording.close()
                 check("recorded $file", Files.size(file) > 0)
@@ -538,7 +543,7 @@ object SelfCheck {
         ModuleStates.refresh("self-check")
         val window = minecraft.window
         for ((index, name) in names.withIndex()) {
-            results += String.format(Locale.ROOT, "NOTE setup %s, %s, window %dx%d: frame %.2f ms; ", setup, name, window.width, window.height, frameMs[index]) +
+            results += String.format(Locale.ROOT, "NOTE %s, setup %s, %s, window %dx%d: frame %.2f ms; ", scene, setup, name, window.width, window.height, frameMs[index]) +
                 Sections.NAMES.indices.filter { sums[index][it] > 0.0005 }
                     .joinToString { String.format(Locale.ROOT, "%s %.3f", Sections.NAMES[it], sums[index][it]) }
         }

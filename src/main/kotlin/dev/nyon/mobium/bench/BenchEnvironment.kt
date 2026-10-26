@@ -50,9 +50,10 @@ object BenchEnvironment {
     fun detectSetup(): String {
         val parts = ArrayList<String>()
         parts += setupWithoutMobium()
+        // Before the cache's suffixes, which Gate A and B look for at the end.
+        if (PartTransform.active) parts += "parts"
         if (StaticCache.active) parts += "cache"
         if (StaticCache.active && StaticCache.skipDraws) parts += "nodraw"
-        if (PartTransform.active) parts += "parts"
         return parts.joinToString("+")
     }
 

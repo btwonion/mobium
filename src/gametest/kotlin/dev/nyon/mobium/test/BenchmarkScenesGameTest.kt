@@ -18,6 +18,8 @@ import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.debug.DebugLines
 import dev.nyon.mobium.debug.Sections
+import dev.nyon.mobium.parts.PartTransform
+import dev.nyon.mobium.parts.PartValidation
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Options
 import net.minecraft.client.gui.components.debug.DebugScreenEntries
@@ -71,8 +73,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
             // The baselines are vanilla's pictures; each static scene is then compared with the cache on.
             setCache(context, false)
 
-            // The gallery comes before the mob pens: the smoke of 500 removed mobs would still be in its pictures.
-            for (scene in SCENES.take(4) + GALLERY + SCENES.drop(4)) {
+            // The galleries come before the mob pens: the smoke of 500 removed mobs would still be in their pictures.
+            for (scene in SCENES.take(4) + GALLERY + PART_GALLERY + SCENES.drop(4)) {
                 singleplayer.server.runCommand("execute as @a at @s run function $NAMESPACE:$scene")
                 singleplayer.server.waitFor({ server -> isReady(server) }, SCENE_TIMEOUT_TICKS)
                 singleplayer.connection.waitForChunksRender()
@@ -83,6 +85,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 val vanilla = context.takeScreenshot("scene_$scene")
                 if (scene in COMPARED_SCENES) compareWithCache(context, scene, vanilla)
                 if (scene == GALLERY) singleplayer.server.runCommand("tick unfreeze")
+                if (scene in PART_SCENES) checkParts(context, singleplayer, scene)
                 if (scene == "storage_room") checkGateA(context)
             }
 
@@ -90,6 +93,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
             checkDebugEntry(context)
             checkSuiteCommand(context)
             checkGateB(context)
+            checkGateC(context)
             setCache(context, true)
         }
     }
@@ -99,6 +103,61 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         context.runOnClient<RuntimeException> {
             config.cache.enabled = enabled
             ModuleStates.refresh("gametest")
+        }
+    }
+
+    private fun setParts(context: ClientGameTestContext, enabled: Boolean) {
+        context.runOnClient<RuntimeException> {
+            config.parts.enabled = enabled
+            ModuleStates.refresh("gametest")
+        }
+    }
+
+    /**
+     * Module 2 in [scene] with ticks frozen: the GPU's vertices against the CPU's for every part it takes over
+     * ([PartValidation], byte for byte; CI runs Mesa's llvmpipe), then its picture against the picture with Module 2
+     * off.
+     */
+    private fun checkParts(context: ClientGameTestContext, singleplayer: TestSingleplayerContext, scene: String) {
+        singleplayer.server.runCommand("tick freeze")
+        setParts(context, false)
+        context.waitTicks(SETTLE_TICKS)
+        val vanilla = context.takeScreenshot("scene_${scene}_parts_off")
+        setParts(context, true)
+        context.waitTicks(SETTLE_TICKS)
+        context.runOnClient<RuntimeException> {
+            check(PartTransform.active) { "Module 2 did not start: ${ModuleStates.status(Module.PART_TRANSFORM).describe()}" }
+            PartValidation.reset()
+            PartTransform.validating = true
+        }
+        context.waitTicks(VALIDATION_TICKS)
+        context.runOnClient<RuntimeException> {
+            PartTransform.validating = false
+            LOGGER.info("Module 2 validation ({}): {}; {}", scene, PartValidation.summary(), PartTransform.debugLine())
+            check(PartValidation.compared > 0 && PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0) {
+                "Module 2's vertices differ from the CPU's in $scene: ${PartValidation.summary()} ${PartValidation.reports}"
+            }
+        }
+        val parts = context.takeScreenshot("scene_${scene}_parts")
+        singleplayer.server.runCommand("tick unfreeze")
+        ScreenshotDiff.compare(vanilla, parts).also { diff ->
+            LOGGER.info("Module 2 screenshot diff ({}): {}", scene, diff)
+            check(diff.changedFraction <= MAX_DIFFERING_FRACTION) { "Module 2 changes $scene: $diff (see ${diff.diffImage})" }
+        }
+    }
+
+    /** A short `/mobium gatec`: `mob_pen_live` with Module 2 off and on, Gate C's numbers, Module 2 restored. */
+    private fun checkGateC(context: ClientGameTestContext) {
+        val gate = runPlan(context, "mobium gatec $BENCH_SECONDS 1", "gatec-")
+        val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
+        check(setups.size == 2 && setups.count { "+parts" in it } == 1) { "Unexpected Gate C rows: $gate" }
+        fun value(name: String) = gate.single { it.startsWith("# $name,") }.substringAfter(',').toDouble()
+        LOGGER.info(
+            "Gate C first look (/mobium gatec {} 1): entity CPU work {}x lower with Module 2, frame {}x",
+            BENCH_SECONDS, value("gate_c_cpu_without_over_with"), value("gate_c_frame_with_over_without")
+        )
+        context.runOnClient<RuntimeException> {
+            check(PartTransform.active && config.parts.enabled) { "/mobium gatec did not restore Module 2" }
         }
     }
 
@@ -358,6 +417,14 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
         /** Not a benchmark scene: every cached type side by side (benchmark/generate.py). */
         const val GALLERY = "cache_gallery"
+
+        /** Not a benchmark scene: models Module 2 expands besides the mob pens (benchmark/generate.py). */
+        const val PART_GALLERY = "part_gallery"
+
+        /** Where Module 2 is compared with vanilla, with ticks frozen. */
+        val PART_SCENES = setOf(PART_GALLERY, "mob_pen_static")
+
+        const val VALIDATION_TICKS = 10
 
         /** The scenes where nothing moves, so vanilla's and the cache's pictures can be compared. */
         val COMPARED_SCENES = setOf("control", "storage_room", "map_wall", "display_build", GALLERY)
