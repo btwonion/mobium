@@ -34,8 +34,9 @@ Read this first when picking the work up in a new session.
   (vanilla cubes as vanilla or Sodium writes them, EMF's cubes, in Iris's formats and its shadow pass too), and the
   GPU writes exactly the vertices the CPU would have: the self-check (`--mode parts`) and the gametests compare them
   byte for byte, 0 differences in every setup; pictures identical. `mob_pen_live` in the dev client: entity CPU work in
-  D 2.12× lower, frames 1.11–1.25× faster (`docs/benchmarks.md` *Module 2, first measurement*). Version `0.1.0-beta3`
-  in `gradle.properties` (Anton may prefer `0.2.0` for a new module); `changelog.md` holds its notes.
+  D 2.12× lower, frames 1.11–1.25× faster (`docs/benchmarks.md` *Module 2, first measurement*). Version `0.2.0-beta1`
+  in `gradle.properties` (Anton's choice on 26 Oct 2026: a new module is a new minor version); `changelog.md` holds
+  its notes.
   - **Gate C, redefined a second time with Anton on 25 Oct 2026** (§M6): in D, `prepare` + `shadow_prepare` of
     `mob_pen_live` at least 1.5× lower with Module 2; in C and D its frame no slower (≤ 1.03×). The first two
     definitions (1.5× frame time in D, then in C) were out of reach because Fresh Animations animates inside
@@ -888,7 +889,7 @@ benchmark numbers if performance changed.
 - [x] Anton's go for the release (25 Oct 2026).
 - [x] Run `release.yml` (manual dispatch on `main`; Anton): released on 25 Oct 2026 (run 40224786286).
 
-Next release (`0.1.0-beta3` in `gradle.properties`, or `0.2.0` if Anton prefers; Module 2, M6):
+`0.2.0-beta1` (Module 2, M6; `mod.major-version=0.2.0`, `mod.beta=1`, Anton's choice on 26 Oct 2026):
 
 - [x] Gate C passed: Anton's `/mobium gatec` in setups C and D on 26 Oct 2026 (D: 1.90× lower CPU work, frame 0.84×;
       C: frame 0.80×), results in `docs/benchmarks.md` and `docs/benchmarks/results/2026-10-26-thinkpad-x9/`.
