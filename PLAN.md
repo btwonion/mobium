@@ -779,7 +779,9 @@ projects and their IDs, then `release.yml` (§10).
 
 Status (26 Oct 2026): built on `m6-part-transform`. Self-check `--mode parts` on Fabric 25/25 (setups A, B, D, C:
 0 differing vertices; pictures identical, within the pack's own noise in the part gallery with Complementary), NeoForge
-without shader pack; the regular self-check passes on both loaders with Module 2 on (Fabric 74/74, NeoForge 67/67).
+13/13 (no shader pack there); the regular self-check passes on both loaders with Module 2 on (Fabric 74/74, NeoForge
+67/67); `./gradlew build` with the gametests (0 of 7.9M vertices differ in `mob_pen_static`). No allocation in Module
+2's per-part path (JFR allocation samples in setups plain, C and D).
 Dev-client measurement (`--mode profile-mobs`, window 854×480, `docs/benchmarks.md` *Module 2, first measurement*):
 `prepare` + `shadow_prepare` in D 2.1× lower, frames 1.11× (D), 1.25× (C) and 1.22× (vanilla models) faster. Gate C
 waits for Anton's `/mobium gatec` in setups C and D.

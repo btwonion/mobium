@@ -504,7 +504,7 @@ object SelfCheck {
      * [MOB_SCENE] for 6 × 8 s, alternating Module 2 off, Module 2 on and [Sections.skipModelVertices] (the models write
      * no vertices, so they vanish), with the stage timers sampled once a second (each a 64-frame average). The last is
      * the most Module 2 can take off the CPU. The first run with Module 2 is recorded with Java Flight Recorder (method
-     * samples every millisecond).
+     * samples every millisecond, allocation samples).
      */
     private suspend fun SequenceScope<Wait>.recordMobs(minecraft: Minecraft, scene: String, setup: String) {
         yield(ticks(10 * TICKS_PER_SECOND))
@@ -521,6 +521,8 @@ object SelfCheck {
             yield(ticks(2 * TICKS_PER_SECOND))
             val recording = if (round == 1) Recording(Configuration.getConfiguration("profile")) else null
             recording?.enable("jdk.ExecutionSample")?.withPeriod(Duration.ofMillis(1))
+            // Allocation samples too: Module 2's per-part path must not allocate (PLAN.md §8).
+            recording?.enable("jdk.ObjectAllocationSample")?.with("throttle", "1000/s")?.withStackTrace()
             val framesBefore = Sections.frame
             val start = System.nanoTime()
             recording?.start()
