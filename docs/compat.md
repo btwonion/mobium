@@ -59,6 +59,9 @@ paused). The Fabric gametests run the same validation on Mesa's software rendere
 
 ## Known differences and limits
 
+- Minecraft's Vulkan renderer (also with Vitrail, which runs OptiFine-format shader packs on it): both modules need the
+  OpenGL backend and stay off (F3 `mobium:modules`: `backend`), so the game draws everything itself. The rule is
+  unit-tested (`ModuleRulesTest`); Mobium has not been started on Vulkan in game yet. Vulkan support is M7.
 - Text drawn with a resource pack's antialiased (TrueType) font: vanilla draws a sign's glyphs in submission order
   among all solid-phase text; overlapping half-transparent glyph edges of the 8× glow-ink outline could blend in a
   different order. Not seen with the default font, whose glyphs are fully opaque or fully transparent.

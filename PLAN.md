@@ -13,9 +13,9 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#15 are merged; `main` has M0–M5 (#7), the release preps
-  (#8, #13, #14), the new icon (#10), the beta2 work (#11, #12) and the switch to GPL-3.0 (#15, 25 Oct 2026). One
-  branch from `main` per milestone, one PR against `main`; merging is Anton's call.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#16 are merged; `main` has M0–M5 (#7), the release preps
+  (#8, #13, #14), the new icon (#10), the beta2 work (#11, #12), the switch to GPL-3.0 (#15, 25 Oct 2026) and M6
+  (#16, 26 Oct 2026). One branch from `main` per milestone, one PR against `main`; merging is Anton's call.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
   `.github/workflows/build-commit.yml`); `release.yml` does the same. Mesa's software renderer has compute shaders and
@@ -29,8 +29,8 @@ Read this first when picking the work up in a new session.
   `v0.1.0-beta2-26.3+fabric` / `+neoforge`), both beta on Modrinth `mobium` (`8i5oedw8`) and CurseForge `mobium-perf`
   (`1759818`). Never run `release.yml` or `releaseMod` yourself. No tester reports so far
   (`.github/ISSUE_TEMPLATE/bug_report.yml`).
-- **Now M6** (Module 2, GPU part transform → Gate C), branch `m6-part-transform`, PR open for Anton (see §M6, *Status*).
-  Built and verified in the dev clients: Module 2 takes every model part drawn into a staged entity-format draw
+- **M6 merged** (#16, 26 Oct 2026; Module 2, GPU part transform, see §M6, *Status*). Built and verified in the dev
+  clients: Module 2 takes every model part drawn into a staged entity-format draw
   (vanilla cubes as vanilla or Sodium writes them, EMF's cubes, in Iris's formats and its shadow pass too), and the
   GPU writes exactly the vertices the CPU would have: the self-check (`--mode parts`) and the gametests compare them
   byte for byte, 0 differences in every setup; pictures identical. `mob_pen_live` in the dev client: entity CPU work in
@@ -43,10 +43,14 @@ Read this first when picking the work up in a new session.
     `ModelPart.render` and the shader pack's GPU work dominates D (`docs/benchmarks.md` *Gate C: what M6 can reach*).
   - **Gate C passed on 26 Oct 2026** (§M6): in D the entity CPU work 1.90× lower, frames 1.18× (D) and 1.25× (C)
     faster at 1920×1080 (`docs/benchmarks.md` *Gate C: passed*).
-  - **Left for Anton:** the PR's visual checks (*How to verify* step 4) and the merge. Then the release prep (§10:
-    README for Module 2, a benchmark round A–D, then `release.yml`).
+  - Anton's visual checks (#16's *How to verify* step 4) done and #16 merged on 26 Oct 2026.
+  - **Now the release prep for `0.2.0-beta1`** (§10), branch `release-0.2.0-beta1`: README for Module 2 (PR open; merge
+    it right before `release.yml`, because `readme-modrinth-sync.yml` publishes README changes on `main` at once).
+    Anton runs the benchmark round A–D (started 26 Oct 2026) with the Prism instances' jar built from `b41d342`
+    (named `0.1.0-beta3`): `main` differs from it only in `gradle.properties`' version, so it measures the release's
+    code. Then `release.yml` (Anton).
   - Known limits (`docs/compat.md`): translucent models without improved transparency (sorted on upload), glint,
-    outline and breaking overlay stay on the CPU; Vulkan has no Module 2 until M7.
+    outline and breaking overlay stay on the CPU; on Vulkan both modules stay off (`OffReason.BACKEND`) until M7.
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
   `beta2-cache-followups`, 23 Oct 2026):
   - [x] one light epoch for the whole level sent every cached object through the full check after any light update.
@@ -816,6 +820,9 @@ round), then 1.5× frame time in C and no slower in D (first redefinition, 25 Oc
       before that). Vulkan becomes the default there.
 - [ ] `VkCompute` on the game's own Vulkan device and queue; same GLSL compiled to SPIR-V.
 - [ ] Aperture (Iris's Vulkan successor) support once public; contact the Iris team before starting.
+- [ ] Vitrail (runs OptiFine-format shader packs on the game's Vulkan renderer; 0.7 beta for Fabric and NeoForge since
+      Aug 2026; asked about on 26 Oct 2026): check how it changes entity vertex formats and the shadow pass once
+      Mobium runs on Vulkan. Until then Mobium is off on Vulkan (README *FAQ*).
 - [ ] Module 3 (`lod/`): throttle by projected size; hurt flash, death animation and targeted mob always full
       rate; presets Off / Subtle / Aggressive; per-type exclusions; exclude EMF-animated models until tested.
 - [ ] Glint and outline passes generated from the same records.
@@ -895,12 +902,13 @@ benchmark numbers if performance changed.
       C: frame 0.80×), results in `docs/benchmarks.md` and `docs/benchmarks/results/2026-10-26-thinkpad-x9/`.
 - [x] `changelog.md` contains only this release's notes (26 Oct 2026: Module 2, `/mobium gatec`, GPL-3.0).
 - [x] `docs/compat.md` updated for Module 2 (26 Oct 2026).
-- [ ] `README.md` describes Module 2 (in the release prep: `readme-modrinth-sync.yml` publishes every README change on
-      `main` to Modrinth, so it must not describe an unreleased module).
+- [x] `README.md` describes Module 2 (26 Oct 2026, branch `release-0.2.0-beta1`; merge right before `release.yml`:
+      `readme-modrinth-sync.yml` publishes every README change on `main` to Modrinth, so it must not describe an
+      unreleased module).
 - [x] Self-check on both loaders with Module 2 on (26 Oct 2026: regular Fabric 74/74, NeoForge 67/67; `--mode parts`
       on Fabric 25/25, NeoForge without the shader pack).
 - [ ] Benchmark round A–D on the release build.
-- [ ] Anton's visual checks of the M6 PR's *How to verify*.
+- [x] Anton's visual checks of the M6 PR's *How to verify* (#16, 26 Oct 2026).
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
 ---
