@@ -40,9 +40,10 @@ Read this first when picking the work up in a new session.
     `mob_pen_live` at least 1.5× lower with Module 2; in C and D its frame no slower (≤ 1.03×). The first two
     definitions (1.5× frame time in D, then in C) were out of reach because Fresh Animations animates inside
     `ModelPart.render` and the shader pack's GPU work dominates D (`docs/benchmarks.md` *Gate C: what M6 can reach*).
-  - **Left for Anton:** `/mobium gatec` in setups C and D (rebuild the instances from this branch first:
-    `./gradlew :26.3-fabric:benchKit && python3 benchmark/prism_instances.py`), the PR's *How to verify*, and the
-    merge. Then the release prep (§10: README for Module 2, then `release.yml`).
+  - **Gate C passed on 26 Oct 2026** (§M6): in D the entity CPU work 1.90× lower, frames 1.18× (D) and 1.25× (C)
+    faster at 1920×1080 (`docs/benchmarks.md` *Gate C: passed*).
+  - **Left for Anton:** the PR's visual checks (*How to verify* step 4) and the merge. Then the release prep (§10:
+    README for Module 2, a benchmark round A–D, then `release.yml`).
   - Known limits (`docs/compat.md`): translucent models without improved transparency (sorted on upload), glint,
     outline and breaking overlay stay on the CPU; Vulkan has no Module 2 until M7.
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
@@ -783,8 +784,13 @@ Status (26 Oct 2026): built on `m6-part-transform`. Self-check `--mode parts` on
 67/67); `./gradlew build` with the gametests (0 of 7.9M vertices differ in `mob_pen_static`). No allocation in Module
 2's per-part path (JFR allocation samples in setups plain, C and D).
 Dev-client measurement (`--mode profile-mobs`, window 854×480, `docs/benchmarks.md` *Module 2, first measurement*):
-`prepare` + `shadow_prepare` in D 2.1× lower, frames 1.11× (D), 1.25× (C) and 1.22× (vanilla models) faster. Gate C
-waits for Anton's `/mobium gatec` in setups C and D.
+`prepare` + `shadow_prepare` in D 2.1× lower, frames 1.11× (D), 1.25× (C) and 1.22× (vanilla models) faster.
+
+**Status (26 Oct 2026): Gate C passed.** Anton's `/mobium gatec` in setups C and D (build `b41d342`, 1920×1080, mains
+power, medians of 3; `docs/benchmarks.md` *Gate C: passed*): in D `prepare` + `shadow_prepare` 13.70 → 7.22 ms,
+**1.90× lower**; frames with over without Module 2 **0.84×** in D (65.57 → 55.37 ms) and **0.80×** in C (9.05 → 7.23
+ms), i.e. faster, not just no slower; zero screenshot differences (self-check and gametests, both loaders). The iGPU
+clocked higher with Module 2 (shared power budget), so the frames gained more than the CPU time saved.
 
 **Gate C** (redefined a second time with Anton on 25 Oct 2026, after measuring what Module 2 can reach):
 - in setup D (Sodium + EMF/ETF + Fresh Animations + Iris with Complementary Reimagined), `mob_pen_live`'s entity CPU
@@ -884,8 +890,8 @@ benchmark numbers if performance changed.
 
 Next release (`0.1.0-beta3` in `gradle.properties`, or `0.2.0` if Anton prefers; Module 2, M6):
 
-- [ ] Gate C passed: Anton's `/mobium gatec` in setups C and D, results committed to `docs/benchmarks.md` and
-      `docs/benchmarks/results/`.
+- [x] Gate C passed: Anton's `/mobium gatec` in setups C and D on 26 Oct 2026 (D: 1.90× lower CPU work, frame 0.84×;
+      C: frame 0.80×), results in `docs/benchmarks.md` and `docs/benchmarks/results/2026-10-26-thinkpad-x9/`.
 - [x] `changelog.md` contains only this release's notes (26 Oct 2026: Module 2, `/mobium gatec`, GPL-3.0).
 - [x] `docs/compat.md` updated for Module 2 (26 Oct 2026).
 - [ ] `README.md` describes Module 2 (in the release prep: `readme-modrinth-sync.yml` publishes every README change on
