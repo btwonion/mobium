@@ -1,0 +1,6 @@
+scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms,extract_entities_ms,extract_block_entities_ms,submit_entities_ms,submit_block_entities_ms,pose_entities_ms,pose_block_entities_ms,tessellate_entities_ms,tessellate_block_entities_ms,prepare_ms,draw_ms,shadow_ms,shadow_extract_ms,shadow_submit_ms,shadow_pose_ms,shadow_tessellate_entities_ms,shadow_tessellate_block_entities_ms,shadow_prepare_ms,shadow_draw_ms
+mob_pen_live,sodium+iris+emf+fa+cache,3,65.5674,15.25,13.00,73.0482,1.1066,0.0041,3.1660,0.0019,0.2420,0.0000,9.1460,0.0000,11.0679,0.0465,5.0568,0.4883,0.4672,0.0806,2.0424,0.0000,2.6346,0.1160
+mob_pen_live,sodium+iris+emf+fa+parts+cache,3,55.3689,18.06,14.55,64.8755,1.1348,0.0043,3.3333,0.0022,0.2332,0.0000,5.1704,0.0000,6.2046,0.0458,3.1271,0.4503,0.4683,0.0739,0.7309,0.0000,1.0176,0.0841
+# gate_c_cpu_without_over_with,1.897
+# gate_c_frame_with_over_without,0.844
+# build,b41d342

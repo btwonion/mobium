@@ -685,6 +685,27 @@ and the upload leaving the reserved bytes out. Timer averages in ms:
   2.17 ms (window 1423×800, `--scene storage_room`).
 - Fabric gametest (`/mobium gatec 5 1`, gametest window): entity CPU work 1.91× lower, frame 0.72× the frame without.
 
+#### Gate C: passed (26 Oct 2026)
+
+Anton's `/mobium gatec` (60 s, 3 runs each way, alternating) in the Prism instances C and D, build `b41d342` (the
+`m6-part-transform` branch), 1920×1080, mains power; files in `docs/benchmarks/results/2026-10-26-thinkpad-x9/`.
+Medians, ms:
+
+| `mob_pen_live` | Module 2 off | Module 2 on | Gate C |
+| --- | --- | --- | --- |
+| D: `prepare` + `shadow_prepare` | 11.07 + 2.63 = 13.70 | 6.20 + 1.02 = 7.22 | **1.90× lower** (target ≥ 1.5×): passed |
+| D: frame | 65.57 (15.3 FPS) | 55.37 (18.1 FPS) | **0.84×** (target ≤ 1.03×): passed, 1.18× faster |
+| C: `prepare` | 5.32 | 3.72 | 1.43× lower (no target in C) |
+| C: frame | 9.05 (110 FPS) | 7.23 (138 FPS) | **0.80×** (target ≤ 1.03×): passed, 1.25× faster |
+
+- Both "off" runs match the 23–25 Oct round (C 8.98 ms, D 68.14 ms then), so the comparison is with the known
+  baseline. The three runs of each side lie within 0.3 ms (C) and 2.4 ms (D) of each other.
+- In C the frame gained 1.82 ms of the 1.61 ms `prepare` lost; in D 10.2 ms against 6.5 ms of CPU work. The rest is
+  the GPU clocking up: CPU and GPU share one power budget, and with Module 2 the iGPU ran at 1060–1171 MHz instead of
+  975–986 (C) and 679–762 instead of 641–656 (D) (`gpu_mhz`), the effect the outlook above could not measure.
+- Tessellation still left with Module 2: C 3.22 ms (of 4.45), D 5.17 + 0.73 ms (of 9.15 + 2.04): Fresh Animations'
+  animations and the part walk, which Module 2 keeps on the CPU.
+
 ### Measurement pitfalls
 
 - Instance settings Prism ignores: until 23 Oct 2026 `benchmark/prism_instances.py` appended `-Dmobium.bench.expect`
