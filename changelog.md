@@ -1,11 +1,11 @@
-- static cache: a light update somewhere in the world no longer sends every cached object through its full check;
-  only objects in the sections whose light changed read their light again. In normal play, where chunks load and
-  torches are placed all the time, cached objects now stay on the fast path
-- static cache: it forgets light updates that every cached object has seen, instead of keeping one entry for every
-  section that ever had one until the world is left
-- only the entities the cache can draw (item frames, armor stands, display entities) are linked to their render state,
-  and never in Iris's shadow pass, so no other render state keeps an entity in memory
-- `/mobium bench`, the suites and the F3 entry `mobium:timings` also time Iris's shadow pass (new `shadow_*` columns);
-  `draw` no longer counts the shadow pass's draws
-- bug reports: a form on GitHub asks for what is needed (A/B key result, loader, mods, GPU, the `mobium:modules` lines)
+- new: **GPU part transform** (Module 2), on by default where OpenGL 4.3 compute shaders are available. Mobs, armour,
+  saddles, banners, bells, lecterns and other models built from model parts keep their normal animations (including
+  Entity Model Features and Fresh Animations), but the GPU writes their vertices instead of the CPU, exactly as the
+  game would have written them, also in Iris's shader pack formats and its shadow pass. In 500 walking mobs (dev
+  laptop, Intel Arc 140V) the frame got about 1.2× faster with vanilla models and with Fresh Animations, and the
+  entities' CPU work with Fresh Animations and Complementary Reimagined dropped to less than half
+- the GPU part transform has its own switch in the settings; `parts.excludedEntities` in `config/mobium.json` keeps
+  chosen entity types (for example `"minecraft:zombie"`) on the game's own path
+- `/mobium gatec [seconds] [runs]` measures the live mob pens with the GPU part transform off and on; benchmark setup
+  names get `+parts` while it runs
 - license: Mobium is now licensed under the GNU General Public License v3.0 instead of the LGPL-3.0

@@ -33,6 +33,8 @@ import dev.nyon.mobium.debug.AbToggle
 import dev.nyon.mobium.debug.ModuleLines
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.debug.Validation
+import dev.nyon.mobium.parts.PartTransform
+import dev.nyon.mobium.parts.PartValidation
 import jdk.jfr.Configuration
 import jdk.jfr.Recording
 import net.minecraft.client.CloudStatus
@@ -40,6 +42,7 @@ import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Options
 import net.minecraft.client.Screenshot
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer
 import net.minecraft.client.gui.components.debug.DebugScreenEntryStatus
@@ -91,6 +94,10 @@ object SelfCheck {
     private const val GALLERY = "cache_gallery"
     private const val IRIS_WITHOUT_MOBIUM = "iris-without-mobium"
     private const val PROFILE = "profile"
+    private const val PROFILE_MOBS = "profile-mobs"
+    private const val PARTS = "parts"
+    private const val MOB_SCENE = "mob_pen_live"
+    private const val PART_GALLERY = "part_gallery"
     private const val GATE_B = "gateb"
     private const val GALLERY_ONLY = "gallery"
     private const val CHESTS = 1000
@@ -134,9 +141,12 @@ object SelfCheck {
         this.directory = directory
         Files.createDirectories(directory.resolve("screenshots"))
         Mobium.LOGGER.info("Mobium self-check started ({} on {}{})", Compat.LOADER, minecraft.gameDirectory, if (mode.isEmpty()) "" else ", $mode")
-        steps = when (mode) {
+        val argument = mode.substringAfter(' ', "")
+        steps = when (mode.substringBefore(' ')) {
             IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
             PROFILE -> profile(minecraft)
+            PROFILE_MOBS -> profileMobs(minecraft, argument.ifEmpty { MOB_SCENE })
+            PARTS -> parts(minecraft)
             GATE_B -> gateB(minecraft)
             GALLERY_ONLY -> galleryOnly(minecraft)
             else -> scenario(minecraft)
@@ -429,6 +439,263 @@ object SelfCheck {
         minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
         yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
         finish(minecraft)
+    }
+
+    /**
+     * `--mode profile-mobs`: `mob_pen_live` with vanilla models (no packs; the dev client still has EMF, ETF and Iris),
+     * with Fresh Animations (setup C), then also with the first shader pack (setup D), each with Module 2 off and on and
+     * with the models' vertex writes skipped ([recordMobs]); one JFR recording per setup goes to
+     * `mobium-selfcheck/mob_pen_live-{plain,c,d}.jfr`. The measurement basis for Module 2: how much of the model
+     * tessellation is the vertex work it replaces.
+     */
+    private fun profileMobs(minecraft: Minecraft, scene: String) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        // Another scene than the mob pens measures what Module 2 does for its block entities: the static cache is off.
+        val mobs = scene == MOB_SCENE
+        applyConfig(Config().also { if (!mobs) it.cache.enabled = false })
+        minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
+        minecraft.options.enableVsync().set(false)
+        minecraft.createWorldOpenFlows().openWorld(WORLD) { }
+        yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        minecraft.options.cloudStatus().set(CloudStatus.OFF)
+        if (!minecraft.gui.hud.isHidden) minecraft.gui.hud.toggle()
+        val repository = minecraft.resourcePackRepository
+        repository.reload()
+        val fresh = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
+        if (fresh == null) results += "NOTE no Fresh Animations zip in resourcepacks/, setup C runs without it"
+        if (buildScene(minecraft, scene)) {
+            recordMobs(minecraft, scene, "plain")
+            if (!mobs) {
+                // Only the vanilla models for other scenes.
+            } else if (fresh != null) {
+                repository.addPack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
+            }
+            if (mobs) recordMobs(minecraft, scene, "c")
+            val pack = if (mobs && Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            if (pack == null) {
+                results += "NOTE no shader pack, setup D skipped"
+            } else {
+                val restore = IrisCheck.select(pack, emptyMap())
+                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                recordMobs(minecraft, scene, "d")
+                restore()
+                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+            }
+            if (mobs && fresh != null) {
+                repository.removePack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
+            }
+        }
+        applyConfig(saved)
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        finish(minecraft)
+    }
+
+    /**
+     * [MOB_SCENE] for 6 × 8 s, alternating Module 2 off, Module 2 on and [Sections.skipModelVertices] (the models write
+     * no vertices, so they vanish), with the stage timers sampled once a second (each a 64-frame average). The last is
+     * the most Module 2 can take off the CPU. The first run with Module 2 is recorded with Java Flight Recorder (method
+     * samples every millisecond, allocation samples).
+     */
+    private suspend fun SequenceScope<Wait>.recordMobs(minecraft: Minecraft, scene: String, setup: String) {
+        yield(ticks(10 * TICKS_PER_SECOND))
+        Sections.forceTimers = true
+        val names = listOf("Module 2 off", "Module 2 on", "no vertices")
+        val sums = Array(names.size) { DoubleArray(Sections.COUNT) }
+        val frameMs = DoubleArray(names.size)
+        val partsBefore = config.parts.enabled
+        for (round in 0 until 6) {
+            val condition = round % names.size
+            config.parts.enabled = condition == 1
+            ModuleStates.refresh("self-check")
+            Sections.skipModelVertices = condition == 2
+            yield(ticks(2 * TICKS_PER_SECOND))
+            val recording = if (round == 1) Recording(Configuration.getConfiguration("profile")) else null
+            recording?.enable("jdk.ExecutionSample")?.withPeriod(Duration.ofMillis(1))
+            // Allocation samples too: Module 2's per-part path must not allocate (PLAN.md §8).
+            recording?.enable("jdk.ObjectAllocationSample")?.with("throttle", "1000/s")?.withStackTrace()
+            val framesBefore = Sections.frame
+            val start = System.nanoTime()
+            recording?.start()
+            repeat(8) {
+                yield(ticks(TICKS_PER_SECOND))
+                for (i in 0 until Sections.COUNT) sums[condition][i] += Sections.averageMillis(i) / 16
+            }
+            recording?.stop()
+            frameMs[condition] += (System.nanoTime() - start) / 1e6 / (Sections.frame - framesBefore) / 2
+            if (recording != null) {
+                val file = directory.resolve("$scene-$setup.jfr")
+                recording.dump(file)
+                recording.close()
+                check("recorded $file", Files.size(file) > 0)
+            }
+        }
+        Sections.skipModelVertices = false
+        Sections.forceTimers = false
+        config.parts.enabled = partsBefore
+        ModuleStates.refresh("self-check")
+        val window = minecraft.window
+        for ((index, name) in names.withIndex()) {
+            results += String.format(Locale.ROOT, "NOTE %s, setup %s, %s, window %dx%d: frame %.2f ms; ", scene, setup, name, window.width, window.height, frameMs[index]) +
+                Sections.NAMES.indices.filter { sums[index][it] > 0.0005 }
+                    .joinToString { String.format(Locale.ROOT, "%s %.3f", Sections.NAMES[it], sums[index][it]) }
+        }
+    }
+
+    /**
+     * `--mode parts`: Module 2 in `mob_pen_live` and `part_gallery` with the models of the four benchmark setups
+     * (vanilla, with the first shader pack, with the pack and Fresh Animations, with Fresh Animations). In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
+     * byte), then Mobium's picture against vanilla's behind a pause screen, and two vanilla frames as the floor.
+     */
+    private fun parts(minecraft: Minecraft) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config())
+        minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
+        minecraft.options.enableVsync().set(false)
+        minecraft.createWorldOpenFlows().openWorld(WORLD) { }
+        yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        minecraft.options.cloudStatus().set(CloudStatus.OFF)
+        if (!minecraft.gui.hud.isHidden) minecraft.gui.hud.toggle()
+        check("part transform active", ModuleStates.isActive(Module.PART_TRANSFORM), ModuleStates.status(Module.PART_TRANSFORM).describe())
+        val repository = minecraft.resourcePackRepository
+        repository.reload()
+        val fresh = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
+        // The four benchmark setups' models in turn: A (vanilla models), B (with the shader pack), D (and Fresh
+        // Animations), C (Fresh Animations without the pack); in each the mob pens and the part gallery.
+        partsScenes(minecraft, "vanilla models")
+        /*? if fabric {*/
+        val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+        /*?} else {*/
+        /*// Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 (see inWorld).
+        val pack: String? = null
+        *//*?}*/
+        var restorePack: (() -> Unit)? = null
+        if (pack == null) {
+            results += "NOTE no shader pack (none in shaderpacks/, or NeoForge), the shader pack checks were skipped"
+        } else {
+            restorePack = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+            yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+            yield(ticks(5 * TICKS_PER_SECOND))
+            partsScenes(minecraft, "vanilla models, shader pack")
+        }
+        if (fresh == null) {
+            results += "NOTE no Fresh Animations zip in resourcepacks/, the Fresh Animations checks were skipped"
+        } else {
+            repository.addPack(fresh)
+            minecraft.options.updateResourcePacks(repository)
+            yield(ticks(10))
+            yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
+            yield(ticks(5 * TICKS_PER_SECOND))
+            if (restorePack != null) partsScenes(minecraft, "Fresh Animations, shader pack")
+        }
+        if (restorePack != null) {
+            restorePack()
+            yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+            yield(ticks(3 * TICKS_PER_SECOND))
+        }
+        if (fresh != null) {
+            partsScenes(minecraft, "Fresh Animations")
+            repository.removePack(fresh)
+            minecraft.options.updateResourcePacks(repository)
+            yield(ticks(10))
+            yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
+        }
+        applyConfig(saved)
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        finish(minecraft)
+    }
+
+    /**
+     * Mobium's picture against vanilla's like [comparePair], but with the game paused behind a screen that draws
+     * nothing ([StillScreen]): Fresh Animations' animations run on EMF's frame time, which only stops while the game is
+     * paused (with ticks frozen two vanilla frames still differed in about 600 pixels). First two vanilla frames show
+     * what changes on its own; where nothing does, Mobium's picture must match exactly. A shader pack can still change
+     * a few thousand pixels from frame to frame in some scenes (Complementary in the part gallery, 26 Oct 2026, while
+     * the vertices were identical); there Mobium's picture may differ from vanilla's by at most twice that floor.
+     */
+    private suspend fun SequenceScope<Wait>.comparePaused(minecraft: Minecraft, name: String, file: String) {
+        minecraft.gui.setScreen(StillScreen())
+        yield(until("game paused ($name)", 10) { minecraft.isPaused })
+        yield(ticks(TICKS_PER_SECOND))
+        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
+        yield(ticks(TICKS_PER_SECOND / 2))
+        val floorPair = Validation.capturePair(toggle = false)
+        yield(until("noise pictures ($name)", 10) { floorPair.done })
+        var floor: Validation.FrameDiff? = null
+        val first = floorPair.first
+        val second = floorPair.second
+        if (first != null && second != null) {
+            floor = Validation.compare(first, second)
+            results += "NOTE $name, two vanilla frames: $floor"
+            if (!floor.identical) second.writeToFile(directory.resolve("screenshots").resolve("$file-vanilla2.png"))
+            first.close()
+            second.close()
+        }
+        KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
+        yield(ticks(TICKS_PER_SECOND / 2))
+        val pair = Validation.capturePair()
+        yield(until("pictures ($name)", 10) { pair.done })
+        val mobium = pair.first
+        val vanilla = pair.second
+        if (mobium == null || vanilla == null || floor == null) {
+            check("$name: pictures taken", false)
+        } else {
+            mobium.writeToFile(directory.resolve("screenshots").resolve("$file-mobium.png"))
+            vanilla.writeToFile(directory.resolve("screenshots").resolve("$file-vanilla.png"))
+            val diff = Validation.compare(mobium, vanilla)
+            if (floor.identical) {
+                check("$name: Mobium and vanilla pictures match", diff.identical, "$diff")
+            } else {
+                val withinNoise = diff.changed <= 2 * floor.changed && diff.differing <= 2 * floor.differing + 10
+                check("$name: Mobium and vanilla pictures match within the frame-to-frame noise", withinNoise, "$diff; noise $floor")
+            }
+            mobium.close()
+            vanilla.close()
+        }
+        minecraft.gui.setScreen(null)
+        yield(ticks(TICKS_PER_SECOND))
+    }
+
+    /** A pause screen that draws nothing: the game pauses, the world stays visible and unblurred. */
+    private class StillScreen : Screen(Component.empty()) {
+        override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {}
+
+        override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {}
+    }
+
+    /** The mob pens and the part gallery: [validateParts] and [comparePaused] in each. */
+    private suspend fun SequenceScope<Wait>.partsScenes(minecraft: Minecraft, setup: String) {
+        for ((scene, file) in listOf(MOB_SCENE to "pens", PART_GALLERY to "gallery")) {
+            if (!buildScene(minecraft, scene)) continue
+            val name = "$setup, $scene"
+            validateParts(name, expectParts = true)
+            comparePaused(minecraft, "parts: $name", "parts-${file}-${setup.replace(", ", "-").replace(' ', '-')}")
+        }
+    }
+
+    /** One second of [PartValidation] over everything Module 2 takes over. */
+    private suspend fun SequenceScope<Wait>.validateParts(name: String, expectParts: Boolean) {
+        PartValidation.reset()
+        PartTransform.validating = true
+        yield(ticks(TICKS_PER_SECOND))
+        PartTransform.validating = false
+        val passed = PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0 &&
+            (PartValidation.compared > 0 || !expectParts)
+        check("parts, $name: GPU vertices equal the CPU's", passed, PartValidation.summary() + "; " + PartTransform.debugLine() +
+            PartValidation.reports.joinToString("") { " | $it" })
     }
 
     /**
@@ -950,10 +1217,10 @@ object SelfCheck {
      * vanilla's lightmap flickers block light randomly every tick (`LightmapRenderStateExtractor`). Ticks are frozen
      * as well, so that what vanilla animates (the powered dragon head) stands still.
      */
-    private suspend fun SequenceScope<Wait>.comparePair(minecraft: Minecraft, name: String, file: String) {
+    private suspend fun SequenceScope<Wait>.comparePair(minecraft: Minecraft, name: String, file: String, cache: Boolean = true) {
         serverCommand(minecraft, "tick freeze")
         yield(ticks(TICKS_PER_SECOND / 2))
-        check("cache draws ($name)", StaticCache.active && StaticCache.lastDrawn > 0, StaticCache.debugLine())
+        if (cache) check("cache draws ($name)", StaticCache.active && StaticCache.lastDrawn > 0, StaticCache.debugLine())
         var attempt = 1
         while (true) {
             val pair = Validation.capturePair()

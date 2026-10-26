@@ -4,6 +4,7 @@ import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.core.Fallback
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.gpu.Gpu
+import dev.nyon.mobium.parts.PartTransform
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer
 import net.minecraft.client.gui.components.debug.DebugScreenEntry
 import net.minecraft.resources.Identifier
@@ -35,6 +36,7 @@ object ModuleLines : DebugScreenEntry {
             )
         )
         displayer.addLine(StaticCache.debugLine())
+        displayer.addLine(PartTransform.debugLine())
         val disabled = Fallback.disabledTypes()
         if (disabled.isNotEmpty()) displayer.addLine("Mobium types on vanilla after failures: ${disabled.joinToString()}")
     }

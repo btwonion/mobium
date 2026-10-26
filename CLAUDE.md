@@ -38,10 +38,12 @@ and in the benchmark world key presses, commands and pixel comparisons against v
 `<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched, and closes the game.
 Extend the scenario for every rendering PR, run it on both loaders, and read the screenshots before asking Anton.
 `--mode gallery` runs only the `cache_gallery` part (every cached type, effects, shader pack, Fresh Animations) and is
-the quick loop while working on the static cache; failed count checks name why an object was not cached.
+the quick loop while working on the static cache; failed count checks name why an object was not cached. `--mode
+parts` is the same for Module 2 (GPU vertices against the CPU's, pictures, in `mob_pen_live` and `part_gallery` with
+the four setups' models), `--mode profile-mobs [--scene <scene>]` measures Module 2 off, on and without vertices.
 
 In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium suite` runs every scene of a setup
-and `/mobium gatea` runs Gate A unattended (`/mobium stop` aborts), scenes come from the
+and `/mobium gatea` / `gateb` / `gatec` run Gates A–C unattended (`/mobium stop` aborts), scenes come from the
 `benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
 shows the stage timers. Protocol and results: `docs/benchmarks.md`. Settings: Mod Menu (Fabric), the mod list
 (NeoForge) or Mobium's page in Sodium's video settings. The A/B key switches all of Mobium off and on live; key
@@ -83,11 +85,21 @@ screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`
 
 ## Architecture
 
-See `PLAN.md` §5 (hook points, package map, part-record layout) and §6 (runtime fallback and compat behaviour).
-Replace this paragraph with a short description of the real architecture once Modules 1 and 2 exist. Until then:
-every module asks `core/ModuleStates` whether it may run (resolved by the pure `ModuleRules` from config, backend,
-shader pack, A/B key, overlapping mods and failures), reports exceptions to `core/Fallback`, and allocates GPU memory
-through `gpu/Gpu.backend`.
+See `PLAN.md` §5 (hook points, package map) and §6 (runtime fallback and compat behaviour), and
+`docs/vanilla-notes.md` for every vanilla, Sodium, Iris and EMF detail the code relies on. Every module asks
+`core/ModuleStates` whether it may run (resolved by the pure `ModuleRules` from config, backend, compute, A/B key,
+overlapping mods and failures) and reports exceptions to `core/Fallback`.
+
+- **Module 1, static cache (`cache/`):** captures unchanged block entities and entities through vanilla's own submit
+  and prepare (`Capture.kt`, in Iris's formats while a pack is on), keeps them in per-section buckets on the GPU
+  (`gpu/Gpu.backend`, Renderpearl) and draws them at the end of `PreparedFrame.executeSolid`; `CachePolicy` and
+  `EntityPolicy` decide per type, `Invalidation`/`LightStamps` notice changes.
+- **Module 2, GPU part transform (`parts/`):** wraps `ModelPart.compile` and EMF's `EMFModelPart.compile`. A part
+  whose cubes it knows (vanilla cubes, written as vanilla or as Sodium would; EMF's `EMFCube`) reserves its vertices in
+  the staged builder and writes records (`PartBatch`, meshes in `MeshPool`); after `StagedVertexBuffer.upload()`
+  `ExpandPass` runs `assets/mobium/shaders/expand_parts.comp` (raw GL 4.3, `gpu/gl/GlCompute`), which writes exactly
+  the bytes the CPU path would have, Iris's extension included. `PartValidation` (dev) compares them byte for byte;
+  any change to the shader or the records must keep `--mode parts` at 0 differing vertices.
 
 ## Config and translations
 

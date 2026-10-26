@@ -47,11 +47,12 @@ class SettingsGameTest : FabricClientGameTest {
             check(ModuleStates.isActive(Module.STATIC_CACHE)) { ModuleStates.status(Module.STATIC_CACHE).describe() }
         }
 
-        // Part transform does not exist yet, so failing it leaves the other gametests alone.
+        // Animation LOD does not exist yet, so failing it leaves the other gametests alone (a failure lasts until
+        // the game restarts, and the gametests share one game).
         context.runOnClient<RuntimeException> {
-            Fallback.moduleFailed(Module.PART_TRANSFORM, IllegalStateException("Forced by SettingsGameTest"))
-            Fallback.moduleFailed(Module.PART_TRANSFORM, IllegalStateException("Second failure, no second toast"))
-            val status = ModuleStates.status(Module.PART_TRANSFORM)
+            Fallback.moduleFailed(Module.ANIMATION_LOD, IllegalStateException("Forced by SettingsGameTest"))
+            Fallback.moduleFailed(Module.ANIMATION_LOD, IllegalStateException("Second failure, no second toast"))
+            val status = ModuleStates.status(Module.ANIMATION_LOD)
             check(status.reason == OffReason.FAILED && status.detail == "Forced by SettingsGameTest") { status.describe() }
             checkNotNull(it.gui.toastManager().getToast(SystemToast::class.java, Fallback.TOAST_ID)) { "No failure toast" }
             it.gui.setScreen(MobiumSettingsScreen(TitleScreen()))

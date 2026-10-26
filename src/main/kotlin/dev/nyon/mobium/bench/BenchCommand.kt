@@ -14,7 +14,8 @@ import net.minecraft.network.chat.Component
 
 /**
  * Client commands `/mobium bench <scene> <seconds> [setup]`, `/mobium suite [seconds] [runs] [scenes…]`,
- * `/mobium gatea [seconds] [runs]`, `/mobium gateb [seconds] [runs]` (see [BenchSuite]) and `/mobium stop`. The tree is built for any command
+ * `/mobium gatea [seconds] [runs]`, `/mobium gateb [seconds] [runs]`, `/mobium gatec [seconds] [runs]` (see
+ * [BenchSuite]) and `/mobium stop`. The tree is built for any command
  * source type, so the same code registers with Fabric's client command API and NeoForge's
  * `RegisterClientCommandsEvent`. The scene is only a label; build it first with the benchmark datapack.
  */
@@ -85,6 +86,18 @@ object BenchCommand {
                         )
                 )
         )
+        .then(
+            LiteralArgumentBuilder.literal<S>("gatec")
+                .executes { gateC(BenchSuite.DEFAULT_SECONDS, BenchSuite.DEFAULT_RUNS) }
+                .then(
+                    RequiredArgumentBuilder.argument<S, Int>("seconds", IntegerArgumentType.integer(MIN_SECONDS, MAX_SECONDS))
+                        .executes { gateC(seconds(it), BenchSuite.DEFAULT_RUNS) }
+                        .then(
+                            RequiredArgumentBuilder.argument<S, Int>("runs", IntegerArgumentType.integer(1, MAX_RUNS))
+                                .executes { gateC(seconds(it), runs(it)) }
+                        )
+                )
+        )
         .then(LiteralArgumentBuilder.literal<S>("stop").executes {
             val suite = BenchSuite.stop()
             val run = FrameRecorder.stop()
@@ -138,6 +151,11 @@ object BenchCommand {
 
     private fun gateB(seconds: Int, runs: Int): Int {
         BenchSuite.startGateB(seconds, runs)?.let { chat(it); return 0 }
+        return 1
+    }
+
+    private fun gateC(seconds: Int, runs: Int): Int {
+        BenchSuite.startGateC(seconds, runs)?.let { chat(it); return 0 }
         return 1
     }
 
