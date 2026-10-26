@@ -410,6 +410,55 @@ def cache_gallery() -> list[str]:
     return lines
 
 
+def part_gallery() -> list[str]:
+    """Models Module 2 expands besides the mob pens, close to the camera: block entities the static cache leaves alone
+    (banners, a bell, a conduit, a lectern, an enchanting table), armour with a trim, equipment layers and items whose
+    models are built from parts. Mobs have NoAI, the undead helmets (no burning)."""
+    lines = []
+    # Row 1: block entities whose models animate or that the static cache leaves alone.
+    lines.append(f"fill {X0 - 9} {GROUND} {Z0 + 8} {X0 + 9} {GROUND + 3} {Z0 + 8} minecraft:stone_bricks strict")
+    lines.append(
+        f"setblock {X0 - 7} {GROUND} {Z0 + 6} minecraft:white_banner[rotation=8]"
+        '{patterns:[{color:"red",pattern:"minecraft:stripe_bottom"},{color:"blue",pattern:"minecraft:cross"}]} strict'
+    )
+    lines.append(
+        f"setblock {X0 - 5} {GROUND + 2} {Z0 + 7} minecraft:black_wall_banner[facing=north]"
+        '{patterns:[{color:"yellow",pattern:"minecraft:creeper"}]} strict'
+    )
+    lines.append(f"setblock {X0 - 3} {GROUND} {Z0 + 6} minecraft:bell[attachment=floor,facing=north] strict")
+    lines.append(f"setblock {X0 - 1} {GROUND} {Z0 + 6} minecraft:conduit strict")
+    lines.append(
+        f"setblock {X0 + 1} {GROUND} {Z0 + 6} minecraft:lectern[facing=south,has_book=true]"
+        '{Book:{id:"minecraft:writable_book",count:1}} strict'
+    )
+    lines.append(f"setblock {X0 + 3} {GROUND} {Z0 + 6} minecraft:enchanting_table strict")
+    # Row 2: mobs with equipment and layers.
+    helmet = '{id:"minecraft:leather_helmet",count:1,components:{"minecraft:unbreakable":{}}}'
+    trimmed = (
+        '{id:"minecraft:iron_chestplate",count:1,components:{"minecraft:trim":'
+        '{material:"minecraft:gold",pattern:"minecraft:sentry"}}}'
+    )
+    mobs = [
+        (-8, "zombie", f'equipment:{{head:{helmet},chest:{trimmed},legs:{{id:"minecraft:chainmail_leggings",count:1}}}}'),
+        (-6, "skeleton", f'equipment:{{head:{helmet},mainhand:{{id:"minecraft:bow",count:1}}}}'),
+        (-4, "sheep", "Color:3b"),
+        (-2, "pig", 'equipment:{saddle:{id:"minecraft:saddle",count:1}}'),
+        (0, "iron_golem", ""),
+        (2, "wolf", 'equipment:{body:{id:"minecraft:wolf_armor",count:1}}'),
+        # Armour keeps the stand off the static cache; its hands hold items whose models are built from parts.
+        (4, "armor_stand", f'ShowArms:1b,equipment:{{head:{{id:"minecraft:golden_helmet",count:1}},chest:{trimmed},'
+                           f'mainhand:{{id:"minecraft:trident",count:1}},offhand:{{id:"minecraft:shield",count:1}}}}'),
+        (6, "creeper", ""),
+        (8, "villager", 'VillagerData:{profession:"minecraft:librarian",type:"minecraft:plains",level:2}'),
+    ]
+    for offset, kind, extra in mobs:
+        nbt = ["NoAI:1b", "Silent:1b", "PersistenceRequired:1b", "Rotation:[180f,0f]", f'Tags:["{TAG}"]']
+        if extra:
+            nbt.append(extra)
+        lines.append(f"summon minecraft:{kind} {center(X0 + offset)} {GROUND} {center(Z0 + 4)} {{{','.join(nbt)}}}")
+    return lines
+
+
 def main() -> None:
     write("pack.mcmeta", [
         "{",
@@ -465,6 +514,9 @@ def main() -> None:
     # Not a benchmark scene: the self-check compares vanilla and Mobium on every cached type here.
     scene("cache_gallery", "Every type the static cache handles, for pixel comparisons",
           (X0 + 0.5, GROUND + 2.6, Z0 + 0.5, 0, 12), cache_gallery())
+    # Not a benchmark scene either: the self-check's Module 2 checks (block entities, armour, layers, item models).
+    scene("part_gallery", "Models the GPU part transform expands besides the mob pens, for pixel comparisons",
+          (X0 + 0.5, GROUND + 2.2, Z0 + 0.5, 0, 10), part_gallery())
 
 
 if __name__ == "__main__":

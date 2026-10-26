@@ -597,8 +597,8 @@ What the round shows:
 
 #### Gate C: what M6 can reach
 
-Gate C (`PLAN.md` M6) asks for `mob_pen_live` at least 1.5× faster in setup D. The mob pens hold nothing the static
-cache takes, so this round's numbers are what M6 starts from. D, 25 Oct:
+Gate C (`PLAN.md` M6) first asked for `mob_pen_live` at least 1.5× faster in setup D. The mob pens hold nothing the
+static cache takes, so this round's numbers are what M6 starts from. D, 25 Oct:
 
 | `mob_pen_live`, setup D | ms per frame |
 | --- | --- |
@@ -623,6 +623,88 @@ cache takes, so this round's numbers are what M6 starts from. D, 25 Oct:
   CPU time alone.
 - **Gate C redefined with Anton on 25 Oct 2026** (`PLAN.md` M6), as Gate B was: `mob_pen_live` at least 1.5× faster
   with Module 2 in setup C, and in D at most 1.03× the frame time without it (no slower).
+
+**What tessellation is made of (25 Oct 2026, dev client).** The 1.98× bound for C above assumed that Module 2 removes
+all of `tessellate_entities`. It does not: `--mode profile-mobs` of the self-check (`scripts/self_check.py`) builds
+`mob_pen_live` in the Fabric dev client and records it, alternating 4 × 8 s, once as drawn and once with every model
+part's vertex writes skipped (`Sections.skipModelVertices`, hooks on `ModelPart.compile` and EMF's
+`EMFModelPart.compile`; the mobs vanish). The difference is the most Module 2 can take off the CPU. Dev window
+854×480, vsync off, no frame cap; the dev client always has Sodium, Iris, EMF and ETF installed ("plain" = no packs);
+Fresh Animations 1.10.3, Complementary Reimagined r5.9.3 at its defaults; timer averages in ms:
+
+| Setup | Frame | `tessellate_entities` | `prepare` | `shadow_prepare` | `prepare` + `shadow_prepare` |
+| --- | --- | --- | --- | --- | --- |
+| plain, drawn | 4.79 | 1.32 | 2.24 | – | 2.24 |
+| plain, no vertices | 2.66 | 0.38 | 0.68 | – | 0.68 |
+| C, drawn | 11.07 | 5.34 | 6.47 | – | 6.47 |
+| C, no vertices | 6.48 | 3.16 | 3.62 | – | 3.62 |
+| D, drawn | 36.58 | 11.14 | 12.85 | 3.61 | 16.45 |
+| D, no vertices | 23.59 | 3.92 | 4.64 | 0.75 | 5.38 |
+
+- In C, **3.2 of 5.3 ms of tessellation stay without a single vertex.** EMF evaluates Fresh Animations' animations
+  inside `ModelPart.render` (`EMFModelPartRoot.animate`), not in `setupAnim`, and the part walk and its pose math
+  (`translateAndRotate`) stay on the CPU as well; Module 2 keeps all three (never bypass EMF). What it can remove in
+  C is at most 2.85 ms of `prepare` (2.2 ms of vertex writes, 0.7 ms of uploading them), so C's frame gets at most
+  about 1.35× faster even if Module 2 cost nothing (11.07 → 8.2 ms); the frame's own drop to 6.48 ms also contains
+  the GPU no longer drawing the mobs, which Module 2 still does. **1.5× in C is out of reach too.**
+- In D the vertex work is much larger: Fresh Animations' cubes are EMF's own (`EMFCube`, written vertex by vertex),
+  so with a shader pack every vertex goes through Iris's per-vertex extension (face normal, tangent, mid UV per quad).
+  `prepare` + `shadow_prepare` fall from 16.45 to 5.38 ms without vertices, **at most 3.1× lower**.
+- JFR alone could not split this: in two recordings of the same scene the same third of `renderToBuffer` was charged
+  once to `ByteBufferBuilder.ensureCapacity` (vertex writes) and once to an EMF animation lambda, an attribution error
+  of inlined frames. The skip switch measures it directly.
+- **Gate C redefined a second time with Anton on 25 Oct 2026** (`PLAN.md` M6): in D, `mob_pen_live`'s `prepare` +
+  `shadow_prepare` at least 1.5× lower with Module 2; in C and D its frame at most 1.03× the frame without Module 2.
+  Mobium can only take CPU work away; how much of it shows in the frame depends on the GPU (on Anton's iGPU D is
+  mostly GPU work).
+
+#### Module 2, first measurement (26 Oct 2026, dev client)
+
+Not the protocol (dev window 854×480, the dev client's mods, one session): `python3 scripts/self_check.py fabric --mode
+profile-mobs` records `mob_pen_live` alternating Module 2 off, Module 2 on and the models' vertex writes skipped
+(the floor Module 2 can approach), 2 × 8 s each, build of 26 Oct 2026 with the Sodium cube path, the normals on the GPU
+and the upload leaving the reserved bytes out. Timer averages in ms:
+
+| `mob_pen_live` | Module 2 off | Module 2 on | no vertices | Module 2 on / off |
+| --- | --- | --- | --- | --- |
+| vanilla models: frame | 4.45 | 3.66 | 2.19 | 1.22× faster |
+| vanilla models: `prepare` | 2.04 | 1.18 | 0.58 | 1.74× lower |
+| C (Fresh Animations): frame | 10.64 | 8.52 | 6.15 | 1.25× faster |
+| C: `prepare` | 6.26 | 4.27 | 3.36 | 1.47× lower |
+| D (+ Complementary): frame | 31.76 | 28.70 | 22.62 | 1.11× faster |
+| D: `prepare` + `shadow_prepare` | 11.02 + 3.02 | 5.54 + 1.09 | 3.97 + 0.69 | **2.12× lower** |
+
+- Gate C's CPU target (1.5× in D) is met here with room to spare, and no setup got slower. The protocol run is
+  Anton's `/mobium gatec` in setups C and D (1920×1080, Prism instances).
+- What Module 2 still costs the CPU: in C 0.7 ms of tessellation over the run without vertices (checks, reservation,
+  records); the rest of the gap to "no vertices" is the GPU drawing the mobs, which Module 2 leaves to vanilla.
+- Before two optimisations the same scene gave 1.47× in D and 1.10× in C: normals were computed on the CPU (three
+  transforms per part, two thirds of Module 2's CPU time), and `upload()` copied the reserved bytes (junk until the
+  expand pass writes them) into the staging buffer, 8 % of the render thread's samples in D.
+- `storage_room` with the static cache off (Module 2 then takes the chests): frame 4.83 → 4.49 ms, `prepare` 2.66 →
+  2.17 ms (window 1423×800, `--scene storage_room`).
+- Fabric gametest (`/mobium gatec 5 1`, gametest window): entity CPU work 1.91× lower, frame 0.72× the frame without.
+
+#### Gate C: passed (26 Oct 2026)
+
+Anton's `/mobium gatec` (60 s, 3 runs each way, alternating) in the Prism instances C and D, build `b41d342` (the
+`m6-part-transform` branch), 1920×1080, mains power; files in `docs/benchmarks/results/2026-10-26-thinkpad-x9/`.
+Medians, ms:
+
+| `mob_pen_live` | Module 2 off | Module 2 on | Gate C |
+| --- | --- | --- | --- |
+| D: `prepare` + `shadow_prepare` | 11.07 + 2.63 = 13.70 | 6.20 + 1.02 = 7.22 | **1.90× lower** (target ≥ 1.5×): passed |
+| D: frame | 65.57 (15.3 FPS) | 55.37 (18.1 FPS) | **0.84×** (target ≤ 1.03×): passed, 1.18× faster |
+| C: `prepare` | 5.32 | 3.72 | 1.43× lower (no target in C) |
+| C: frame | 9.05 (110 FPS) | 7.23 (138 FPS) | **0.80×** (target ≤ 1.03×): passed, 1.25× faster |
+
+- Both "off" runs match the 23–25 Oct round (C 8.98 ms, D 68.14 ms then), so the comparison is with the known
+  baseline. The three runs of each side lie within 0.3 ms (C) and 2.4 ms (D) of each other.
+- In C the frame gained 1.82 ms of the 1.61 ms `prepare` lost; in D 10.2 ms against 6.5 ms of CPU work. The rest is
+  the GPU clocking up: CPU and GPU share one power budget, and with Module 2 the iGPU ran at 1060–1171 MHz instead of
+  975–986 (C) and 679–762 instead of 641–656 (D) (`gpu_mhz`), the effect the outlook above could not measure.
+- Tessellation still left with Module 2: C 3.22 ms (of 4.45), D 5.17 + 0.73 ms (of 9.15 + 2.04): Fresh Animations'
+  animations and the part walk, which Module 2 keeps on the CPU.
 
 ### Measurement pitfalls
 

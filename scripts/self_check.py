@@ -6,6 +6,9 @@
     python3 scripts/self_check.py fabric --mode gallery    # only the cache_gallery checks, for quick iterations
     python3 scripts/self_check.py neoforge --mode iris-without-mobium   # shader pack with Mobium off (crash triage)
     python3 scripts/self_check.py fabric --mode profile    # storage_room under JFR -> mobium-selfcheck/*.jfr
+    python3 scripts/self_check.py fabric --mode profile-mobs   # mob_pen_live without packs, in setups C and D under JFR
+    python3 scripts/self_check.py fabric --mode profile-mobs --scene storage_room   # another scene, cache off
+    python3 scripts/self_check.py fabric --mode parts      # Module 2: GPU vertices against the CPU's, pictures
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
 both languages, Sodium's page, and in the benchmark world's storage_room the A/B key, F3 and a forced module failure,
@@ -69,17 +72,24 @@ def run(loader: str, mode: str) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("loaders", nargs="*", help=f"any of {', '.join(LOADERS)} (default: all)")
-    parser.add_argument("--mode", default="", choices=["", "gallery", "iris-without-mobium", "profile", "gateb"],
+    parser.add_argument("--mode", default="", choices=["", "gallery", "iris-without-mobium", "profile", "profile-mobs", "parts", "gateb"],
                         help="gallery: only the cache_gallery checks (quicker); "
                              "iris-without-mobium: only the first shader pack in shaderpacks/, with Mobium off; "
                              "profile: storage_room under Java Flight Recorder, with the cache and without Mobium; "
+                             "profile-mobs: mob_pen_live under Java Flight Recorder without packs, with Fresh Animations (setup C), "
+                             "then also with the first shader pack (setup D); "
+                             "parts: Module 2 in mob_pen_live, GPU vertices against the CPU's and pictures against vanilla, "
+                             "with vanilla models, Fresh Animations and the first shader pack; "
                              "gateb: /mobium gateb 20 2 in the dev client's window plus display_build and map_wall with the cache off "
                              "and on (a hint, not the protocol)")
+    parser.add_argument("--scene", default="", help="profile-mobs only: another benchmark scene than mob_pen_live "
+                        "(vanilla models only, static cache off)")
     args = parser.parse_args()
     unknown = [loader for loader in args.loaders if loader not in LOADERS]
     if unknown:
         parser.error(f"unknown loader {', '.join(unknown)}; use {' or '.join(LOADERS)}")
-    results = [run(loader, args.mode) for loader in (args.loaders or list(LOADERS))]
+    mode = f"{args.mode} {args.scene}" if args.scene else args.mode
+    results = [run(loader, mode) for loader in (args.loaders or list(LOADERS))]
     sys.exit(0 if all(results) else 1)
 
 

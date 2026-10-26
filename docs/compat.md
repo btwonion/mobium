@@ -17,9 +17,9 @@ F3 `mobium:modules`, log). Mod ids from the mods' own sources, 20 Oct 2026.
 
 | Mod | Status |
 | --- | --- |
-| Sodium 0.9 | Mobium adds a page to its video settings (Sodium Config API). Sodium's own block entity extraction calls `tryExtractRenderState`, so the static cache works the same with it |
-| Iris 1.11 | The static cache captures in Iris's extended vertex formats while a shader pack is on and starts over when Iris switches its pipeline (reload, another pack, pack options). Iris's shadow pass draws cached objects through vanilla. Since 0.1.0-beta2 an optional mixin into Iris's `ShadowRenderer` times that pass for `/mobium bench` and F3 `mobium:timings` (measurement only; every injection is optional, so another Iris version only loses these timers) |
-| Entity Model Features, Entity Texture Features | Run unchanged on every path Mobium uses: the cache captures through vanilla's own submit and prepare, so EMF's replaced models and ETF's emissive layers are captured as drawn. Models EMF animates (`containsCustomAnims`) stay on vanilla |
+| Sodium 0.9 | Mobium adds a page to its video settings (Sodium Config API). Sodium's own block entity extraction calls `tryExtractRenderState`, so the static cache works the same with it. Sodium draws vanilla cubes with its own cube path (`ModelCuboid`, corners by a chain of additions, its own face order); Module 2 reproduces that path for vanilla cubes when Sodium is installed, reading `ModelCuboid` by reflection (on NeoForge Sodium is a nested jar) |
+| Iris 1.11 | The static cache captures in Iris's extended vertex formats while a shader pack is on and starts over when Iris switches its pipeline (reload, another pack, pack options). Iris's shadow pass draws cached objects through vanilla. Since 0.1.0-beta2 an optional mixin into Iris's `ShadowRenderer` times that pass for `/mobium bench` and F3 `mobium:timings` (measurement only; every injection is optional, so another Iris version only loses these timers). Module 2 expands into Iris's 56-byte entity format in the level's and the shadow pass's staged buffers, with Iris's per-quad extension done on the GPU as Iris does it on the CPU: face normal, mid UV and tangent for vertices written one by one, normal kept and tangent from it for Sodium's pushed cubes (`ModelToEntityVertexSerializer`); the entity ids come from Iris's `CapturedRenderingState` per part |
+| Entity Model Features, Entity Texture Features | Run unchanged on every path Mobium uses: the cache captures through vanilla's own submit and prepare, so EMF's replaced models and ETF's emissive layers are captured as drawn. Models EMF animates (`containsCustomAnims`) stay on vanilla. Module 2 hooks below EMF: its part walk, animations (evaluated inside `ModelPart.render`), per-part texture overrides and ETF's emissive re-renders run as before, and only each part's `compile` is replaced (an optional mixin into EMF's `EMFModelPart.compile`, which overrides vanilla's; Fresh Animations' cubes are EMF's `EMFCube`). Emissive passes into sorted (translucent) draws stay vanilla |
 | Fabric API renderer API (Fabric) | Block models (item frames' frames, block displays) arrive as `ExtendedBlockModelSubmit`; the cache lets the feature renderer registered for them (Sodium's or Indigo's) write the captured vertices, like vanilla's own. Items whose model is a renderer API mesh (`ExtendedItemSubmit`, e.g. lanterns and flower pots) stay vanilla: the cache's item comparison cannot see a mesh |
 | Entity Culling | Detected; no interaction expected (it decides what is extracted, Mobium how it is drawn) |
 | Mod Menu | Opens Mobium's settings |
@@ -40,6 +40,23 @@ fog. "Identical" means 0 changed pixels. Dev clients run the compat stack of `ve
 | + Fresh Animations (1.10.3 in the dev clients, 1.11.1 in the benchmark instances) | Identical in every comparison of the gallery (22 Oct 2026); EMF replaces the head models with the pack's, and the one head Fresh Animations animates stays vanilla (`containsCustomAnims`) | Identical in every comparison of the gallery (22 Oct 2026), as on Fabric |
 | Entity Culling | Not tested (not in the dev environment); expected to work, see above | Not tested |
 
+## Tested (M6, GPU part transform)
+
+How: the dev self-check `--mode parts` (`python3 scripts/self_check.py <loader> --mode parts`) builds `mob_pen_live`
+(500 cows, villagers and zombies walking in place) and `part_gallery` (banners, a bell, a conduit, a lectern, an
+enchanting table, armour with a trim, a saddle, wolf armour, a trident and a shield) with the models of the four
+benchmark setups. In each it compiles every part Module 2 takes over on the CPU as well, reads the GPU's vertices back
+and compares them byte for byte (`parts/PartValidation.kt`; only bytes the CPU path never writes are left out), then
+compares Mobium's picture with vanilla's behind a pause screen (EMF's animations stand still only while the game is
+paused). The Fabric gametests run the same validation on Mesa's software renderer (CI).
+
+| Setup | Fabric | NeoForge |
+| --- | --- | --- |
+| Vanilla models (Sodium's cube path), Iris without pack | 0 differing vertices (11.4M compared in the pens), pictures identical (26 Oct 2026) | 0 differing vertices (13.6M in the pens, 2.4M in the gallery), pictures identical (26 Oct 2026) |
+| + Complementary Reimagined r5.9.3 | 0 differing vertices in the pens and the gallery, main and shadow pass; pictures identical in the pens, within the pack's own frame-to-frame noise in the gallery (the translucent conduit) | Not tested (Iris crashes with this pack on NeoForge, see above) |
+| + Fresh Animations 1.10.3 | 0 differing vertices (6.8M), pictures identical | 0 differing vertices (9.3M in the pens, 2.6M in the gallery), pictures identical |
+| Fresh Animations and Complementary | 0 differing vertices, pictures as with the pack alone | Not tested |
+
 ## Known differences and limits
 
 - Text drawn with a resource pack's antialiased (TrueType) font: vanilla draws a sign's glyphs in submission order
@@ -54,3 +71,13 @@ fog. "Identical" means 0 changed pixels. Dev clients run the compat stack of `ve
   (`EquipmentLayerRenderer`), which the cache does not keep.
 - Cached objects are drawn from camera-relative vertices, which the CPU rewrites for the visible buckets whenever the
   camera moves; with a still camera nothing is uploaded (F3 `mobium:modules` shows the bytes per frame).
+- Module 2 only takes over parts drawn into the frame's staged buffers in the entity format (or Iris's) with unsorted
+  quads, directly or through an atlas sprite: translucent models without improved transparency (sorted on upload), the
+  breaking overlay, glint and outline passes, other vertex formats and other cube classes keep vanilla's CPU path.
+- Iris counts vertices written one by one per quad; a Sodium push right after such vertices loses one from its count
+  and extends the following quads from the wrong vertices (vanilla with Iris and Sodium, not Mobium). With Module 2
+  both kinds of cube are expanded on the GPU, so that mix no longer happens; where it happened before, the picture
+  would now be correct instead. Not seen in the tested scenes.
+- Sodium reuses its six packed normals while the normal matrix stays the same, without looking at whether the pose's
+  normals are trusted; Module 2 computes them per part, so the two differ only for two consecutive poses with the same
+  normal matrix and a different trusted flag.
