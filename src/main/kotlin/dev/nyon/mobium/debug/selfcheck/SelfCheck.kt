@@ -97,6 +97,7 @@ object SelfCheck {
     private const val PROFILE_MOBS = "profile-mobs"
     private const val PARTS = "parts"
     private const val MOB_SCENE = "mob_pen_live"
+    private const val PART_GALLERY = "part_gallery"
     private const val GATE_B = "gateb"
     private const val GALLERY_ONLY = "gallery"
     private const val CHESTS = 1000
@@ -544,8 +545,8 @@ object SelfCheck {
     }
 
     /**
-     * `--mode parts`: Module 2 in `mob_pen_live` with the models of the four benchmark setups (vanilla, with the first
-     * shader pack, with the pack and Fresh Animations, with Fresh Animations). In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
+     * `--mode parts`: Module 2 in `mob_pen_live` and `part_gallery` with the models of the four benchmark setups
+     * (vanilla, with the first shader pack, with the pack and Fresh Animations, with Fresh Animations). In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
      * byte), then Mobium's picture against vanilla's behind a pause screen, and two vanilla frames as the floor.
      */
     private fun parts(minecraft: Minecraft) = sequence {
@@ -564,53 +565,45 @@ object SelfCheck {
         val repository = minecraft.resourcePackRepository
         repository.reload()
         val fresh = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
-        if (buildScene(minecraft, MOB_SCENE)) {
-            // The four benchmark setups' models in turn: A (vanilla models), B (with the shader pack), D (and Fresh
-            // Animations), C (Fresh Animations without the pack).
-            validateParts("vanilla models", expectParts = true)
-            comparePaused(minecraft, "parts: vanilla models", "parts-vanilla")
-            /*? if fabric {*/
-            val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
-            /*?} else {*/
-            /*// Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 (see inWorld).
-            val pack: String? = null
-            *//*?}*/
-            var restorePack: (() -> Unit)? = null
-            if (pack == null) {
-                results += "NOTE no shader pack (none in shaderpacks/, or NeoForge), the shader pack checks were skipped"
-            } else {
-                restorePack = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
-                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
-                yield(ticks(5 * TICKS_PER_SECOND))
-                validateParts("vanilla models with $pack", expectParts = true)
-                comparePaused(minecraft, "parts: vanilla models, shader pack", "parts-vanilla-shaderpack")
-            }
-            if (fresh == null) {
-                results += "NOTE no Fresh Animations zip in resourcepacks/, the Fresh Animations checks were skipped"
-            } else {
-                repository.addPack(fresh)
-                minecraft.options.updateResourcePacks(repository)
-                yield(ticks(10))
-                yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
-                yield(ticks(5 * TICKS_PER_SECOND))
-                if (restorePack != null) {
-                    validateParts("Fresh Animations with $pack", expectParts = true)
-                    comparePaused(minecraft, "parts: Fresh Animations, shader pack", "parts-fresh-shaderpack")
-                }
-            }
-            if (restorePack != null) {
-                restorePack()
-                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
-                yield(ticks(3 * TICKS_PER_SECOND))
-            }
-            if (fresh != null) {
-                validateParts("Fresh Animations", expectParts = true)
-                comparePaused(minecraft, "parts: Fresh Animations", "parts-fresh")
-                repository.removePack(fresh)
-                minecraft.options.updateResourcePacks(repository)
-                yield(ticks(10))
-                yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
-            }
+        // The four benchmark setups' models in turn: A (vanilla models), B (with the shader pack), D (and Fresh
+        // Animations), C (Fresh Animations without the pack); in each the mob pens and the part gallery.
+        partsScenes(minecraft, "vanilla models")
+        /*? if fabric {*/
+        val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+        /*?} else {*/
+        /*// Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 (see inWorld).
+        val pack: String? = null
+        *//*?}*/
+        var restorePack: (() -> Unit)? = null
+        if (pack == null) {
+            results += "NOTE no shader pack (none in shaderpacks/, or NeoForge), the shader pack checks were skipped"
+        } else {
+            restorePack = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+            yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+            yield(ticks(5 * TICKS_PER_SECOND))
+            partsScenes(minecraft, "vanilla models, shader pack")
+        }
+        if (fresh == null) {
+            results += "NOTE no Fresh Animations zip in resourcepacks/, the Fresh Animations checks were skipped"
+        } else {
+            repository.addPack(fresh)
+            minecraft.options.updateResourcePacks(repository)
+            yield(ticks(10))
+            yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
+            yield(ticks(5 * TICKS_PER_SECOND))
+            if (restorePack != null) partsScenes(minecraft, "Fresh Animations, shader pack")
+        }
+        if (restorePack != null) {
+            restorePack()
+            yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+            yield(ticks(3 * TICKS_PER_SECOND))
+        }
+        if (fresh != null) {
+            partsScenes(minecraft, "Fresh Animations")
+            repository.removePack(fresh)
+            minecraft.options.updateResourcePacks(repository)
+            yield(ticks(10))
+            yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
         }
         applyConfig(saved)
         minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
@@ -621,40 +614,50 @@ object SelfCheck {
     /**
      * Mobium's picture against vanilla's like [comparePair], but with the game paused behind a screen that draws
      * nothing ([StillScreen]): Fresh Animations' animations run on EMF's frame time, which only stops while the game is
-     * paused (with ticks frozen two vanilla frames still differed in about 600 pixels). Two vanilla frames follow as a
-     * note, the floor of what changes on its own (a shader pack's dithering).
+     * paused (with ticks frozen two vanilla frames still differed in about 600 pixels). First two vanilla frames show
+     * what changes on its own; where nothing does, Mobium's picture must match exactly. A shader pack can still change
+     * a few thousand pixels from frame to frame in some scenes (Complementary in the part gallery, 26 Oct 2026, while
+     * the vertices were identical); there Mobium's picture may differ from vanilla's by at most twice that floor.
      */
     private suspend fun SequenceScope<Wait>.comparePaused(minecraft: Minecraft, name: String, file: String) {
         minecraft.gui.setScreen(StillScreen())
         yield(until("game paused ($name)", 10) { minecraft.isPaused })
         yield(ticks(TICKS_PER_SECOND))
-        val pair = Validation.capturePair()
-        yield(until("pictures ($name)", 10) { pair.done })
-        val mobium = pair.first
-        val vanilla = pair.second
-        if (mobium == null || vanilla == null) {
-            check("$name: pictures taken", false)
-        } else {
-            mobium.writeToFile(directory.resolve("screenshots").resolve("$file-mobium.png"))
-            vanilla.writeToFile(directory.resolve("screenshots").resolve("$file-vanilla.png"))
-            compare("$name: Mobium and vanilla pictures match", mobium, vanilla)
-            mobium.close()
-            vanilla.close()
-        }
-        // The pair switched to vanilla and back; switch to vanilla for two vanilla frames.
         KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
         yield(ticks(TICKS_PER_SECOND / 2))
-        val floor = Validation.capturePair(toggle = false)
-        yield(until("noise pictures ($name)", 10) { floor.done })
-        val first = floor.first
-        val second = floor.second
+        val floorPair = Validation.capturePair(toggle = false)
+        yield(until("noise pictures ($name)", 10) { floorPair.done })
+        var floor: Validation.FrameDiff? = null
+        val first = floorPair.first
+        val second = floorPair.second
         if (first != null && second != null) {
-            results += "NOTE $name, two vanilla frames: ${Validation.compare(first, second)}"
+            floor = Validation.compare(first, second)
+            results += "NOTE $name, two vanilla frames: $floor"
+            if (!floor.identical) second.writeToFile(directory.resolve("screenshots").resolve("$file-vanilla2.png"))
             first.close()
             second.close()
         }
         KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
         yield(ticks(TICKS_PER_SECOND / 2))
+        val pair = Validation.capturePair()
+        yield(until("pictures ($name)", 10) { pair.done })
+        val mobium = pair.first
+        val vanilla = pair.second
+        if (mobium == null || vanilla == null || floor == null) {
+            check("$name: pictures taken", false)
+        } else {
+            mobium.writeToFile(directory.resolve("screenshots").resolve("$file-mobium.png"))
+            vanilla.writeToFile(directory.resolve("screenshots").resolve("$file-vanilla.png"))
+            val diff = Validation.compare(mobium, vanilla)
+            if (floor.identical) {
+                check("$name: Mobium and vanilla pictures match", diff.identical, "$diff")
+            } else {
+                val withinNoise = diff.changed <= 2 * floor.changed && diff.differing <= 2 * floor.differing + 10
+                check("$name: Mobium and vanilla pictures match within the frame-to-frame noise", withinNoise, "$diff; noise $floor")
+            }
+            mobium.close()
+            vanilla.close()
+        }
         minecraft.gui.setScreen(null)
         yield(ticks(TICKS_PER_SECOND))
     }
@@ -664,6 +667,16 @@ object SelfCheck {
         override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {}
 
         override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {}
+    }
+
+    /** The mob pens and the part gallery: [validateParts] and [comparePaused] in each. */
+    private suspend fun SequenceScope<Wait>.partsScenes(minecraft: Minecraft, setup: String) {
+        for ((scene, file) in listOf(MOB_SCENE to "pens", PART_GALLERY to "gallery")) {
+            if (!buildScene(minecraft, scene)) continue
+            val name = "$setup, $scene"
+            validateParts(name, expectParts = true)
+            comparePaused(minecraft, "parts: $name", "parts-${file}-${setup.replace(", ", "-").replace(' ', '-')}")
+        }
     }
 
     /** One second of [PartValidation] over everything Module 2 takes over. */

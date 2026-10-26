@@ -7,6 +7,7 @@ import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.core.OffReason
 import dev.nyon.mobium.debug.Sections
+import dev.nyon.mobium.parts.PartTransform
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 import java.io.IOException
@@ -26,7 +27,10 @@ import java.util.Locale
  * - `/mobium gateb [seconds] [runs]`: `storage_room` with the cache, the same with the cache's draw calls skipped,
  *   `control` with the cache and `control` without it, in turn, then Gate B's numbers ([GateB]): what the cached
  *   objects cost Mobium against `control` (target at most 1.2×), the whole frame against `control`, what drawing them
- *   costs, and `control` with the cache against `control` without it (must not be slower).
+ *   costs, and `control` with the cache against `control` without it (must not be slower);
+ * - `/mobium gatec [seconds] [runs]`: `mob_pen_live` with Module 2 off and on, alternating, then Gate C's numbers
+ *   ([GateC]): the entity CPU work without over with Module 2 (target at least 1.5× in setup D) and the frame time
+ *   with over without (must not be slower).
  *
  * Scenes are built through the integrated server (singleplayer only), so the world does not need commands enabled.
  * The medians per scene and setup are rewritten to `mobium-bench/suite-<timestamp>.csv` after every run, so quitting
@@ -48,15 +52,16 @@ object BenchSuite {
     private const val NANOS_PER_SECOND = 1_000_000_000L
 
     /**
-     * One benchmark run of the plan; [cache] null leaves the static cache as it is. [skipDraws] records the cached
-     * objects without drawing them (`StaticCache.skipDraws`; the setup is then named `…+cache+nodraw`).
+     * One benchmark run of the plan; [cache] and [parts] null leave the static cache and Module 2 as they are.
+     * [skipDraws] records the cached objects without drawing them (`StaticCache.skipDraws`; the setup is then named
+     * `…+cache+nodraw`).
      */
-    private class Step(val scene: String, val cache: Boolean?, val skipDraws: Boolean = false)
+    private class Step(val scene: String, val cache: Boolean?, val skipDraws: Boolean = false, val parts: Boolean? = null)
 
     private enum class State { IDLE, BUILDING, SETTLING, RECORDING }
 
     /** What a plan is for: medians only, or one of the gates' verdicts. */
-    private enum class Kind(val filePrefix: String) { SUITE("suite"), GATE_A("gatea"), GATE_B("gateb") }
+    private enum class Kind(val filePrefix: String) { SUITE("suite"), GATE_A("gatea"), GATE_B("gateb"), GATE_C("gatec") }
 
     private var state = State.IDLE
     private val steps = ArrayList<Step>()
@@ -68,6 +73,7 @@ object BenchSuite {
     private var runsBefore = 0
     private var kind = Kind.SUITE
     private var cacheConfigBefore = true
+    private var partsConfigBefore = true
     private var waitForQuiet = false
     private var quietSince = 0L
     private var settleTimeout = 0L
@@ -111,15 +117,30 @@ object BenchSuite {
         return null
     }
 
+    /** Starts `/mobium gatec`; returns an error message or null. */
+    fun startGateC(seconds: Int, runs: Int): Component? {
+        val plan = (1..runs).flatMap { listOf(Step("mob_pen_live", null, parts = false), Step("mob_pen_live", null, parts = true)) }
+        startGate(plan, seconds, Kind.GATE_C, "mobium.suite.gatec_unavailable", Module.PART_TRANSFORM)?.let { return it }
+        chat(Component.translatable("mobium.suite.gatec_started", runs, seconds, minutes(plan.size, 1)))
+        return null
+    }
+
     /**
-     * A gate's plan switches the cache itself, even if it is off in the settings (which are not saved); the A/B key
-     * does not count.
+     * A gate's plan switches its module itself (the static cache, or Module 2 for Gate C), even if it is off in the
+     * settings (which are not saved); the A/B key does not count.
      */
-    private fun startGate(plan: List<Step>, seconds: Int, kind: Kind, unavailableKey: String): Component? {
+    private fun startGate(
+        plan: List<Step>,
+        seconds: Int,
+        kind: Kind,
+        unavailableKey: String,
+        module: Module = Module.STATIC_CACHE
+    ): Component? {
         cacheConfigBefore = config.cache.enabled
-        config.cache.enabled = true
+        partsConfigBefore = config.parts.enabled
+        if (module == Module.STATIC_CACHE) config.cache.enabled = true else config.parts.enabled = true
         ModuleStates.refresh(kind.name)
-        val status = ModuleStates.status(Module.STATIC_CACHE)
+        val status = ModuleStates.status(module)
         if (!status.active && status.reason != OffReason.AB_TOGGLE) {
             restoreCache()
             return Component.translatable(unavailableKey, Component.translatable(status.reason!!.translationKey))
@@ -210,6 +231,10 @@ object BenchSuite {
             StaticCache.skipDraws = step.skipDraws
             toggled = true
         }
+        if (step.parts != null && step.parts != PartTransform.active) {
+            PartTransform.setActive(step.parts)
+            toggled = true
+        }
         if (step.scene != builtScene) {
             build(step.scene)
         } else {
@@ -256,6 +281,7 @@ object BenchSuite {
         StaticCache.skipDraws = false
         if (kind != Kind.SUITE) {
             StaticCache.setActive(false)
+            PartTransform.setActive(false)
             restoreCache()
         }
         if (aborted) {
@@ -273,7 +299,9 @@ object BenchSuite {
         val avgMs: Double,
         val avgFps: Double,
         val low1Fps: Double,
-        val drawMs: Double
+        val drawMs: Double,
+        val prepareMs: Double,
+        val shadowPrepareMs: Double
     )
 
     private fun medians(): List<Medians> {
@@ -287,7 +315,9 @@ object BenchSuite {
                 FrameStats.median(DoubleArray(runs.size) { runs[it].summary.avgMs }),
                 FrameStats.median(DoubleArray(runs.size) { runs[it].summary.avgFps }),
                 FrameStats.median(DoubleArray(runs.size) { runs[it].summary.low1Fps }),
-                FrameStats.median(DoubleArray(runs.size) { runs[it].sectionMeansMs[Sections.DRAW] })
+                FrameStats.median(DoubleArray(runs.size) { runs[it].sectionMeansMs[Sections.DRAW] }),
+                FrameStats.median(DoubleArray(runs.size) { runs[it].sectionMeansMs[Sections.PREPARE] }),
+                FrameStats.median(DoubleArray(runs.size) { runs[it].sectionMeansMs[Sections.SHADOW_PREPARE] })
             )
         }
     }
@@ -305,6 +335,19 @@ object BenchSuite {
         }
         return GateB.of(run("storage_room", CACHE), run("storage_room", NO_DRAW), run("control", CACHE), run("control", null))
     }
+
+    /** Gate C's numbers from the medians, or null while one of the two sides has no run yet. */
+    private fun gateC(medians: List<Medians>): GateC? {
+        fun run(parts: Boolean): GateC.Run? {
+            val median = medians.firstOrNull { it.setup.endsWith(PARTS) == parts } ?: return null
+            return GateC.Run(median.avgMs, median.prepareMs, median.shadowPrepareMs)
+        }
+        return GateC.of(run(false), run(true))
+    }
+
+    /** Gate C's CPU target applies in setup D: a shader pack and Fresh Animations. */
+    private fun gateCSetupD(medians: List<Medians>): Boolean =
+        medians.any { "+iris" in it.setup && "+fa" in it.setup }
 
     /** Gate A's speed-up from the medians, or null while one of the two sides has no run yet. */
     private fun gateASpeedUp(medians: List<Medians>): Double? {
@@ -339,6 +382,10 @@ object BenchSuite {
             rows.append("# gate_b_storage_over_control,${fmt(gate.frame, 3)}\n")
             rows.append("# gate_b_drawing_ms,${fmt(gate.drawingMs, 4)}\n")
             rows.append("# gate_b_control_cache_over_vanilla,${fmt(gate.control, 3)}\n")
+        }
+        if (kind == Kind.GATE_C) gateC(medians())?.let { gate ->
+            rows.append("# gate_c_cpu_without_over_with,${fmt(gate.cpu, 3)}\n")
+            rows.append("# gate_c_frame_with_over_without,${fmt(gate.frame, 3)}\n")
         }
         rows.append("# build,${Mobium.BUILD}\n")
 
@@ -385,6 +432,26 @@ object BenchSuite {
                 )
             }
         }
+        if (kind == Kind.GATE_C) {
+            gateC(medians)?.let { gate ->
+                val cpuVerdict = when {
+                    !gateCSetupD(medians) -> "mobium.suite.gatec_not_d"
+                    gate.cpuPasses -> "mobium.suite.gatea_pass"
+                    else -> "mobium.suite.gatea_below"
+                }
+                val frameVerdict = if (gate.framePasses) "mobium.suite.gatea_pass" else "mobium.suite.gateb_slower"
+                chat(
+                    Component.translatable(
+                        "mobium.suite.gatec_result", fmt(gate.cpu, 2), fmt(GateC.CPU_TARGET, 1), Component.translatable(cpuVerdict),
+                        fmt(gate.frame, 2), Component.translatable(frameVerdict)
+                    )
+                )
+                Mobium.LOGGER.info(
+                    "Gate C: entity CPU work {}x lower with Module 2 (target {}x in setup D), frame {}x the frame without it",
+                    fmt(gate.cpu, 2), GateC.CPU_TARGET, fmt(gate.frame, 3)
+                )
+            }
+        }
         if (kind == Kind.GATE_A) {
             gateASpeedUp(medians)?.let { speedUp ->
                 val verdict = if (speedUp >= GATE_A_TARGET) "mobium.suite.gatea_pass" else "mobium.suite.gatea_below"
@@ -398,11 +465,13 @@ object BenchSuite {
 
     private fun restoreCache() {
         config.cache.enabled = cacheConfigBefore
+        config.parts.enabled = partsConfigBefore
         ModuleStates.refresh("${kind.name} finished")
     }
 
     private const val CACHE = "+cache"
     private const val NO_DRAW = "+cache+nodraw"
+    private const val PARTS = "+parts"
 
     private fun minutes(steps: Int, scenes: Int): Int {
         val perRun = seconds + FrameRecorder.WARMUP_SECONDS + 1

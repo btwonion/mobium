@@ -82,3 +82,8 @@ interface PartMeshHolder {
 interface PoseNormals {
     fun `mobium$trustedNormals`(): Boolean
 }
+
+/** Added to `ModelFeatureRenderer.Submit` by `ModelSubmitMixin`: whether the submitting entity's type is excluded. */
+interface PartSubmit {
+    fun `mobium$partsExcluded`(): Boolean
+}

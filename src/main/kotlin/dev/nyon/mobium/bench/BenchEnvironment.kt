@@ -1,6 +1,7 @@
 package dev.nyon.mobium.bench
 
 import dev.nyon.mobium.cache.StaticCache
+import dev.nyon.mobium.parts.PartTransform
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
 import dev.nyon.mobium.core.IrisCompat
@@ -44,13 +45,14 @@ object BenchEnvironment {
     /**
      * The setup name for file names and `summary.csv`: base renderer, Iris with an active pack, EMF, Fresh Animations
      * if selected, and the Mobium features that are on (`nodraw` while the static cache skips its draw calls, Gate B's
-     * measurement of what the cached objects cost without drawing them).
+     * measurement of what the cached objects cost without drawing them; `parts` while Module 2 runs).
      */
     fun detectSetup(): String {
         val parts = ArrayList<String>()
         parts += setupWithoutMobium()
         if (StaticCache.active) parts += "cache"
         if (StaticCache.active && StaticCache.skipDraws) parts += "nodraw"
+        if (PartTransform.active) parts += "parts"
         return parts.joinToString("+")
     }
 

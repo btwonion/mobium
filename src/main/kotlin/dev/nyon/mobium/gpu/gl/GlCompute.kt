@@ -1,7 +1,9 @@
 package dev.nyon.mobium.gpu.gl
 
+import org.lwjgl.opengl.GL11C
 import org.lwjgl.opengl.GL15C
 import org.lwjgl.opengl.GL20C
+import org.lwjgl.opengl.GL30C
 import org.lwjgl.opengl.GL31C
 import org.lwjgl.opengl.GL43C
 
@@ -75,6 +77,14 @@ object GlCompute {
         GL15C.glBindBuffer(GL31C.GL_COPY_READ_BUFFER, buffer)
         GL15C.nglGetBufferSubData(GL31C.GL_COPY_READ_BUFFER, offset, bytes, address)
         GL15C.glBindBuffer(GL31C.GL_COPY_READ_BUFFER, 0)
+    }
+
+    /** Sets [bytes] bytes of [buffer] at [offset] to zero (both multiples of 4). */
+    fun clear(buffer: Int, offset: Long, bytes: Long) {
+        if (bytes == 0L) return
+        GL15C.glBindBuffer(GL43C.GL_SHADER_STORAGE_BUFFER, buffer)
+        GL43C.nglClearBufferSubData(GL43C.GL_SHADER_STORAGE_BUFFER, GL30C.GL_R32UI, offset, bytes, GL30C.GL_RED_INTEGER, GL11C.GL_UNSIGNED_INT, 0L)
+        GL15C.glBindBuffer(GL43C.GL_SHADER_STORAGE_BUFFER, 0)
     }
 
     fun deleteBuffer(buffer: Int) {

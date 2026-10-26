@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nyon.mobium.cache.EntityStateSource;
 import dev.nyon.mobium.cache.StaticCache;
+import dev.nyon.mobium.parts.PartTransform;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -20,7 +21,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * Static cache (Module 1) for entities. Entities are always extracted; for an entity drawn from the cache this frame
  * the renderer's own submit is skipped, so vanilla neither submits nor tessellates it, while the dispatcher still
  * submits its flame and shadow. Fallback: while the cache is off, or the entity is not cacheable this frame
- * ({@code EntityPolicy}), the renderer's submit runs unchanged.
+ * ({@code EntityPolicy}), the renderer's submit runs unchanged. Also marks the model submits of entity types excluded
+ * from Module 2.
  */
 @Mixin(EntityRenderDispatcher.class)
 public class EntityRenderDispatcherMixin {
@@ -48,6 +50,12 @@ public class EntityRenderDispatcherMixin {
         Operation<Void> original
     ) {
         if (StaticCache.active && StaticCache.entity((EntityRenderDispatcher) (Object) this, state)) return;
-        original.call(renderer, state, poseStack, submitNodeCollector, camera);
+        // Module 2: the model submits of excluded entity types are marked and keep vanilla's CPU path.
+        PartTransform.submittingExcluded = PartTransform.excludes(state.entityType);
+        try {
+            original.call(renderer, state, poseStack, submitNodeCollector, camera);
+        } finally {
+            PartTransform.submittingExcluded = false;
+        }
     }
 }
