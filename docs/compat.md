@@ -52,9 +52,9 @@ paused). The Fabric gametests run the same validation on Mesa's software rendere
 
 | Setup | Fabric | NeoForge |
 | --- | --- | --- |
-| Vanilla models (Sodium's cube path), Iris without pack | 0 differing vertices (11.4M compared in the pens), pictures identical (26 Oct 2026) | 0 differing vertices (7.4M), pictures identical |
+| Vanilla models (Sodium's cube path), Iris without pack | 0 differing vertices (11.4M compared in the pens), pictures identical (26 Oct 2026) | 0 differing vertices (13.6M in the pens, 2.4M in the gallery), pictures identical (26 Oct 2026) |
 | + Complementary Reimagined r5.9.3 | 0 differing vertices in the pens and the gallery, main and shadow pass; pictures identical in the pens, within the pack's own frame-to-frame noise in the gallery (the translucent conduit) | Not tested (Iris crashes with this pack on NeoForge, see above) |
-| + Fresh Animations 1.10.3 | 0 differing vertices (6.8M), pictures identical | 0 differing vertices (5.5M), pictures identical |
+| + Fresh Animations 1.10.3 | 0 differing vertices (6.8M), pictures identical | 0 differing vertices (9.3M in the pens, 2.6M in the gallery), pictures identical |
 | Fresh Animations and Complementary | 0 differing vertices, pictures as with the pack alone | Not tested |
 
 ## Known differences and limits
