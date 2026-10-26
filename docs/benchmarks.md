@@ -658,6 +658,33 @@ Fresh Animations 1.10.3, Complementary Reimagined r5.9.3 at its defaults; timer 
   Mobium can only take CPU work away; how much of it shows in the frame depends on the GPU (on Anton's iGPU D is
   mostly GPU work).
 
+#### Module 2, first measurement (26 Oct 2026, dev client)
+
+Not the protocol (dev window 854×480, the dev client's mods, one session): `python3 scripts/self_check.py fabric --mode
+profile-mobs` records `mob_pen_live` alternating Module 2 off, Module 2 on and the models' vertex writes skipped
+(the floor Module 2 can approach), 2 × 8 s each, build of 26 Oct 2026 with the Sodium cube path, the normals on the GPU
+and the upload leaving the reserved bytes out. Timer averages in ms:
+
+| `mob_pen_live` | Module 2 off | Module 2 on | no vertices | Module 2 on / off |
+| --- | --- | --- | --- | --- |
+| vanilla models: frame | 4.45 | 3.66 | 2.19 | 1.22× faster |
+| vanilla models: `prepare` | 2.04 | 1.18 | 0.58 | 1.74× lower |
+| C (Fresh Animations): frame | 10.64 | 8.52 | 6.15 | 1.25× faster |
+| C: `prepare` | 6.26 | 4.27 | 3.36 | 1.47× lower |
+| D (+ Complementary): frame | 31.76 | 28.70 | 22.62 | 1.11× faster |
+| D: `prepare` + `shadow_prepare` | 11.02 + 3.02 | 5.54 + 1.09 | 3.97 + 0.69 | **2.12× lower** |
+
+- Gate C's CPU target (1.5× in D) is met here with room to spare, and no setup got slower. The protocol run is
+  Anton's `/mobium gatec` in setups C and D (1920×1080, Prism instances).
+- What Module 2 still costs the CPU: in C 0.7 ms of tessellation over the run without vertices (checks, reservation,
+  records); the rest of the gap to "no vertices" is the GPU drawing the mobs, which Module 2 leaves to vanilla.
+- Before two optimisations the same scene gave 1.47× in D and 1.10× in C: normals were computed on the CPU (three
+  transforms per part, two thirds of Module 2's CPU time), and `upload()` copied the reserved bytes (junk until the
+  expand pass writes them) into the staging buffer, 8 % of the render thread's samples in D.
+- `storage_room` with the static cache off (Module 2 then takes the chests): frame 4.83 → 4.49 ms, `prepare` 2.66 →
+  2.17 ms (window 1423×800, `--scene storage_room`).
+- Fabric gametest (`/mobium gatec 5 1`, gametest window): entity CPU work 1.91× lower, frame 0.72× the frame without.
+
 ### Measurement pitfalls
 
 - Instance settings Prism ignores: until 23 Oct 2026 `benchmark/prism_instances.py` appended `-Dmobium.bench.expect`

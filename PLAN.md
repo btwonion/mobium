@@ -9,50 +9,42 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 ---
 
-## Current state (updated 25 Oct 2026)
+## Current state (updated 26 Oct 2026)
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#12 are merged; `main` has M0–M5 (#7, `m5-static-cache`,
-  merged on 22 Oct 2026 at Anton's request once Gate B had passed and the checks were green), the release prep (#8),
-  the new icon (#10) and the beta2 work (#11 post-release, #12 cache follow-ups and shadow-pass timers, both merged on
-  23 Oct 2026). From M6 on: one branch from `main` per milestone, one PR against `main`; merging is Anton's call.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#15 are merged; `main` has M0–M5 (#7), the release preps
+  (#8, #13, #14), the new icon (#10), the beta2 work (#11, #12) and the switch to GPL-3.0 (#15, 25 Oct 2026). One
+  branch from `main` per milestone, one PR against `main`; merging is Anton's call.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
-  `.github/workflows/build-commit.yml`); `release.yml` does the same. If CI hangs or fails, read the job log first
-  (`gh run view --log-failed`).
+  `.github/workflows/build-commit.yml`); `release.yml` does the same. Mesa's software renderer has compute shaders and
+  double precision, so the gametests run Module 2 and its byte-for-byte validation too. If CI hangs or fails, read the
+  job log first (`gh run view --log-failed`).
 - **Done:** M0–M5. Gate A passed (1.53×), **Gate B passed (1.17×**, Anton's `/mobium gateb` on 21 Oct, build 6fb45dc;
   §M5). Module 1, the static cache, caches chests, signs (with text), skulls, decorated pots, shelves, item frames,
-  armor stands without armor and `FIXED` display entities; on by default. Self-check on both loaders: every
-  Mobium-vs-vanilla comparison 0 changed pixels (Complementary on Fabric: within the pack's own noise).
-- **Released: `0.1.0-beta1`** on 22 Oct 2026 (`release.yml` run 39831233395, Fabric/Quilt and NeoForge, beta on
-  Modrinth `mobium` = `8i5oedw8` and CurseForge `mobium-perf` = `1759818`, GitHub pre-releases
-  `v0.1.0-beta1-26.3+fabric` / `+neoforge`). The first run failed before building: the runner image's apt source for
-  `packages.microsoft.com` answered 403 during an Actions outage; the re-run passed unchanged (#9, a workaround, was
-  closed unmerged). The beta1 jars carry the old cube icon; the project icons are set on Modrinth and CurseForge by
-  hand. Never run `release.yml` or `releaseMod` yourself.
-- **Next: `0.1.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
-  Module 1 follow-ups below plus shadow-pass timers (`Sections.SHADOW…`, `compat/iris/ShadowRendererMixin`), so that
-  Anton's next benchmark round on beta2 also measures what Iris's shadow pass costs, and fixes for whatever beta1
-  testers report (`.github/ISSUE_TEMPLATE/bug_report.yml`; none so far). The work is on `main` (#11, #12, merged on 23
-  Oct, build `a6997e5`); the release prep is branch `release-0.1.0-beta2`, which also takes the benchmark round's
-  results (#13). Self-check on both loaders passed on 23 Oct (Fabric 74/74 with Complementary and Fresh Animations,
-  NeoForge 67/67; every Mobium-vs-vanilla comparison 0 changed pixels; 90 light updates 56 blocks from the gallery
-  added no full checks, and the sweep pruned the 8 sections kept back to 0). The self-check now switches vsync off:
-  with it the dev window behind other windows ran at ~17 FPS on Wayland, which paused the armor stands (at 17 FPS the
-  60 frames after a capture last 3.5 s, and their state still changed in them) and put a client tick between most
-  picture pairs. **Benchmark round done** (A–C 23 Oct, C and D 25 Oct, build `a6997e5`; `docs/benchmarks.md`
-  "23–25 Oct 2026"): nothing slower than on 21–22 Oct beyond the usual spread, the shadow pass timed in B and D.
-  #13 (release prep, results) merged on 25 Oct 2026. Left: Anton's visual checks of #12 (§10), then `release.yml`.
-- **Now M6** (Module 2, GPU part transform → Gate C), branch `m6-part-transform`. **Gate C redefined a second time
-  with Anton on 25 Oct 2026** (§M6): in D, `prepare` + `shadow_prepare` of `mob_pen_live` at least 1.5× lower with
-  Module 2; in C and D its frame no slower (≤ 1.03×). Basis: the dev client with the models' vertex writes skipped
-  (`python3 scripts/self_check.py fabric --mode profile-mobs`, `docs/benchmarks.md` *Gate C: what M6 can reach*):
-  in C (Fresh Animations) 3.2 of 5.3 ms of tessellation stay without any vertices, because EMF animates inside
-  `ModelPart.render`, so 1.5× in C was out of reach (at most about 1.35×); in D `prepare` + `shadow_prepare` drop from
-  16.5 to 5.4 ms (at most 3.1×). So Module 2 needs Iris's extended format and the shadow pass in its first version,
-  and Fresh Animations' parts are EMF's own (`EMFModelPart.compile`, `EMFCube`), not vanilla cubes
-  (`docs/vanilla-notes.md` §16).
+  armor stands without armor and `FIXED` display entities; on by default.
+- **Released:** `0.1.0-beta1` on 22 Oct 2026 (`release.yml` run 39831233395) and **`0.1.0-beta2` on 25 Oct 2026**
+  (run 40224786286: per-section light checks, cache cleanups, shadow-pass timers; GitHub pre-releases
+  `v0.1.0-beta2-26.3+fabric` / `+neoforge`), both beta on Modrinth `mobium` (`8i5oedw8`) and CurseForge `mobium-perf`
+  (`1759818`). Never run `release.yml` or `releaseMod` yourself. No tester reports so far
+  (`.github/ISSUE_TEMPLATE/bug_report.yml`).
+- **Now M6** (Module 2, GPU part transform → Gate C), branch `m6-part-transform`, PR open for Anton (see §M6, *Status*).
+  Built and verified in the dev clients: Module 2 takes every model part drawn into a staged entity-format draw
+  (vanilla cubes as vanilla or Sodium writes them, EMF's cubes, in Iris's formats and its shadow pass too), and the
+  GPU writes exactly the vertices the CPU would have: the self-check (`--mode parts`) and the gametests compare them
+  byte for byte, 0 differences in every setup; pictures identical. `mob_pen_live` in the dev client: entity CPU work in
+  D 2.12× lower, frames 1.11–1.25× faster (`docs/benchmarks.md` *Module 2, first measurement*). Version `0.1.0-beta3`
+  in `gradle.properties` (Anton may prefer `0.2.0` for a new module); `changelog.md` holds its notes.
+  - **Gate C, redefined a second time with Anton on 25 Oct 2026** (§M6): in D, `prepare` + `shadow_prepare` of
+    `mob_pen_live` at least 1.5× lower with Module 2; in C and D its frame no slower (≤ 1.03×). The first two
+    definitions (1.5× frame time in D, then in C) were out of reach because Fresh Animations animates inside
+    `ModelPart.render` and the shader pack's GPU work dominates D (`docs/benchmarks.md` *Gate C: what M6 can reach*).
+  - **Left for Anton:** `/mobium gatec` in setups C and D (rebuild the instances from this branch first:
+    `./gradlew :26.3-fabric:benchKit && python3 benchmark/prism_instances.py`), the PR's *How to verify*, and the
+    merge. Then the release prep (§10: README for Module 2, then `release.yml`).
+  - Known limits (`docs/compat.md`): translucent models without improved transparency (sorted on upload), glint,
+    outline and breaking overlay stay on the CPU; Vulkan has no Module 2 until M7.
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
   `beta2-cache-followups`, 23 Oct 2026):
   - [x] one light epoch for the whole level sent every cached object through the full check after any light update.
@@ -430,18 +422,24 @@ dev.nyon.mobium
 │   ├── CachePolicy.kt         # per-type rules: when cacheable, when vanilla
 │   ├── Invalidation.kt        # data/state/light/reload/shader-pack listeners
 │   └── MemoryBudget.kt        # default 128 MB, evict by distance
-├── parts/                     # Module 2
-│   ├── MeshPool.kt            # ModelPart identity → local-space cuboid mesh in a shared GPU buffer
-│   ├── PartRecords.kt         # off-heap record writer (layout below)
-│   ├── PartWalker.kt          # ModelPart.compile hook: emits one record per drawn part (vanilla and EMF walks stay on the CPU)
-│   ├── VertexFormats.kt       # vanilla entity format + Iris extended format descriptions
-│   └── ExpandPass.kt          # per render type: dispatch compute, then draw the ring range
+├── parts/                     # Module 2 (as built in M6)
+│   ├── PartTransform.kt       # compile hook (vanilla and EMF parts): checks, reservation, records; upload hooks
+│   ├── PartHooks.kt           # interfaces the mixins add to BufferBuilder, staged buffers and draws, cubes, poses
+│   ├── MeshPool.kt            # per cube, its faces in local space in the layout of the path that draws it
+│   ├── SodiumCubes.kt         # Sodium's ModelCuboid by reflection (vanilla cubes with Sodium)
+│   ├── PartBatch.kt           # per staged buffer and frame: part, cube and draw-slot records (off-heap)
+│   ├── ReservedRanges.kt      # reserved bytes per draw, left out of the upload's copy
+│   ├── ExpandPass.kt          # uploads meshes and records, dispatches expand_parts.comp, vertex barrier
+│   └── PartValidation.kt      # dev: CPU compile of every part taken over, GPU read-back, byte comparison
 ├── lod/                       # Module 3
 │   └── AnimationLod.kt        # screen-size rule, presets, exclusions, record reuse
 └── util/                      # MemoryUtil helpers, LogOnce, math
 ```
 
-**Part record layout (Module 2), 80 bytes, std430-friendly:**
+**Part record layout (Module 2), as planned before M6, 80 bytes, std430-friendly.** *Changed in M6:* a 128-byte
+part record (pose, normal matrix or packed normals, colour, overlay, light, flags, draw slot, sprite, Iris's ids) per
+compiled part plus a 16-byte record per cube; the meshes carry the per-face data (`parts/PartBatch.kt`,
+`expand_parts.comp`). Iris's ids travel per part record.
 
 | Offset | Field | Type |
 | --- | --- | --- |
@@ -879,7 +877,21 @@ benchmark numbers if performance changed.
       with Complementary and Fresh Animations, NeoForge 67/67 without the shader pack, see *Current state*).
 - [x] Benchmark round A–D on beta2 (with the shadow-pass timers), committed to `docs/benchmarks.md` (23–25 Oct 2026,
       build `a6997e5`, `docs/benchmarks/results/2026-10-23-thinkpad-x9/`).
-- [ ] Anton's visual checks of the beta2 PR's *How to verify*.
+- [x] Anton's go for the release (25 Oct 2026).
+- [x] Run `release.yml` (manual dispatch on `main`; Anton): released on 25 Oct 2026 (run 40224786286).
+
+Next release (`0.1.0-beta3` in `gradle.properties`, or `0.2.0` if Anton prefers; Module 2, M6):
+
+- [ ] Gate C passed: Anton's `/mobium gatec` in setups C and D, results committed to `docs/benchmarks.md` and
+      `docs/benchmarks/results/`.
+- [x] `changelog.md` contains only this release's notes (26 Oct 2026: Module 2, `/mobium gatec`, GPL-3.0).
+- [x] `docs/compat.md` updated for Module 2 (26 Oct 2026).
+- [ ] `README.md` describes Module 2 (in the release prep: `readme-modrinth-sync.yml` publishes every README change on
+      `main` to Modrinth, so it must not describe an unreleased module).
+- [x] Self-check on both loaders with Module 2 on (26 Oct 2026: regular Fabric 74/74, NeoForge 67/67; `--mode parts`
+      on Fabric 25/25, NeoForge without the shader pack).
+- [ ] Benchmark round A–D on the release build.
+- [ ] Anton's visual checks of the M6 PR's *How to verify*.
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
 ---
