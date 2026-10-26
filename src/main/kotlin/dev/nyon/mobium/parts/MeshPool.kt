@@ -97,30 +97,26 @@ object MeshPool {
     }
 
     private fun writeSodium(cube: ModelPart.Cube): Int {
-        val cuboid = SodiumCubes.cuboid(cube) ?: return -1
+        if (!SodiumCubes.read(cube)) return -1
+        val bounds = SodiumCubes.bounds
         var faces = 0
-        for (face in 0 until 6) if (cuboid.shouldDrawFace(face)) faces++
+        for (face in 0 until 6) if (SodiumCubes.drawFace[face]) faces++
         val first = quadCount
         ensurePending(first - uploadedQuads + faces)
         var address = pending + (first - uploadedQuads).toLong() * QUAD_BYTES
         for (face in 0 until 6) {
-            if (!cuboid.shouldDrawFace(face)) continue
-            MemoryUtil.memPutFloat(address, cuboid.originX)
-            MemoryUtil.memPutFloat(address + 4, cuboid.originY)
-            MemoryUtil.memPutFloat(address + 8, cuboid.originZ)
-            MemoryUtil.memPutFloat(address + 12, cuboid.sizeX)
-            MemoryUtil.memPutFloat(address + 16, cuboid.sizeY)
-            MemoryUtil.memPutFloat(address + 20, cuboid.sizeZ)
+            if (!SodiumCubes.drawFace[face]) continue
+            for (i in 0 until 6) MemoryUtil.memPutFloat(address + i * 4L, bounds[i])
             for (v in 0 until 4) {
                 // ModelCuboid.textures packs (u, v) as Int2: u's bits low, v's high (little endian).
-                val texture = cuboid.textures[face * 4 + v]
-                MemoryUtil.memPutInt(address + 24 + v * 12L, cuboid.positions[face * 4 + v])
+                val texture = SodiumCubes.textures[face * 4 + v]
+                MemoryUtil.memPutInt(address + 24 + v * 12L, SodiumCubes.positions[face * 4 + v])
                 MemoryUtil.memPutInt(address + 28 + v * 12L, texture.toInt())
                 MemoryUtil.memPutInt(address + 32 + v * 12L, (texture ushr 32).toInt())
             }
             MemoryUtil.memPutInt(address + 72, 0)
             MemoryUtil.memPutInt(address + 76, 0)
-            MemoryUtil.memPutInt(address + 80, SodiumCubes.NORMAL_DIRECTIONS[cuboid.normals[face]] or SODIUM_LAYOUT)
+            MemoryUtil.memPutInt(address + 80, SodiumCubes.NORMAL_DIRECTIONS[SodiumCubes.normals[face]] or SODIUM_LAYOUT)
             address += QUAD_BYTES
         }
         quadCount = first + faces

@@ -569,10 +569,15 @@ object SelfCheck {
             // Animations), C (Fresh Animations without the pack).
             validateParts("vanilla models", expectParts = true)
             comparePaused(minecraft, "parts: vanilla models", "parts-vanilla")
+            /*? if fabric {*/
             val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            /*?} else {*/
+            /*// Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 (see inWorld).
+            val pack: String? = null
+            *//*?}*/
             var restorePack: (() -> Unit)? = null
             if (pack == null) {
-                results += "NOTE no shader pack, the shader pack checks were skipped"
+                results += "NOTE no shader pack (none in shaderpacks/, or NeoForge), the shader pack checks were skipped"
             } else {
                 restorePack = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
                 yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
