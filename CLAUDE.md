@@ -29,6 +29,7 @@ Requires JDK 25 (same as CI).
 ./gradlew :26.3-fabric:benchKit            # mods of the four benchmark setups + datapack -> versions/26.3-fabric/build/bench-kit
 ./gradlew :26.3-fabric:runBenchWorld       # saves a ready benchmark world -> versions/26.3-fabric/build/bench-world
 python3 benchmark/prism_instances.py       # creates/updates the Prism instances "Mobium Bench A–D" from the two above
+python3 benchmark/bench_round.py           # unattended round A–D in those instances (about 3 h; --quick, --dry-run)
 python3 scripts/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
 ```
 

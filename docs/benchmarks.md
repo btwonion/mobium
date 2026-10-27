@@ -158,7 +158,21 @@ benchmarked.
 Every function switches you to spectator mode, teleports you to the scene's camera position and rotation, and builds
 the scene two seconds later in the same place (each scene replaces the previous one). Wait for "Scene … is ready".
 
-### Running a setup
+### Running a round unattended
+
+`python3 benchmark/bench_round.py` runs setups A–D one after another without anyone at the keyboard (about three
+hours; `A D` for some setups, `--dry-run` to see the plan, `--quick` for a five-minute smoke test). Before it starts
+it checks mains power, an external monitor, that every instance has the bench kit's Mobium jar and that none of them
+is running. For each setup it writes the plan (`PLANS` in the script: `/mobium suite` everywhere, `/mobium stages` in
+A–D, `/mobium gatec` in A, C and D, and in A also `/mobium stages 60 3 display_build`) to the instance's
+`mobium-bench/autorun` and starts the instance with Prism's command line straight into the world. Mobium
+(`bench/BenchAutorun.kt`) puts the fullscreen window on the monitor whose name contains `--display` (default `AOC`) at
+1920×1080, runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it
+measured on) and closes the game. Afterwards the script copies the round's files into
+`docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/` and prints the medians. Nobody may use the computer while it
+runs: the game owns the monitor, and anything else running costs frame time.
+
+### Running a setup by hand
 
 1. Start the setup's Prism instance on mains power, put the fullscreen window on a 1920×1080 monitor and open the
    "Mobium Bench" world.
