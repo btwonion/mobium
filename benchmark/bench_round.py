@@ -12,7 +12,8 @@ the game (bench/BenchAutorun.kt). Mobium puts the fullscreen window on the monit
 1920×1080. Before anything starts it checks mains power, an external monitor, that every instance has the bench kit's
 Mobium jar (python3 benchmark/prism_instances.py installs it) and that none of them is running. Afterwards it copies
 this round's files into docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/ (per-run CSVs gzipped, summary.csv
-with this round's rows) and prints the medians. Nobody may use the computer while it runs.
+with this round's rows; -<build> is appended when that folder holds an earlier round of the day) and prints the medians.
+Nobody may use the computer while it runs.
 """
 
 import argparse
@@ -208,8 +209,16 @@ def main() -> None:
             problems.append(f"{letter} has no world '{WORLD}'")
         if running_games(game):
             problems.append(f"{letter} is running; close it first")
+    results = ROOT / ("versions/26.3-fabric/build/bench-round-quick" if args.quick else "docs/benchmarks/results")
+    target = results / f"{datetime.now():%Y-%m-%d}-{args.machine}"
+    if not args.quick and target.exists():
+        # An earlier round of the day: its summary.csv files would be overwritten.
+        target = target.with_name(f"{target.name}-{kit}")
+        if target.exists():
+            problems.append(f"{target.relative_to(ROOT)} exists already; move it or pass another --machine")
     total = sum(START_MINUTES + sum(MINUTES.get(command, 10) for command in PLANS[letter]) for letter in letters)
-    print(f"Round {' '.join(letters)} with Mobium {kit}, about {total // 60} h {total % 60} min; monitor '{args.display}'")
+    print(f"Round {' '.join(letters)} with Mobium {kit}, about {total // 60} h {total % 60} min; monitor '{args.display}'; "
+          f"results in {target.relative_to(ROOT)}")
     for letter in letters:
         print(f"  {letter} ({games[letter][0]}): {', '.join(PLANS[letter])}")
     if problems:
@@ -217,9 +226,6 @@ def main() -> None:
     if args.dry_run:
         return
 
-    since = datetime.now()
-    results = ROOT / ("versions/26.3-fabric/build/bench-round-quick" if args.quick else "docs/benchmarks/results")
-    target = results / f"{since:%Y-%m-%d}-{args.machine}"
     finished = []
     for letter in letters:
         folder, game = games[letter]
