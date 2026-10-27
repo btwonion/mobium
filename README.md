@@ -43,8 +43,8 @@ chests, signs, item frames and displays are on screen; an empty field gets neith
 
 Mobs, armor, saddles, banners, bells, lecterns and everything else the game builds from model parts are posed and
 animated exactly as before, by the game, Entity Model Features and Fresh Animations. Only the last step moves: instead
-of the CPU working out and writing every corner of every cube, a compute shader on the GPU writes the vertices, exactly
-the bytes the game would have written, also in Iris's shader pack formats and its shadow pass. Automated test scenes
+of the CPU working out and writing every corner of every cube, a shader on the GPU writes the vertices, exactly the
+bytes the game would have written, also in Iris's shader pack formats and its shadow pass. Automated test scenes
 compare them byte for byte with the game's own.
 
 Posing and animations stay on the CPU, so the gain is largest where writing the vertices is expensive, as with a
@@ -53,15 +53,14 @@ outline of glowing entities and the breaking overlay are drawn by the game as us
 OpenGL 4.3 compute shaders (current Windows and Linux drivers; not macOS, which stops at OpenGL 4.1); without them the
 game writes the vertices itself.
 
-**What it gains:** in 500 walking cows, villagers and zombies with Fresh Animations (Sodium, 1920×1080, Intel Arc 140V
-laptop GPU), the frame time dropped from 9.1 ms to 7.2 ms (110 → 138 FPS). With Fresh Animations and Complementary
-Reimagined on top, the entities' CPU work per frame fell from 13.7 ms to 7.2 ms, and the frame rate rose from 15 to
-18 FPS.
+**What it gains:** in 500 walking cows, villagers and zombies (Sodium, 1920×1080, Intel Arc 140V laptop GPU), the
+frame time dropped from 3.5 ms to 3.0 ms with the game's own models (282 → 335 FPS), and from 9.9 ms to 7.3 ms with
+Fresh Animations (101 → 137 FPS). With Fresh Animations and Complementary Reimagined on top, the entities' CPU work per
+frame fell from 14.9 ms to 6.8 ms, and the frame rate rose from 15 to 18 FPS.
 
-**Known limit:** on integrated graphics without a shader pack, the GPU part transform can cost more GPU time than it
-saves on the CPU: on the same laptop about 0.3–0.4 ms per frame in the 500 mobs with vanilla models, and 0.2–0.3 ms
-with only a few animated models on screen. That shows only at a few hundred FPS (about 10 % at 300 FPS, 2 % at 60);
-its switch in the settings turns it off.
+**Known limit:** with only a few animated models on screen, the GPU part transform can cost a little more than it
+saves: about 0.1 ms per frame on the same laptop without a shader pack. That shows only at several hundred FPS (about
+5 % at 500 FPS, under 1 % at 60); its switch in the settings turns it off.
 
 ### Coming later
 
