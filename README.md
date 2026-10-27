@@ -66,8 +66,8 @@ compare them byte for byte with the game's own.
 Posing and animations stay on the CPU, so the gain is largest where writing the vertices is expensive, as with Fresh
 Animations or a shader pack. Translucent models (unless the game's Improved Transparency is on), the enchantment
 glint, the outline of glowing entities and the breaking overlay are drawn by the game as usual. The GPU part transform
-needs OpenGL 4.3 compute shaders (current Windows and Linux drivers; not macOS, which stops at OpenGL 4.1); without them the
-game writes the vertices itself.
+needs OpenGL 4.3 compute shaders (current Windows and Linux drivers; not macOS, which stops at OpenGL 4.1); without
+them the game writes the vertices itself.
 
 **Known limit:** with only a few animated models on screen, the GPU part transform can cost a little more than it
 saves: about 0.1 ms per frame on the same laptop without a shader pack. That shows only at several hundred FPS (about
