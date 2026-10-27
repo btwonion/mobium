@@ -18,6 +18,7 @@ import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.debug.DebugLines
 import dev.nyon.mobium.debug.Sections
+import dev.nyon.mobium.parts.ExpandPass
 import dev.nyon.mobium.parts.PartTransform
 import dev.nyon.mobium.parts.PartValidation
 import net.minecraft.client.Minecraft
@@ -94,6 +95,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
             checkSuiteCommand(context)
             checkGateB(context)
             checkGateC(context)
+            checkStages(context)
             setCache(context, true)
         }
     }
@@ -115,8 +117,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
     /**
      * Module 2 in [scene] with ticks frozen: the GPU's vertices against the CPU's for every part it takes over
-     * ([PartValidation], byte for byte; CI runs Mesa's llvmpipe), then its picture against the picture with Module 2
-     * off.
+     * ([PartValidation], byte for byte; CI runs Mesa's llvmpipe), with each expand stage the GPU has, then its picture
+     * against the picture with Module 2 off.
      */
     private fun checkParts(context: ClientGameTestContext, singleplayer: TestSingleplayerContext, scene: String) {
         singleplayer.server.runCommand("tick freeze")
@@ -127,17 +129,26 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         context.waitTicks(SETTLE_TICKS)
         context.runOnClient<RuntimeException> {
             check(PartTransform.active) { "Module 2 did not start: ${ModuleStates.status(Module.PART_TRANSFORM).describe()}" }
-            PartValidation.reset()
-            PartTransform.validating = true
         }
-        context.waitTicks(VALIDATION_TICKS)
-        context.runOnClient<RuntimeException> {
-            PartTransform.validating = false
-            LOGGER.info("Module 2 validation ({}): {}; {}", scene, PartValidation.summary(), PartTransform.debugLine())
-            check(PartValidation.compared > 0 && PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0) {
-                "Module 2's vertices differ from the CPU's in $scene: ${PartValidation.summary()} ${PartValidation.reports}"
+        // Both stages where the GPU has the vertex stage (which one runs depends on the shader pack), compute else.
+        val vertexStores = context.computeOnClient<Boolean, RuntimeException> { ExpandPass.vertexStores }
+        val stages = if (vertexStores) intArrayOf(ExpandPass.STAGE_VERTEX, ExpandPass.STAGE_COMPUTE) else intArrayOf(ExpandPass.STAGE_COMPUTE)
+        for (stage in stages) {
+            context.runOnClient<RuntimeException> {
+                ExpandPass.forcedStage = stage
+                PartValidation.reset()
+                PartTransform.validating = true
+            }
+            context.waitTicks(VALIDATION_TICKS)
+            context.runOnClient<RuntimeException> {
+                PartTransform.validating = false
+                LOGGER.info("Module 2 validation ({}): {}; {}", scene, PartValidation.summary(), PartTransform.debugLine())
+                check(PartValidation.compared > 0 && PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0) {
+                    "Module 2's vertices (${ExpandPass.stageName}) differ from the CPU's in $scene: ${PartValidation.summary()} ${PartValidation.reports}"
+                }
             }
         }
+        context.runOnClient<RuntimeException> { ExpandPass.forcedStage = -1 }
         val parts = context.takeScreenshot("scene_${scene}_parts")
         singleplayer.server.runCommand("tick unfreeze")
         ScreenshotDiff.compare(vanilla, parts).also { diff ->
@@ -159,6 +170,22 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         context.runOnClient<RuntimeException> {
             check(PartTransform.active && config.parts.enabled) { "/mobium gatec did not restore Module 2" }
         }
+    }
+
+    /** A short `/mobium stages` where the GPU has the vertex stage: one run with each stage, their ratio, the choice restored. */
+    private fun checkStages(context: ClientGameTestContext) {
+        if (!context.computeOnClient<Boolean, RuntimeException> { ExpandPass.vertexStores }) {
+            LOGGER.info("No vertex stage on this GPU, /mobium stages not checked")
+            return
+        }
+        val rows = runPlan(context, "mobium stages $BENCH_SECONDS 1", "stages-")
+        val setups = rows.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
+        check(setups.size == 2 && setups.count { "+parts-vertex" in it } == 1) { "Unexpected /mobium stages rows: $rows" }
+        LOGGER.info(
+            "Module 2's stages first look (/mobium stages {} 1): frame with the vertex stage {}x compute's", BENCH_SECONDS,
+            rows.single { it.startsWith("# stages_vertex_over_compute,") }.substringAfter(',')
+        )
+        context.runOnClient<RuntimeException> { check(ExpandPass.forcedStage == -1) { "/mobium stages did not restore the stage" } }
     }
 
     /** Shows the `mobium:timings` F3 entry on the live mob scene and checks that it is drawn. */

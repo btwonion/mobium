@@ -29,6 +29,7 @@ Requires JDK 25 (same as CI).
 ./gradlew :26.3-fabric:benchKit            # mods of the four benchmark setups + datapack -> versions/26.3-fabric/build/bench-kit
 ./gradlew :26.3-fabric:runBenchWorld       # saves a ready benchmark world -> versions/26.3-fabric/build/bench-world
 python3 benchmark/prism_instances.py       # creates/updates the Prism instances "Mobium Bench A–D" from the two above
+python3 benchmark/bench_round.py           # unattended round A–D in those instances (about 3 h; --quick, --dry-run)
 python3 scripts/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
 ```
 
@@ -40,10 +41,13 @@ Extend the scenario for every rendering PR, run it on both loaders, and read the
 `--mode gallery` runs only the `cache_gallery` part (every cached type, effects, shader pack, Fresh Animations) and is
 the quick loop while working on the static cache; failed count checks name why an object was not cached. `--mode
 parts` is the same for Module 2 (GPU vertices against the CPU's, pictures, in `mob_pen_live` and `part_gallery` with
-the four setups' models), `--mode profile-mobs [--scene <scene>]` measures Module 2 off, on and without vertices.
+the four setups' models, both expand stages), `--mode profile-mobs [--scene <scene>]` measures Module 2 off, on and
+without vertices, `--mode expand-cost [--scene <scene>]` its fixed cost per frame (compute against the vertex stage,
+CPU time per step, GPU timestamps of the frame and of each pass; `ExpandProfile`).
 
 In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium suite` runs every scene of a setup
-and `/mobium gatea` / `gateb` / `gatec` run Gates A–C unattended (`/mobium stop` aborts), scenes come from the
+and `/mobium gatea` / `gateb` / `gatec` run Gates A–C unattended (`/mobium stages` compares Module 2's two expand
+stages; `/mobium stop` aborts), scenes come from the
 `benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
 shows the stage timers. Protocol and results: `docs/benchmarks.md`. Settings: Mod Menu (Fabric), the mod list
 (NeoForge) or Mobium's page in Sodium's video settings. The A/B key switches all of Mobium off and on live; key
@@ -98,8 +102,10 @@ overlapping mods and failures) and reports exceptions to `core/Fallback`.
   whose cubes it knows (vanilla cubes, written as vanilla or as Sodium would; EMF's `EMFCube`) reserves its vertices in
   the staged builder and writes records (`PartBatch`, meshes in `MeshPool`); after `StagedVertexBuffer.upload()`
   `ExpandPass` runs `assets/mobium/shaders/expand_parts.comp` (raw GL 4.3, `gpu/gl/GlCompute`), which writes exactly
-  the bytes the CPU path would have, Iris's extension included. `PartValidation` (dev) compares them byte for byte;
-  any change to the shader or the records must keep `--mode parts` at 0 differing vertices.
+  the bytes the CPU path would have, Iris's extension included: compiled as a vertex shader drawn as points without a
+  shader pack (Mesa's iris puts a compute dispatch in a batch of its own, a fixed cost per frame), as a compute
+  dispatch with one (`ExpandPass.stage`). `PartValidation` (dev) compares them byte for byte; any change to the
+  shader or the records must keep `--mode parts` at 0 differing vertices in both stages.
 
 ## Config and translations
 

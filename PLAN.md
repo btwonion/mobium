@@ -43,8 +43,18 @@ Read this first when picking the work up in a new session.
     outline and breaking overlay stay on the CPU; on Vulkan both modules stay off (`OffReason.BACKEND`) until M7.
 - **Next: `0.2.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
   Module 2 follow-ups (§M6), so that the two known limits of beta1 go away or are measured, plus fixes for whatever
-  testers report. The fixed cost with few parts is Claude's to measure (GL timer queries in the dev client) and fix;
-  A's same-session frame comparison needs Anton's `/mobium gatec` in setup A on the beta2 build.
+  testers report. Branch `beta2-parts-followups` (27 Oct 2026, #19; #18 merged): Module 2's fixed cost found and
+  fixed (the compute dispatch's batch hand-over on Mesa's iris; the expand pass runs in the vertex stage without a
+  shader pack), `/mobium stages`, `--mode expand-cost`, the F3 line groups, and unattended benchmark rounds
+  (`python3 benchmark/bench_round.py` with Mobium's `bench/BenchAutorun.kt`). Validated in the dev clients (both
+  stages byte for byte in all four setups). **The beta2 round ran unattended on 27 Oct 2026** (20:06–22:30, build
+  `8d26a26`, 1920×1080 on the AOC; `docs/benchmarks.md` *27 Oct 2026, 0.2.0-beta2 round*): without a shader pack the
+  vertex stage is faster than compute in every pair (A 0.98×, `display_build` 0.93×, C 0.98×), with one both are
+  equal within the GPU clock's spread (B, D), so the stage choice stays; Module 2 makes A's frame 1.19× faster in the
+  same session (beta1's known limit was a cross-session artefact); Gate C holds (D 2.18× lower CPU work, 1.20×
+  faster frame; C 1.36×). Release prep: #20 (README only). **Left for Anton:** merge #19, then #20, then run
+  `release.yml` on `main` right after #20 (the README goes to Modrinth on merge). Optional: the visual check in #19's
+  *How to verify*.
 - **Then M7.** Minecraft 26.4 is in snapshots (`26.4-snapshot-1` on 22 Sep 2026, `26.4-snapshot-6` on 27 Oct 2026);
   Vulkan is to become its default backend there (*(verify)* in the snapshots), and Mobium is off on Vulkan, so the
   snapshot-tracking branch and `VkCompute` come first in M7.
@@ -71,10 +81,10 @@ Read this first when picking the work up in a new session.
     4.2–4.6 ms shadow pass, against 0.4 ms in the main pass with the cache). Candidate: draw cached entities in the
     shadow pass from the cache too (needs the shadow pass's vertex format and render types; check with the self-check's
     shader pack comparisons).
-  - F3 `mobium:modules`: vanilla puts the third of its lines, the static cache line, into the right column, and that
-    line is wider than the room next to the left column's first line, so the two overlap (seen in the self-check's
-    `f3-modules.png`; beta2's "sections with light updates kept" made it longer). The numbers at its end stay readable.
-    Shorter lines, or a line group of its own.
+  - [x] F3 `mobium:modules`: vanilla split its lines between the two columns (an entry's plain lines go half left,
+    half right), so the long static cache line ended up on the right, over the left column's first line. Since beta2
+    (27 Oct 2026) both of Mobium's entries add their lines as a group, which stays in one column, and the static cache
+    line is three lines.
   - later: cache armor (keep submit orders), renderer API item meshes (`ExtendedItemSubmit`).
 - **A/B key:** a physical key position (SDL scancode, the key right of P): `+` on Anton's German keyboard, `]` on a
   US one; chat and action-bar messages name the bound key.
@@ -813,14 +823,29 @@ Earlier definitions, both out of reach: 1.5× frame time in D (the plan's first;
 round), then 1.5× frame time in C and no slower in D (first redefinition, 25 Oct 2026; at most about 1.35×, above).
 
 **Module 2 follow-ups** (from the 0.2.0-beta1 release round, 26–27 Oct 2026, `docs/benchmarks.md` *26–27 Oct 2026*):
-- [ ] **Setup A at 1920×1080:** across sessions A's mob pens are 1.07–1.14× slower with Module 2 at about the same
-      GPU clock, although `prepare` fell by 0.65–0.73 ms; the dev client's 854×480 comparison was 1.22× faster. A
-      same-session `/mobium gatec` in A decides whether A's frame is GPU-bound there and Module 2 costs it frame time.
-- [ ] **Fixed cost with few parts:** in `display_build` Module 2 expands only 17 shields (special item renderers the
-      cache leaves to vanilla) and the frame gets 0.15–0.3 ms slower (A 1.64 → 1.89 ms at the same clock; dev client
-      1.69 → 1.98 ms, same session), with Module 2's own methods at 0.2 % of the render thread's samples. Measure the
-      dispatch, the barrier and `upload()` with GL timer queries; candidates: leave small frames on the CPU path (decide
-      from the previous frame's quad count before reserving), or one dispatch for all staged buffers of a frame.
+- [x] **Setup A at 1920×1080** (27 Oct 2026, beta2 round, build `8d26a26`): across sessions A's mob pens had looked
+      1.07–1.14× slower with Module 2 at about the same GPU clock, although `prepare` fell by 0.65–0.73 ms. In the same
+      session (`/mobium gatec`) Module 2 makes them 1.19× faster (3.55 → 2.98 ms, `prepare` 2.12 → 1.12 ms), with
+      compute too (3.07–3.26 ms); A's frame without Module 2 was 3.50–3.66 ms there against 3.07–3.19 ms on 23 Oct, so
+      the sessions differed, not Module 2. The vertex stage is 0.98× compute in the mob pens, 0.93× in `display_build`.
+- [x] **Fixed cost with few parts** (27 Oct 2026, `beta2-parts-followups`; `docs/benchmarks.md` *27 Oct 2026, Module
+      2's fixed cost*): in `display_build` Module 2 expands only 17 shields and the frame got 0.15–0.3 ms slower. Cause:
+      Mesa's iris records a compute dispatch in a batch of its own, so each expand pass flushes the render and the
+      compute batch mid-frame and the GPU waits for the hand-over (`INTEL_DEBUG=submit`: three submissions per frame
+      instead of one; docs/vanilla-notes.md §16), 0.22 ms of GPU time per frame however few parts there are. Module 2's
+      own CPU time is 25–30 µs per pass. Fix: the same shader compiled as a vertex shader, drawn as `GL_POINTS` with
+      rasterisation off (`ExpandPass.STAGE_VERTEX`, where `GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS` ≥ 3), stays in the
+      render batch: in `display_build` 0.03 instead of 0.24 ms of GPU time, its passes 2.6–3.7× cheaper on the GPU in
+      every setup. With a shader pack compute stays, because there the dispatch's flushes submit the frame's first part
+      early and B's and D's frames were 3–14 ms faster with compute in the dev client (at 1920×1080 both are equal
+      there, beta2 round); so the vertex stage runs without a shader pack only (`ExpandPass.stage`; `-Dmobium.parts.stage=compute|vertex` overrides). Both stages validated
+      byte for byte in all four setups (`--mode parts`, the gametests). `/mobium stages [seconds] [runs] [scene]`
+      compares the two in one session; `--mode expand-cost` is the dev measurement (`debug/ExpandProfile.kt`: CPU time
+      per step, GPU timestamps per frame and per pass). The CPU-path candidates (small frames on the CPU, one dispatch
+      per frame) are not needed for this.
+- [ ] Candidate, not planned: with a shader pack the frame gains from submitting its first part early (above). A
+      `glFlush` after the vertex stage's pass got half of D's difference back, but waits for Mesa's driver thread (2.5 ms
+      per frame in D); an asynchronous way to submit would let the vertex stage run with shader packs too.
 
 ### M7 · Phase 3: Vulkan, Aperture, Module 3, 26.4
 - [ ] Add `26.4-fabric` / `26.4-neoforge` Stonecutter targets when 26.4 releases (track its snapshots in a branch
@@ -925,11 +950,22 @@ benchmark numbers if performance changed.
 
 `0.2.0-beta2` (Module 2 follow-ups, §M6):
 
-- [ ] `changelog.md` contains only beta2's notes.
-- [ ] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices, pictures
-      identical).
-- [ ] Benchmark round A–D on beta2, committed to `docs/benchmarks.md`, with `/mobium gatec` in setup A.
-- [ ] Anton's visual checks of the beta2 PR's *How to verify*.
+- [x] `changelog.md` contains only beta2's notes (27 Oct 2026, with the round's 1920×1080 result).
+- [x] Self-check on both loaders with Module 2 on (27 Oct 2026: regular Fabric 74/74, NeoForge 67/67; `--mode parts`
+      Fabric 33/33, NeoForge 17/17, 0 differing vertices in both stages, pictures identical).
+- [ ] Anton's visual checks of the beta2 PR's *How to verify* (optional: the self-check compares both stages' pictures
+      with vanilla's pixel for pixel in all four setups).
+- [x] Benchmark round A–D on beta2 at 1920×1080, unattended (`python3 benchmark/bench_round.py`: the suite in every
+      setup, `/mobium stages` in A–D and on `display_build` in A, `/mobium gatec` in A, C and D), committed to
+      `docs/benchmarks.md`. If the vertex stage is slower than compute in A or C, or faster in B or D, change the choice
+      in `ExpandPass.stage` before the release. Done on 27 Oct 2026 (build `8d26a26`,
+      `docs/benchmarks/results/2026-10-27-thinkpad-x9-8d26a26/`): the vertex stage is faster in every pair in A and C;
+      in B and D the medians lean its way (0.988×, 0.952×) but the pairs disagree in sign and every run follows the
+      GPU clock (D: compute 52.0 ms at 840 MHz, vertex 52.6 and 53.6 ms at 868 and 822), so it is not faster there
+      and the choice stays.
+- [x] `README.md` updated from that round (#20, `release-0.2.0-beta2`, 27 Oct 2026; merge right before
+      `release.yml`): "a shader" instead of "a compute shader", the beta2 round's Gate C numbers, and the known limit
+      down to the 0.1 ms with few animated models.
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
 ---
