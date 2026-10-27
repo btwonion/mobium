@@ -10,6 +10,7 @@ import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.debug.selfcheck.SelfCheck
+import dev.nyon.mobium.parts.ExpandPass
 import net.minecraft.client.Minecraft
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -43,6 +44,8 @@ object Mobium {
     fun onClientStarted() {
         val capabilities = Capabilities.detect()
         LOGGER.info("Graphics: {}", capabilities.describe())
+        ExpandPass.configure(capabilities)
+        if (capabilities.compute) LOGGER.info("Part transform: expand pass as {}", ExpandPass.describeChoice())
         ModuleStates.onClientStarted()
         SelfCheck.startIfRequested(Minecraft.getInstance())
     }

@@ -57,6 +57,11 @@ paused). The Fabric gametests run the same validation on Mesa's software rendere
 | + Fresh Animations 1.10.3 | 0 differing vertices (6.8M), pictures identical | 0 differing vertices (9.3M in the pens, 2.6M in the gallery), pictures identical |
 | Fresh Animations and Complementary | 0 differing vertices, pictures as with the pack alone | Not tested |
 
+Since 0.2.0-beta2 the expand pass runs as a compute dispatch or in the vertex stage (`parts/ExpandPass.kt`), and
+`--mode parts` validates both in every setup. 27 Oct 2026, both stages: Fabric 33/33 checks (16 validations, 0
+differing vertices, 0.26–9.5M vertices compared each), NeoForge 17/17 (8 validations, 0 differing); pictures identical
+as above.
+
 ## Known differences and limits
 
 - Minecraft's Vulkan renderer (also with Vitrail, which runs OptiFine-format shader packs on it): both modules need the
@@ -78,9 +83,16 @@ paused). The Fabric gametests run the same validation on Mesa's software rendere
   quads, directly or through an atlas sprite: translucent models without improved transparency (sorted on upload), the
   breaking overlay, glint and outline passes, other vertex formats and other cube classes keep vanilla's CPU path.
 - Module 2's cost on the GPU (0.2.0-beta1 release round, `docs/benchmarks.md` *26–27 Oct 2026*): on the Intel Arc 140V
-  without a shader pack it can cost more GPU time than it saves on the CPU, about 0.3–0.4 ms per frame in the mob
+  without a shader pack it could cost more GPU time than it saves on the CPU, about 0.3–0.4 ms per frame in the mob
   pens with vanilla models at 1920×1080 (across sessions, at the same GPU clock) and 0.15–0.3 ms in `display_build`,
-  where it expands only 17 shields (also same-session in the dev client). Follow-ups in `PLAN.md` (M6).
+  where it expands only 17 shields. Most of that was a fixed cost of the compute dispatch on Mesa's iris driver, which
+  records it in a batch of its own and flushes both batches around it (docs/vanilla-notes.md §16). Since 0.2.0-beta2
+  the expand pass runs as a vertex shader drawn as points without a shader pack, where the GPU lets vertex shaders
+  write storage buffers (`GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS` ≥ 3; F3 `mobium:modules` names the stage): in the dev
+  client 0.03 instead of 0.24 ms of GPU time per frame in `display_build` (*27 Oct 2026, Module 2's fixed cost*).
+  With a shader pack it stays a compute dispatch, which made those frames faster. `-Dmobium.parts.stage=compute` or
+  `vertex` in the Java arguments picks one for comparisons and bug reports; both write the same bytes (`--mode
+  parts` validates both). Other GPUs and drivers are not measured yet.
 - Iris counts vertices written one by one per quad; a Sodium push right after such vertices loses one from its count
   and extends the following quads from the wrong vertices (vanilla with Iris and Sodium, not Mobium). With Module 2
   both kinds of cube are expanded on the GPU, so that mix no longer happens; where it happened before, the picture

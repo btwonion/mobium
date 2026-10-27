@@ -8,15 +8,19 @@ import org.lwjgl.opengl.GL31C
 import org.lwjgl.opengl.GL43C
 
 /**
- * Raw OpenGL 4.3 for Module 2's compute pass, which Renderpearl has no API for (docs/vanilla-notes.md §5, §16):
- * programs, shader storage buffers and their uploads. Renderpearl's GL backend does not cache the bound program or the
- * storage buffer bindings, and binds its pipeline anew in every render pass, so a dispatch between passes only has to
- * put back the program and unbind what it bound. Render thread only, with the game's GL context current.
+ * Raw OpenGL 4.3 for Module 2's expand pass, which Renderpearl has no API for (docs/vanilla-notes.md §5, §16):
+ * programs (compute, or a lone vertex shader for the point-draw variant), shader storage buffers and their uploads.
+ * Renderpearl's GL backend does not cache the bound program, the vertex array or the storage buffer bindings, and binds
+ * its pipeline anew in every render pass, so a pass between render passes only has to put back the program and vertex
+ * array and unbind what it bound. Render thread only, with the game's GL context current.
  */
 object GlCompute {
-    /** Compiles and links a compute program; throws with the driver's log if that fails. */
-    fun createProgram(name: String, source: String): Int {
-        val shader = GL20C.glCreateShader(GL43C.GL_COMPUTE_SHADER)
+    /**
+     * Compiles and links a program of one shader of type [stage] (`GL_COMPUTE_SHADER` or `GL_VERTEX_SHADER`); throws
+     * with the driver's log if that fails.
+     */
+    fun createProgram(name: String, source: String, stage: Int = GL43C.GL_COMPUTE_SHADER): Int {
+        val shader = GL20C.glCreateShader(stage)
         GL20C.glShaderSource(shader, source)
         GL20C.glCompileShader(shader)
         if (GL20C.glGetShaderi(shader, GL20C.GL_COMPILE_STATUS) == GL20C.GL_FALSE) {
