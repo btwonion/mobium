@@ -82,17 +82,18 @@ as above.
 - Module 2 only takes over parts drawn into the frame's staged buffers in the entity format (or Iris's) with unsorted
   quads, directly or through an atlas sprite: translucent models without improved transparency (sorted on upload), the
   breaking overlay, glint and outline passes, other vertex formats and other cube classes keep vanilla's CPU path.
-- Module 2's cost on the GPU (0.2.0-beta1 release round, `docs/benchmarks.md` *26–27 Oct 2026*): on the Intel Arc 140V
-  without a shader pack it could cost more GPU time than it saves on the CPU, about 0.3–0.4 ms per frame in the mob
-  pens with vanilla models at 1920×1080 (across sessions, at the same GPU clock) and 0.15–0.3 ms in `display_build`,
-  where it expands only 17 shields. Most of that was a fixed cost of the compute dispatch on Mesa's iris driver, which
-  records it in a batch of its own and flushes both batches around it (docs/vanilla-notes.md §16). Since 0.2.0-beta2
-  the expand pass runs as a vertex shader drawn as points without a shader pack, where the GPU lets vertex shaders
-  write storage buffers (`GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS` ≥ 3; F3 `mobium:modules` names the stage): in the dev
-  client 0.03 instead of 0.24 ms of GPU time per frame in `display_build` (*27 Oct 2026, Module 2's fixed cost*).
-  With a shader pack it stays a compute dispatch, which made those frames faster. `-Dmobium.parts.stage=compute` or
-  `vertex` in the Java arguments picks one for comparisons and bug reports; both write the same bytes (`--mode
-  parts` validates both). Other GPUs and drivers are not measured yet.
+- Module 2's cost on the GPU (`docs/benchmarks.md`): in the 0.2.0-beta1 release round on the Intel Arc 140V without a
+  shader pack, `display_build`, where it expands only 17 shields, got 0.15–0.3 ms per frame slower. That was a fixed
+  cost of the compute dispatch on Mesa's iris driver, which records it in a batch of its own and flushes both batches
+  around it (docs/vanilla-notes.md §16). Since 0.2.0-beta2 the expand pass runs as a vertex shader drawn as points
+  without a shader pack, where the GPU lets vertex shaders write storage buffers (`GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS`
+  ≥ 3; F3 `mobium:modules` names the stage): 0.03 instead of 0.24 ms of GPU time per frame in `display_build` in the
+  dev client (*27 Oct 2026, Module 2's fixed cost*), and at 1920×1080 frames 2–7 % faster than with the dispatch in A
+  and C (*0.2.0-beta2 round*); about 0.1 ms per frame remain in `display_build` (dev client). The mob pens with vanilla
+  models, which looked 1.07–1.14× slower across sessions in the beta1 round, are 1.19× faster with Module 2 in the same
+  session. With a shader pack it stays a compute dispatch: faster there in the dev client, equal at 1920×1080.
+  `-Dmobium.parts.stage=compute` or `vertex` in the Java arguments picks one for comparisons and bug reports; both
+  write the same bytes (`--mode parts` validates both). Other GPUs and drivers are not measured yet.
 - Iris counts vertices written one by one per quad; a Sodium push right after such vertices loses one from its count
   and extends the following quads from the wrong vertices (vanilla with Iris and Sodium, not Mobium). With Module 2
   both kinds of cube are expanded on the GPU, so that mix no longer happens; where it happened before, the picture

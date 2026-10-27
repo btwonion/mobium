@@ -169,7 +169,8 @@ A–D, `/mobium gatec` in A, C and D, and in A also `/mobium stages 60 3 display
 (`bench/BenchAutorun.kt`) puts the fullscreen window on the monitor whose name contains `--display` (default `AOC`) at
 1920×1080, runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it
 measured on) and closes the game. Afterwards the script copies the round's files into
-`docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/` and prints the medians. Nobody may use the computer while it
+`docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/` (`-<build>` appended when an earlier round of the day is
+there) and prints the medians. Nobody may use the computer while it
 runs: the game owns the monitor, and anything else running costs frame time.
 
 ### Running a setup by hand
@@ -788,7 +789,7 @@ What the round shows:
   slower, although `prepare` fell by 0.65–0.73 ms. Per run at the same 650 MHz: `mob_pen_static` 3.50 and 3.49 ms
   against 3.07, `mob_pen_live` 3.52 against 3.19 and 3.19 ms; the one run at 1025 MHz took 2.86 ms. At 1920×1080 A's frame may be bound by the GPU, where the expand
   pass's work and the fixed cost below outweigh the CPU saving; the dev client's comparison at 854×480 was 1.22× faster
-  (*Module 2, first measurement*). Only a same-session run tells: `/mobium gatec` in A.
+  (*Module 2, first measurement*). Only a same-session run tells: `/mobium gatec` in A (27 Oct, *0.2.0-beta2 round*: 1.19× faster).
 - **With only a few parts, Module 2 costs more than it saves.** `display_build`'s `prepare` rose from 0.09 to 0.53 ms
   in A and C (median 0.27–0.34 ms, p90 1.2 ms, single frames up to 12 ms), and its frame from 1.64 to 1.89 ms in A at
   the same GPU clock (700 against 718–722 MHz), 1.70 to 1.83 ms in C. The displays stay cached (`submit`, `pose` and
@@ -848,6 +849,102 @@ What it shows:
 - So since 0.2.0-beta2 the expand pass runs in the vertex stage without a shader pack and as a compute dispatch with
   one (`ExpandPass.stage`); `-Dmobium.parts.stage=compute|vertex` overrides that. Frames with a shader pack are as in
   0.2.0-beta1. Single frames in B and D vary by ±5 ms between runs of the same condition in the dev window.
+
+### 27 Oct 2026, 0.2.0-beta2 round (unattended), all four setups
+
+Machine and settings as on 23–25 Oct · fullscreen 1920×1080@239.96 on the AOC (each setup's `autorun-done` names the
+window and display it measured on), mains power, uncapped, VSync off · build **8d26a26** · static cache and Module 2
+on: the vertex stage in A and C (setup names `+parts-vertex+cache`), compute in B and D (`+parts+cache`, shader pack),
+as `ExpandPass.stage` chooses · the first unattended round (`python3 benchmark/bench_round.py`, *Running a round
+unattended*), 20:06–22:30 without anyone at the computer · Raw data:
+[`results/2026-10-27-thinkpad-x9-8d26a26/`](benchmarks/results/2026-10-27-thinkpad-x9-8d26a26/).
+
+#### Same session: the two stages and Gate C
+
+`/mobium stages` alternates compute and the vertex stage, three 60-second runs each; ms per frame per run in order,
+the GPU clock in MHz in brackets, and the ratio of the medians:
+
+| Scene, setup | compute | vertex stage | vertex / compute |
+| --- | --- | --- | --- |
+| `mob_pen_live`, A | 3.07 (750), 3.10 (745), 3.26 (701) | 2.96 (749), 3.04 (722), 3.10 (702) | 0.980× |
+| `display_build`, A | 2.02 (700), 2.04 (700), 2.03 (700) | 1.90 (700), 1.90 (700), 1.85 (742) | 0.934× |
+| `mob_pen_live`, C | 7.57 (918), 7.55 (936), 7.53 (823) | 7.37 (880), 7.33 (928), 7.38 (873) | 0.977× |
+| `mob_pen_live`, B (shader pack) | 30.95 (1391), 31.15 (1325), 31.77 (1263) | 32.70 (1334), 30.20 (1466), 30.79 (1420) | 0.988× |
+| `mob_pen_live`, D (shader pack) | 58.98 (677), 56.27 (803), 52.02 (840) | 52.59 (868), 53.59 (822), 58.54 (681) | 0.952× |
+
+`/mobium gatec` (Module 2 off and on in turn, the stage `ExpandPass.stage` picks; medians of three): *CPU work* is
+`prepare` + `shadow_prepare`.
+
+| `mob_pen_live` | without Module 2: frame / CPU work | with: frame / CPU work | frame | CPU work | 0.2.0-beta1 (26 Oct) |
+| --- | --- | --- | --- | --- | --- |
+| A (vertex stage) | 3.55 / 2.12 ms (282 FPS) | 2.98 / 1.12 ms (335 FPS) | 1.19× faster | 1.89× lower | not measured |
+| C (vertex stage) | 9.94 / 6.02 ms (101 FPS) | 7.31 / 3.85 ms (137 FPS) | 1.36× faster | 1.57× lower | frame 1.25× faster |
+| D (compute) | 67.44 / 14.91 ms (14.8 FPS) | 56.37 / 6.84 ms (17.7 FPS) | 1.20× faster | 2.18× lower | 1.18×, 1.90× |
+
+What it shows:
+
+- **Without a shader pack the vertex stage is faster in every pair**, at the same GPU clock: A's mob pens by
+  0.06–0.16 ms, A's `display_build` by 0.12–0.18 ms (0.934×), C's mob pens by 0.15–0.20 ms. That is the 0.2 ms of GPU
+  time per frame the dev client measured (A's passes 320 → 120 µs, *Module 2's fixed cost* above); at 1920×1080 A and
+  C are close enough to GPU-bound for it to show in the frame.
+- **With a shader pack the two stages are equal at 1920×1080.** The medians favour the vertex stage in B (0.988×) and
+  D (0.952×), but the pairs disagree in sign and each run follows the GPU clock: in D compute took 52.0 ms at 840 MHz,
+  the vertex stage 52.6 and 53.6 ms at 868 and 822 MHz; compute 59.0 ms at 677 MHz, the vertex stage 58.5 ms at 681.
+  B's runs spread by 2.5 ms the same way. The dev client's 3–14 ms in compute's favour (1423×800) do not show here,
+  where the pack's own GPU work dominates, but nothing turns round either. So `ExpandPass.stage` stays as it is:
+  the vertex stage without a shader pack, compute with one (PLAN.md §10, beta2).
+- **Module 2 makes A's frame faster at 1920×1080**: 3.55 → 2.98 ms in the same session, `prepare` 2.12 → 1.12 ms, and
+  with compute too (3.07–3.26 ms in the stages runs). The 1.07–1.14× slower of the beta1 round came from comparing
+  sessions: A's frame without Module 2 is 3.50–3.66 ms here against 3.07–3.19 ms on 23 Oct, at a higher GPU clock
+  (750–882 against 650–753 MHz). This closes the follow-up *Setup A at 1920×1080* (PLAN.md §M6).
+- **Gate C holds on the beta2 build**: D's CPU work 2.18× lower and its frame 1.20× faster, C's frame 1.36× faster.
+
+#### Suites
+
+Median of three 60-second runs, ms per frame, columns as on 26–27 Oct. *beta1* is the same scene in the 0.2.0-beta1
+release round (build b41d342, compute everywhere; A's `control` had one run), *Ratio* the frame against it, and the
+*(beta1)* columns that round's `prepare`, `shadow_prepare` and GPU clock. Between sessions the frame follows the GPU
+clock; the same-session comparison is the one above.
+
+| Scene | Setup | Avg FPS | 1% low | Avg ms | beta1 | Ratio | p95 ms | Extract | Submit | Pose | Tessellate | Prepare | (beta1) | Draw | Shadow | Shadow prepare | (beta1) | GPU MHz | (beta1) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mob_pen_static | A | 321 | 173 | 3.12 | 3.49 | 0.89× | 4.64 | 0.57 | 0.25 | 0.09 | 0.53 | 1.13 | 1.15 | 0.02 | 0.00 | 0.00 | 0.00 | 689–700 | 650–1025 |
+| mob_pen_live | A | 319 | 170 | 3.14 | 3.40 | 0.92× | 4.62 | 0.63 | 0.27 | 0.10 | 0.57 | 1.15 | 1.18 | 0.03 | 0.00 | 0.00 | 0.00 | 700 | 650–722 |
+| storage_room | A | 568 | 263 | 1.76 | 1.83 | 0.96× | 2.33 | 0.15 | 0.00 | 0.00 | 0.00 | 0.01 | 0.01 | 0.06 | 0.00 | 0.00 | 0.00 | 874–902 | 760–802 |
+| map_wall | A | 222 | 99 | 4.50 | 4.60 | 0.98× | 5.11 | 0.91 | 0.47 | 0.00 | 0.00 | 2.11 | 2.16 | 0.51 | 0.00 | 0.00 | 0.00 | 1192–1256 | 1021–1131 |
+| display_build | A | 555 | 245 | 1.80 | 1.89 | 0.95× | 2.38 | 0.61 | 0.12 | 0.00 | 0.01 | 0.44 | 0.53 | 0.03 | 0.00 | 0.00 | 0.00 | 750 | 718–722 |
+| control | A | 778 | 325 | 1.28 | 1.14 (1 run) | 1.13× | 1.70 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 920–954 | 1035 |
+| mob_pen_static | B | 33 | 22 | 29.87 | 31.09 | 0.96× | 40.78 | 1.05 | 0.42 | 0.11 | 0.61 | 1.02 | 0.97 | 0.05 | 1.68 | 0.37 | 0.37 | 1490–1563 | 1340–1495 |
+| mob_pen_live | B | 32 | 22 | 31.67 | 29.46 | 1.08× | 41.10 | 0.97 | 0.46 | 0.12 | 0.71 | 1.17 | 1.02 | 0.05 | 1.75 | 0.39 | 0.36 | 1253–1278 | 1392–1458 |
+| storage_room | B | 33 | 28 | 30.10 | 39.96 | 0.75× | 33.98 | 0.27 | 0.00 | 0.00 | 0.00 | 0.02 | 0.03 | 0.22 | 0.44 | 0.01 | 0.01 | 1063–1140 | 699–747 |
+| map_wall | B | 19 | 14 | 53.39 | 56.45 | 0.95× | 57.46 | 2.45 | 1.07 | 0.00 | 0.00 | 4.80 | 5.18 | 0.83 | 2.86 | 1.03 | 1.21 | 600 | 550 |
+| display_build | B | 36 | 22 | 28.11 | 28.12 | 1.00× | 41.87 | 0.98 | 0.31 | 0.00 | 0.01 | 0.28 | 0.30 | 0.09 | 3.32 | 1.52 | 1.67 | 1310–1372 | 1274–1430 |
+| control | B | 36 | 31 | 27.76 | 32.31 | 0.86× | 30.60 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.01 | 0.00 | 0.42 | 0.01 | 0.01 | 980–1015 | 755–886 |
+| mob_pen_static | C | 145 | 75 | 6.90 | 6.67 | 1.03× | 11.11 | 0.84 | 1.15 | 0.16 | 3.12 | 3.59 | 3.44 | 0.02 | 0.00 | 0.00 | 0.00 | 1065–1304 | 1176–1245 |
+| mob_pen_live | C | 138 | 74 | 7.25 | 6.86 | 1.06× | 11.62 | 0.86 | 1.24 | 0.17 | 3.35 | 3.85 | 3.60 | 0.02 | 0.00 | 0.00 | 0.00 | 969–1023 | 1040–1282 |
+| storage_room | C | 603 | 277 | 1.66 | 1.47 | 1.13× | 2.23 | 0.14 | 0.00 | 0.00 | 0.00 | 0.01 | 0.01 | 0.05 | 0.00 | 0.00 | 0.00 | 910–958 | 980–1015 |
+| map_wall | C | 232 | 109 | 4.31 | 4.09 | 1.05× | 4.81 | 0.83 | 0.46 | 0.00 | 0.00 | 2.11 | 1.97 | 0.47 | 0.00 | 0.00 | 0.00 | 1144–1204 | 1148–1164 |
+| display_build | C | 534 | 247 | 1.87 | 1.83 | 1.02× | 2.50 | 0.62 | 0.14 | 0.00 | 0.01 | 0.45 | 0.54 | 0.03 | 0.00 | 0.00 | 0.00 | 700 | 733–748 |
+| control | C | 814 | 345 | 1.23 | 1.07 | 1.15× | 1.62 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 965–1011 | 1160–1195 |
+| mob_pen_static | D | 16 | 14 | 61.85 | 61.93 | 1.00× | 68.68 | 1.45 | 3.46 | 0.23 | 5.10 | 6.17 | 5.92 | 0.05 | 3.04 | 1.07 | 1.03 | 644–712 | 586–751 |
+| mob_pen_live | D | 18 | 14 | 56.92 | 56.53 | 1.01× | 65.43 | 1.16 | 3.20 | 0.23 | 5.19 | 6.30 | 6.52 | 0.05 | 2.99 | 1.10 | 1.14 | 676–701 | 609–756 |
+| storage_room | D | 31 | 27 | 31.88 | 37.12 | 0.86× | 35.71 | 0.32 | 0.00 | 0.00 | 0.00 | 0.02 | 0.03 | 0.22 | 0.46 | 0.00 | 0.01 | 1014–1051 | 786–909 |
+| map_wall | D | 19 | 14 | 53.02 | 55.91 | 0.95× | 57.23 | 2.40 | 1.07 | 0.00 | 0.00 | 4.79 | 4.85 | 0.85 | 2.86 | 0.99 | 1.01 | 600 | 550 |
+| display_build | D | 37 | 21 | 27.38 | 27.74 | 0.99× | 41.53 | 0.97 | 0.39 | 0.00 | 0.01 | 0.26 | 0.31 | 0.09 | 3.25 | 1.45 | 1.48 | 1294–1438 | 1265–1360 |
+| control | D | 36 | 31 | 27.57 | 34.18 | 0.81× | 30.71 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.02 | 0.00 | 0.43 | 0.00 | 0.01 | 1013–1015 | 668–766 |
+
+What the suites show:
+
+- **The CPU side is as in beta1.** The mob pens' `prepare` is 1.13–1.15 ms in A, 1.02–1.17 in B, 3.59–3.85 in C and
+  6.17–6.30 ms in D, within 0.25 ms of beta1's; the vertex stage changes only where the GPU runs the pass.
+  `display_build`'s `prepare` is 0.44–0.45 ms in A and C (beta1 0.53–0.54).
+- **Frames between the sessions follow the GPU clock again.** `control` (nothing for Mobium to do) is 1.13–1.15×
+  slower in A and C at 920–1011 MHz against 1035 and 1160–1195, 0.81–0.86× in B and D at 980–1015 against 668–886;
+  `storage_room` is 0.75× in B at 1063–1140 against 699–747 MHz. Where the clocks matched (D's mob pens, B's and D's
+  `display_build`; compute in both rounds), so do the frames (0.99–1.01×); B's `mob_pen_live` is 1.08× at 1253–1278
+  against 1392–1458 MHz.
+- A's model scenes are 0.89–0.95× of beta1's at about the same clock, C's 1.02–1.06× at a lower one; neither is a
+  stage comparison.
 
 ### Measurement pitfalls
 
