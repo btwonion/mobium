@@ -762,7 +762,8 @@ What the round shows:
   their frame times in `display_build` too, a scene whose stage times barely moved. So B's 0.53–0.57× in the mob pens
   does not mean Module 2 doubles B's frame rate; the same-session comparison is Gate C's (C 1.25×, D 1.18× faster).
 - **A's mob pens are open.** At about the clock of 23 Oct (650–722 against 650–753 MHz) their frame is 1.07–1.14×
-  slower, although `prepare` fell by 0.65–0.73 ms. At 1920×1080 A's frame may be bound by the GPU, where the expand
+  slower, although `prepare` fell by 0.65–0.73 ms. Per run at the same 650 MHz: `mob_pen_static` 3.50 and 3.49 ms
+  against 3.07, `mob_pen_live` 3.52 against 3.19 and 3.19 ms; the one run at 1025 MHz took 2.86 ms. At 1920×1080 A's frame may be bound by the GPU, where the expand
   pass's work and the fixed cost below outweigh the CPU saving; the dev client's comparison at 854×480 was 1.22× faster
   (*Module 2, first measurement*). Only a same-session run tells: `/mobium gatec` in A.
 - **With only a few parts, Module 2 costs more than it saves.** `display_build`'s `prepare` rose from 0.09 to 0.53 ms
