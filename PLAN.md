@@ -46,9 +46,10 @@ Read this first when picking the work up in a new session.
   - Anton's visual checks (#16's *How to verify* step 4) done and #16 merged on 26 Oct 2026.
   - **Now the release prep for `0.2.0-beta1`** (§10), branch `release-0.2.0-beta1`: README for Module 2 (PR open; merge
     it right before `release.yml`, because `readme-modrinth-sync.yml` publishes README changes on `main` at once).
-    Anton runs the benchmark round A–D (started 26 Oct 2026) with the Prism instances' jar built from `b41d342`
-    (named `0.1.0-beta3`): `main` differs from it only in `gradle.properties`' version, so it measures the release's
-    code. Then `release.yml` (Anton).
+    Benchmark round A–D done (26–27 Oct 2026, jar built from `b41d342`, named `0.1.0-beta3`; `main` differs from it
+    only in `gradle.properties`' version): Module 2 lowers the mob pens' CPU work in every setup, but costs
+    `display_build` 0.15–0.3 ms per frame (17 shields only), and A's mob pens have no same-session frame comparison
+    at 1920×1080 (§M6, *Module 2 follow-ups*). Waiting for Anton's decision on those, then `release.yml` (Anton).
   - Known limits (`docs/compat.md`): translucent models without improved transparency (sorted on upload), glint,
     outline and breaking overlay stay on the CPU; on Vulkan both modules stay off (`OffReason.BACKEND`) until M7.
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
@@ -815,6 +816,16 @@ expensive), at most 3.1× lower.
 Earlier definitions, both out of reach: 1.5× frame time in D (the plan's first; at most 1.20× from the 23–25 Oct
 round), then 1.5× frame time in C and no slower in D (first redefinition, 25 Oct 2026; at most about 1.35×, above).
 
+**Module 2 follow-ups** (from the 0.2.0-beta1 release round, 26–27 Oct 2026, `docs/benchmarks.md` *26–27 Oct 2026*):
+- [ ] **Setup A at 1920×1080:** across sessions A's mob pens are 1.07–1.14× slower with Module 2 at about the same
+      GPU clock, although `prepare` fell by 0.65–0.73 ms; the dev client's 854×480 comparison was 1.22× faster. A
+      same-session `/mobium gatec` in A decides whether A's frame is GPU-bound there and Module 2 costs it frame time.
+- [ ] **Fixed cost with few parts:** in `display_build` Module 2 expands only 17 shields (special item renderers the
+      cache leaves to vanilla) and the frame gets 0.15–0.3 ms slower (A 1.64 → 1.89 ms at the same clock; dev client
+      1.69 → 1.98 ms, same session), with Module 2's own methods at 0.2 % of the render thread's samples. Measure the
+      dispatch, the barrier and `upload()` with GL timer queries; candidates: leave small frames on the CPU path (decide
+      from the previous frame's quad count before reserving), or one dispatch for all staged buffers of a frame.
+
 ### M7 · Phase 3: Vulkan, Aperture, Module 3, 26.4
 - [ ] Add `26.4-fabric` / `26.4-neoforge` Stonecutter targets when 26.4 releases (track its snapshots in a branch
       before that). Vulkan becomes the default there.
@@ -907,7 +918,10 @@ benchmark numbers if performance changed.
       unreleased module).
 - [x] Self-check on both loaders with Module 2 on (26 Oct 2026: regular Fabric 74/74, NeoForge 67/67; `--mode parts`
       on Fabric 25/25, NeoForge without the shader pack).
-- [ ] Benchmark round A–D on the release build.
+- [x] Benchmark round A–D on the release build (26–27 Oct 2026, build `b41d342`, `docs/benchmarks.md` *26–27 Oct
+      2026*, `docs/benchmarks/results/2026-10-27-thinkpad-x9/`): Module 2 lowers the mob pens' `prepare` in every
+      setup (A 1.6×, B 5×, C 1.5×, D 1.8×); two open points under M6, *Module 2 follow-ups*.
+- [ ] Anton's decision on the two open points (release as is with them noted, or `/mobium gatec` in A first).
 - [x] Anton's visual checks of the M6 PR's *How to verify* (#16, 26 Oct 2026).
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
