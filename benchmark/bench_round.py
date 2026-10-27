@@ -11,8 +11,10 @@ Prism's command line straight into the "Mobium Bench" world, and waits until Mob
 the game (bench/BenchAutorun.kt). Mobium puts the fullscreen window on the monitor whose name contains --display at
 1920×1080. Before anything starts it checks mains power, an external monitor, that every instance has the bench kit's
 Mobium jar (python3 benchmark/prism_instances.py installs it) and that none of them is running. Afterwards it copies
-this round's files into docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/ (per-run CSVs gzipped, summary.csv
-with this round's rows; -<build> is appended when that folder holds an earlier round of the day) and prints the medians.
+this round's files into <yyyy-mm-dd>-<machine>/<setup>/ of the data repository btwonion/mobium-benchmarks (per-run
+CSVs gzipped, summary.csv with this round's rows; -<build> is appended when that folder holds an earlier round of the
+day), prints the medians, and commits and pushes the round. The data repository's checkout sits next to Mobium's
+(../mobium-benchmarks, or --data); it is cloned or pulled before the round starts.
 Nobody may use the computer while it runs.
 """
 
@@ -30,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import prism_instances  # noqa: E402
 
 ROOT = prism_instances.ROOT
+DATA_URL = "https://github.com/btwonion/mobium-benchmarks.git"
 WORLD = "Mobium Bench"
 PRISM = ["flatpak", "run", "org.prismlauncher.PrismLauncher"]
 
@@ -154,6 +157,37 @@ def collect(letter: str, game: Path, since: datetime, target: Path) -> list[Path
     return plans
 
 
+def default_data() -> Path:
+    """The data repository's checkout next to Mobium's main checkout (also when this runs in a worktree)."""
+    common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=ROOT,
+                            capture_output=True, text=True, check=True).stdout.strip()
+    return Path(common).parent.parent / "mobium-benchmarks"
+
+
+def update_data(data: Path) -> str | None:
+    """Clones the data repository into [data] or pulls it; returns the problem, if any."""
+    if data.is_dir():
+        command, cwd = ["git", "pull", "-q", "--ff-only"], data
+    else:
+        command, cwd = ["git", "clone", "-q", DATA_URL, str(data)], None
+    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return f"'{' '.join(command)}' failed in {cwd or data.parent}: {result.stderr.strip()}"
+    return None
+
+
+def publish(data: Path, target: Path, message: str) -> None:
+    """Commits the round's folder in the data repository and pushes it; on failure says how to finish by hand."""
+    folder = str(target.relative_to(data))
+    for command in (["git", "add", "--", folder], ["git", "commit", "-q", "-m", message, "--", folder],
+                    ["git", "push", "-q"]):
+        if subprocess.run(command, cwd=data).returncode != 0:
+            print(f"'{' '.join(command)}' failed; the files are in {target}. Finish by hand:\n"
+                  f"  cd {data} && git add {folder} && git commit -m '{message}' && git push", flush=True)
+            return
+    print(f"Pushed {folder} to {DATA_URL.removesuffix('.git')}", flush=True)
+
+
 def print_medians(plan: Path) -> None:
     lines = plan.read_text().splitlines()
     header = lines[0].split(",")
@@ -174,6 +208,8 @@ def main() -> None:
     parser.add_argument("--machine", default="thinkpad-x9", help="machine name for the results folder")
     parser.add_argument("--prism", type=Path, help="Prism data directory (default: flatpak or ~/.local/share)")
     parser.add_argument("--kit", type=Path, default=ROOT / "versions/26.3-fabric/build/bench-kit")
+    parser.add_argument("--data", type=Path,
+                        help="checkout of mobium-benchmarks (default: next to Mobium's checkout, cloned when missing)")
     parser.add_argument("--dry-run", action="store_true", help="only the checks and the plans")
     parser.add_argument("--quick", action="store_true",
                         help=f"smoke test: only '{QUICK_PLAN[0]}' per setup, results in versions/26.3-fabric/build/")
@@ -209,16 +245,22 @@ def main() -> None:
             problems.append(f"{letter} has no world '{WORLD}'")
         if running_games(game):
             problems.append(f"{letter} is running; close it first")
-    results = ROOT / ("versions/26.3-fabric/build/bench-round-quick" if args.quick else "docs/benchmarks/results")
+    data = args.data or default_data()
+    if not args.quick:
+        if args.dry_run and not data.is_dir():
+            print(f"{data} is missing; the round clones {DATA_URL} there")
+        elif problem := update_data(data):
+            problems.append(problem)
+    results = (ROOT / "versions/26.3-fabric/build/bench-round-quick") if args.quick else data
     target = results / f"{datetime.now():%Y-%m-%d}-{args.machine}"
     if not args.quick and target.exists():
         # An earlier round of the day: its summary.csv files would be overwritten.
         target = target.with_name(f"{target.name}-{kit}")
         if target.exists():
-            problems.append(f"{target.relative_to(ROOT)} exists already; move it or pass another --machine")
+            problems.append(f"{target} exists already; move it or pass another --machine")
     total = sum(START_MINUTES + sum(MINUTES.get(command, 10) for command in PLANS[letter]) for letter in letters)
     print(f"Round {' '.join(letters)} with Mobium {kit}, about {total // 60} h {total % 60} min; monitor '{args.display}'; "
-          f"results in {target.relative_to(ROOT)}")
+          f"results in {target}")
     for letter in letters:
         print(f"  {letter} ({games[letter][0]}): {', '.join(PLANS[letter])}")
     if problems:
@@ -238,7 +280,11 @@ def main() -> None:
             break
         finished.append(letter)
         time.sleep(30)
-    print(f"Finished {' '.join(finished) or 'nothing'}; results in {target.relative_to(ROOT)}")
+    print(f"Finished {' '.join(finished) or 'nothing'}; results in {target}")
+    if not args.quick and any(path.is_file() for path in target.rglob("*")):
+        stopped = [letter for letter in letters if letter not in finished]
+        publish(data, target, f"{target.name}: {' '.join(letters)} with build {kit}"
+                + (f" ({' '.join(stopped)} not finished)" if stopped else ""))
     sys.exit(0 if len(finished) == len(letters) else 1)
 
 

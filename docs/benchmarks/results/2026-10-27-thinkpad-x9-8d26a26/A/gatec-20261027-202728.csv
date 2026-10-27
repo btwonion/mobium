@@ -1,6 +1,0 @@
-scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms,extract_entities_ms,extract_block_entities_ms,submit_entities_ms,submit_block_entities_ms,pose_entities_ms,pose_block_entities_ms,tessellate_entities_ms,tessellate_block_entities_ms,prepare_ms,draw_ms,shadow_ms,shadow_extract_ms,shadow_submit_ms,shadow_pose_ms,shadow_tessellate_entities_ms,shadow_tessellate_block_entities_ms,shadow_prepare_ms,shadow_draw_ms
-mob_pen_live,sodium+cache,3,3.5461,282.00,160.41,4.4000,0.6183,0.0011,0.2460,0.0000,0.1015,0.0000,1.3334,0.0000,2.1184,0.0249,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
-mob_pen_live,sodium+parts-vertex+cache,3,2.9834,335.19,178.91,4.3355,0.6373,0.0012,0.2749,0.0001,0.1012,0.0000,0.5086,0.0000,1.1220,0.0275,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
-# gate_c_cpu_without_over_with,1.888
-# gate_c_frame_with_over_without,0.841
-# build,8d26a26

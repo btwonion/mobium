@@ -1,7 +1,0 @@
-scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms,extract_entities_ms,extract_block_entities_ms,submit_entities_ms,submit_block_entities_ms,pose_entities_ms,pose_block_entities_ms,tessellate_entities_ms,tessellate_block_entities_ms,prepare_ms,draw_ms
-mob_pen_static,sodium+emf+fa+cache,3,7.7436,129.14,77.23,11.4477,0.8505,0.0008,1.1280,0.0000,0.1531,0.0000,3.6642,0.0000,4.4564,0.0198
-mob_pen_live,sodium+emf+fa+cache,3,8.5477,116.99,71.72,12.3656,0.8781,0.0008,1.1978,0.0001,0.1628,0.0000,4.2521,0.0000,5.0782,0.0209
-storage_room,sodium+emf+fa+cache,3,1.4567,686.49,413.38,1.8215,0.0026,0.1023,0.0001,0.0001,0.0000,0.0000,0.0000,0.0000,0.0069,0.0444
-map_wall,sodium+emf+fa+cache,3,3.9762,251.49,117.65,4.4022,0.6883,0.0823,0.3189,0.1012,0.0000,0.0000,0.0000,0.0000,1.9255,0.4583
-display_build,sodium+emf+fa+cache,3,1.6851,593.44,252.29,1.8438,0.3908,0.0005,0.1440,0.0001,0.0009,0.0000,0.0070,0.0000,0.7362,0.0129
-control,sodium+emf+fa+cache,3,1.0502,952.22,575.14,1.3538,0.0015,0.0005,0.0001,0.0001,0.0000,0.0000,0.0000,0.0000,0.0025,0.0001

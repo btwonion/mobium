@@ -213,8 +213,7 @@ mobium/
 │   └── 26.3-neoforge/gradle.properties
 ├── docs/
 │   ├── vanilla-notes.md                # M1: how 26.3 renders entities, exact hook points
-│   ├── benchmarks.md                   # protocol + results table
-│   ├── benchmarks/results/             # CSVs from Anton's runs
+│   ├── benchmarks.md                   # protocol + results table (CSVs: btwonion/mobium-benchmarks)
 │   └── compat.md                       # compatibility matrix and known issues
 ├── benchmark/
 │   └── mobium-bench/                   # datapack that builds the benchmark scenes (works without Mobium too)
@@ -565,7 +564,7 @@ Done when Anton has committed baseline CSVs for all scenes and setups, and `docs
 split (pose vs tessellate + draw) per scene.
 How to verify (Anton): load the datapack, run each scene in each setup with `/mobium bench`, commit the CSVs.
 
-Status (20 Oct 2026): done. Anton's baselines from 19 Oct are in `docs/benchmarks/results/2026-10-19-thinkpad-x9/`,
+Status (20 Oct 2026): done. Anton's baselines from 19 Oct are in `mobium-benchmarks/2026-10-19-thinkpad-x9/`,
 the table and the cost split in `docs/benchmarks.md`. That round is partial: setup A has only `storage_room`, no
 shader pack or Fresh Animations was active, `control` exists only for D, the mob pens have one valid run each
 (the zombies burned once their helmets wore out), and most sessions ran on the built-in 1728×1080 panel. The cost split
@@ -903,7 +902,7 @@ benchmark numbers if performance changed.
 `0.1.0-beta1` (M5, Gate B):
 
 - [x] `changelog.md` contains only the upcoming release's notes.
-- [x] Gate for the release passed and results committed to `docs/benchmarks/results/` (Gate B 1.17×, 21 Oct 2026).
+- [x] Gate for the release passed and results committed (now in `mobium-benchmarks`; Gate B 1.17×, 21 Oct 2026).
 - [x] `docs/compat.md` updated.
 - [x] `README.md` describes what the release does (synced to Modrinth/CurseForge by `release.yml` and
       `readme-modrinth-sync.yml`; links are absolute so they work there).
@@ -924,14 +923,14 @@ benchmark numbers if performance changed.
 - [x] Self-check on both loaders: every Mobium-vs-vanilla comparison 0 changed pixels (23 Oct 2026: Fabric 74/74
       with Complementary and Fresh Animations, NeoForge 67/67 without the shader pack, see *Current state*).
 - [x] Benchmark round A–D on beta2 (with the shadow-pass timers), committed to `docs/benchmarks.md` (23–25 Oct 2026,
-      build `a6997e5`, `docs/benchmarks/results/2026-10-23-thinkpad-x9/`).
+      build `a6997e5`, `mobium-benchmarks/2026-10-23-thinkpad-x9/`).
 - [x] Anton's go for the release (25 Oct 2026).
 - [x] Run `release.yml` (manual dispatch on `main`; Anton): released on 25 Oct 2026 (run 40224786286).
 
 `0.2.0-beta1` (Module 2, M6; `mod.major-version=0.2.0`, `mod.beta=1`, Anton's choice on 26 Oct 2026):
 
 - [x] Gate C passed: Anton's `/mobium gatec` in setups C and D on 26 Oct 2026 (D: 1.90× lower CPU work, frame 0.84×;
-      C: frame 0.80×), results in `docs/benchmarks.md` and `docs/benchmarks/results/2026-10-26-thinkpad-x9/`.
+      C: frame 0.80×), results in `docs/benchmarks.md` and `mobium-benchmarks/2026-10-26-thinkpad-x9/`.
 - [x] `changelog.md` contains only this release's notes (26 Oct 2026: Module 2, `/mobium gatec`, GPL-3.0).
 - [x] `docs/compat.md` updated for Module 2 (26 Oct 2026).
 - [x] `README.md` describes Module 2 (26 Oct 2026, branch `release-0.2.0-beta1`; merge right before `release.yml`:
@@ -940,7 +939,7 @@ benchmark numbers if performance changed.
 - [x] Self-check on both loaders with Module 2 on (26 Oct 2026: regular Fabric 74/74, NeoForge 67/67; `--mode parts`
       on Fabric 25/25, NeoForge without the shader pack).
 - [x] Benchmark round A–D on the release build (26–27 Oct 2026, build `b41d342`, `docs/benchmarks.md` *26–27 Oct
-      2026*, `docs/benchmarks/results/2026-10-27-thinkpad-x9/`): Module 2 lowers the mob pens' `prepare` in every
+      2026*, `mobium-benchmarks/2026-10-27-thinkpad-x9/`): Module 2 lowers the mob pens' `prepare` in every
       setup (A 1.6×, B 5×, C 1.5×, D 1.8×); two open points under M6, *Module 2 follow-ups*.
 - [x] Anton's decision on the two open points (27 Oct 2026): release as is, without `/mobium gatec` in A; both are a
       known limit in `changelog.md`, `README.md` and `docs/compat.md`. The changelog's "about 1.2× faster with vanilla
@@ -959,7 +958,7 @@ benchmark numbers if performance changed.
       setup, `/mobium stages` in A–D and on `display_build` in A, `/mobium gatec` in A, C and D), committed to
       `docs/benchmarks.md`. If the vertex stage is slower than compute in A or C, or faster in B or D, change the choice
       in `ExpandPass.stage` before the release. Done on 27 Oct 2026 (build `8d26a26`,
-      `docs/benchmarks/results/2026-10-27-thinkpad-x9-8d26a26/`): the vertex stage is faster in every pair in A and C;
+      `mobium-benchmarks/2026-10-27-thinkpad-x9-8d26a26/`): the vertex stage is faster in every pair in A and C;
       in B and D the medians lean its way (0.988×, 0.952×) but the pairs disagree in sign and every run follows the
       GPU clock (D: compute 52.0 ms at 840 MHz, vertex 52.6 and 53.6 ms at 868 and 822), so it is not faster there
       and the choice stays.

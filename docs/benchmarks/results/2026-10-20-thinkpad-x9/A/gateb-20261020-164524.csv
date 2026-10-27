@@ -1,6 +1,0 @@
-scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms,extract_entities_ms,extract_block_entities_ms,submit_entities_ms,submit_block_entities_ms,pose_entities_ms,pose_block_entities_ms,tessellate_entities_ms,tessellate_block_entities_ms,prepare_ms,draw_ms
-storage_room,sodium+cache,3,1.6952,589.89,341.41,2.1340,0.0017,0.1264,0.0000,0.0002,0.0000,0.0000,0.0000,0.0000,0.0083,0.0503
-control,sodium+cache,3,1.2181,820.94,452.20,1.6096,0.0012,0.0004,0.0000,0.0001,0.0000,0.0000,0.0000,0.0000,0.0032,0.0001
-control,sodium,3,1.2126,824.67,473.07,1.5896,0.0012,0.0005,0.0000,0.0001,0.0000,0.0000,0.0000,0.0000,0.0030,0.0001
-# gate_b_storage_over_control,1.392
-# gate_b_control_cache_over_vanilla,1.005
