@@ -27,17 +27,19 @@ object ModuleLines : DebugScreenEntry {
         serverChunk: LevelChunk?
     ) {
         val ab = if (AbToggle.mobiumOff) " [A/B: vanilla]" else ""
-        displayer.addLine("Mobium$ab " + ModuleStates.all().joinToString(" | ") { "${it.module.key} ${it.describe()}" })
+        val lines = ArrayList<String>()
+        lines += "Mobium$ab " + ModuleStates.all().joinToString(" | ") { "${it.module.key} ${it.describe()}" }
         val backend = Gpu.backend
-        displayer.addLine(
-            String.format(
-                Locale.ROOT, "Mobium GPU memory %.1f MB in %d buffers", backend.bytesAllocated / 1048576.0,
-                backend.buffersAllocated
-            )
+        lines += String.format(
+            Locale.ROOT, "Mobium GPU memory %.1f MB in %d buffers", backend.bytesAllocated / 1048576.0,
+            backend.buffersAllocated
         )
-        displayer.addLine(StaticCache.debugLine())
-        displayer.addLine(PartTransform.debugLine())
+        lines += StaticCache.debugLines()
+        lines += PartTransform.debugLine()
         val disabled = Fallback.disabledTypes()
-        if (disabled.isNotEmpty()) displayer.addLine("Mobium types on vanilla after failures: ${disabled.joinToString()}")
+        if (disabled.isNotEmpty()) lines += "Mobium types on vanilla after failures: ${disabled.joinToString()}"
+        // A group keeps the lines together in one column; vanilla splits plain lines between both columns, which put
+        // the long ones on the right, over the left column's.
+        displayer.addToGroup(ID, lines)
     }
 }
