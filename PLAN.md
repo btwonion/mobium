@@ -43,7 +43,7 @@ Read this first when picking the work up in a new session.
     outline and breaking overlay stay on the CPU; on Vulkan both modules stay off (`OffReason.BACKEND`) until M7.
 - **Next: `0.2.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
   Module 2 follow-ups (§M6), so that the two known limits of beta1 go away or are measured, plus fixes for whatever
-  testers report. Branch `beta2-parts-followups` (27 Oct 2026, PR against `main`): Module 2's fixed cost found and
+  testers report. Branch `beta2-parts-followups` (27 Oct 2026, #19, on top of the bookkeeping PR #18): Module 2's fixed cost found and
   fixed (the compute dispatch's batch hand-over on Mesa's iris; the expand pass runs in the vertex stage without a
   shader pack), `/mobium stages`, `--mode expand-cost`, the F3 line groups. Validated in the dev clients (both stages
   byte for byte in all four setups). **Left for Anton** (§10, beta2): the PR's *How to verify*, then on the beta2
