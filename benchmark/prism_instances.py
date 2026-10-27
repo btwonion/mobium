@@ -187,15 +187,21 @@ def git(*args: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def jar_build(jar: Path) -> str | None:
+    """The commit a Mobium jar was built from (mobium-build.properties, written by the build)."""
+    with zipfile.ZipFile(jar) as archive:
+        if "mobium-build.properties" not in archive.namelist():
+            return None
+        for line in archive.read("mobium-build.properties").decode().splitlines():
+            if line.startswith("commit="):
+                return line.removeprefix("commit=").strip()
+    return None
+
+
 def kit_build(kit: Path) -> str | None:
-    """The commit the kit's Mobium jar was built from (mobium-build.properties, written by the build)."""
+    """The commit the kit's Mobium jar was built from."""
     for jar in sorted((kit / "A-sodium" / "mods").glob("mobium-*.jar")):
-        with zipfile.ZipFile(jar) as archive:
-            if "mobium-build.properties" not in archive.namelist():
-                return None
-            for line in archive.read("mobium-build.properties").decode().splitlines():
-                if line.startswith("commit="):
-                    return line.removeprefix("commit=").strip()
+        return jar_build(jar)
     return None
 
 
