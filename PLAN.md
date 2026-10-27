@@ -49,7 +49,9 @@ Read this first when picking the work up in a new session.
     Benchmark round A–D done (26–27 Oct 2026, jar built from `b41d342`, named `0.1.0-beta3`; `main` differs from it
     only in `gradle.properties`' version): Module 2 lowers the mob pens' CPU work in every setup, but costs
     `display_build` 0.15–0.3 ms per frame (17 shields only), and A's mob pens have no same-session frame comparison
-    at 1920×1080 (§M6, *Module 2 follow-ups*). Waiting for Anton's decision on those, then `release.yml` (Anton).
+    at 1920×1080 (§M6, *Module 2 follow-ups*). Anton's decision (27 Oct 2026): release as is, with both noted as a
+    known limit. **Left for Anton:** merge #17 (README, changelog, round), then run `release.yml` on `main` right
+    after (the README sync publishes on merge).
   - Known limits (`docs/compat.md`): translucent models without improved transparency (sorted on upload), glint,
     outline and breaking overlay stay on the CPU; on Vulkan both modules stay off (`OffReason.BACKEND`) until M7.
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
@@ -921,7 +923,9 @@ benchmark numbers if performance changed.
 - [x] Benchmark round A–D on the release build (26–27 Oct 2026, build `b41d342`, `docs/benchmarks.md` *26–27 Oct
       2026*, `docs/benchmarks/results/2026-10-27-thinkpad-x9/`): Module 2 lowers the mob pens' `prepare` in every
       setup (A 1.6×, B 5×, C 1.5×, D 1.8×); two open points under M6, *Module 2 follow-ups*.
-- [ ] Anton's decision on the two open points (release as is with them noted, or `/mobium gatec` in A first).
+- [x] Anton's decision on the two open points (27 Oct 2026): release as is, without `/mobium gatec` in A; both are a
+      known limit in `changelog.md`, `README.md` and `docs/compat.md`. The changelog's "about 1.2× faster with vanilla
+      models" (dev client, 854×480) was replaced by Gate C's numbers.
 - [x] Anton's visual checks of the M6 PR's *How to verify* (#16, 26 Oct 2026).
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 

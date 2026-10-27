@@ -77,6 +77,10 @@ paused). The Fabric gametests run the same validation on Mesa's software rendere
 - Module 2 only takes over parts drawn into the frame's staged buffers in the entity format (or Iris's) with unsorted
   quads, directly or through an atlas sprite: translucent models without improved transparency (sorted on upload), the
   breaking overlay, glint and outline passes, other vertex formats and other cube classes keep vanilla's CPU path.
+- Module 2's cost on the GPU (0.2.0-beta1 release round, `docs/benchmarks.md` *26–27 Oct 2026*): on the Intel Arc 140V
+  without a shader pack it can cost more GPU time than it saves on the CPU, about 0.3–0.4 ms per frame in the mob
+  pens with vanilla models at 1920×1080 (across sessions, at the same GPU clock) and 0.15–0.3 ms in `display_build`,
+  where it expands only 17 shields (also same-session in the dev client). Follow-ups in `PLAN.md` (M6).
 - Iris counts vertices written one by one per quad; a Sodium push right after such vertices loses one from its count
   and extends the following quads from the wrong vertices (vanilla with Iris and Sodium, not Mobium). With Module 2
   both kinds of cube are expanded on the GPU, so that mix no longer happens; where it happened before, the picture

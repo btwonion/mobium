@@ -58,6 +58,11 @@ laptop GPU), the frame time dropped from 9.1 ms to 7.2 ms (110 → 138 FPS). Wit
 Reimagined on top, the entities' CPU work per frame fell from 13.7 ms to 7.2 ms, and the frame rate rose from 15 to
 18 FPS.
 
+**Known limit:** on integrated graphics without a shader pack, the GPU part transform can cost more GPU time than it
+saves on the CPU: on the same laptop about 0.3–0.4 ms per frame in the 500 mobs with vanilla models, and 0.2–0.3 ms
+with only a few animated models on screen. That shows only at a few hundred FPS (about 10 % at 300 FPS, 2 % at 60);
+its switch in the settings turns it off.
+
 ### Coming later
 
 - **Animation LOD (optional, off by default):** far-away mobs reuse last frame's pose.
@@ -118,7 +123,9 @@ and please report it.
 
 **Does it help with lots of mobs?**
 
-Yes, since 0.2: that is what the GPU part transform is for. The more mobs on screen, the more CPU work it takes away.
+Yes, since 0.2: that is what the GPU part transform is for. The more mobs on screen, the more CPU work it takes away;
+the frame gains most with Fresh Animations or a shader pack (with vanilla models on integrated graphics, see the known
+limit under *GPU part transform*).
 
 **Does Mobium work with Vulkan?**
 
