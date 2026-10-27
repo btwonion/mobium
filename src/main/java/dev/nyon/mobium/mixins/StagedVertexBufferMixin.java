@@ -57,6 +57,11 @@ public class StagedVertexBufferMixin implements PartStaged {
         return original.call(target, slice);
     }
 
+    @Inject(method = "upload", at = @At("HEAD"))
+    private void mobium$beforeUpload(CallbackInfo ci) {
+        PartTransform.beforeUpload();
+    }
+
     @Inject(method = "upload", at = @At("RETURN"))
     private void mobium$expand(CallbackInfo ci) {
         PartTransform.afterUpload((StagedVertexBuffer) (Object) this);

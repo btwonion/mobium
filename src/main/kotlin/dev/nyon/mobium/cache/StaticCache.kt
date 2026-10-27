@@ -885,14 +885,20 @@ object StaticCache {
     val lightSectionsKept: Int
         get() = lightStamps.size
 
-    fun debugLine(): String {
+    /** What the cache holds, draws and checked in the last frame, on one line (logs and check details). */
+    fun debugLine(): String = debugLines().joinToString("; ")
+
+    /** [debugLine] as three short lines for F3 `mobium:modules`. */
+    fun debugLines(): List<String> {
         val types = CachePolicy.all.joinToString(", ") { "${it.key} ${cachedCount(it.key)}" }
-        return "Mobium static cache ${if (active) "on" else "off"}: $types; $lastDrawn drawn, $bucketCount buckets, " +
-            String.format(
+        return listOf(
+            "Mobium static cache ${if (active) "on" else "off"}: $types",
+            "Mobium static cache: $lastDrawn drawn, $bucketCount buckets, " + String.format(
                 Locale.ROOT, "%.1f of %d MB", budget.usedBytes / 1048576.0, budget.budgetBytes / MemoryBudget.BYTES_PER_MB
-            ) +
-            ", ${lastUploadBytes / 1024} KB uploaded; last frame $lastFastHits fast, $lastSlowChecks full checks, " +
-            "$lastLightBumps light updates; $lightSectionsKept sections with light updates kept"
+            ) + ", ${lastUploadBytes / 1024} KB uploaded",
+            "Mobium static cache last frame: $lastFastHits fast, $lastSlowChecks full checks, $lastLightBumps light " +
+                "updates; $lightSectionsKept sections with light updates kept"
+        )
     }
 
     // endregion

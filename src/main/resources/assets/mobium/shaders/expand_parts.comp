@@ -12,8 +12,16 @@
 //   frame    cubes at cubeOffset (4 words: first quad, mesh quad, part, first vertex in its draw),
 //            parts at partOffset (32 words, PartBatch.kt), draw slots at slotOffset (1 word: the draw's first vertex)
 //   vertices the staged vertex buffer vanilla uploaded this frame; this pass fills the ranges Mobium reserved in it
+//
+// Compiled as a compute shader, or with MOBIUM_VERTEX defined as a vertex shader drawn as points with rasterisation
+// off (ExpandPass.kt): the same code, one vertex per quad.
 
+#ifdef MOBIUM_VERTEX
+#define INVOCATION uint(gl_VertexID)
+#else
 layout(local_size_x = 64) in;
+#define INVOCATION gl_GlobalInvocationID.x
+#endif
 
 layout(std430, binding = 0) readonly buffer Meshes { uint meshes[]; };
 layout(std430, binding = 1) readonly buffer Frame { uint frame[]; };
@@ -297,7 +305,7 @@ float unpackNormal(uint word, uint shift) {
 }
 
 void main() {
-    uint quad = quadBase + gl_GlobalInvocationID.x;
+    uint quad = quadBase + INVOCATION;
     if (quad >= quadCount) return;
 
     // The last cube whose first quad is at or before this one.

@@ -22,20 +22,21 @@ object DebugLines : DebugScreenEntry {
         serverChunk: LevelChunk?
     ) {
         Sections.debugShownFrame = Sections.frame
-        displayer.addLine(
+        val lines = ArrayList<String>()
+        lines.add(
             "Mobium extract E ${ms(Sections.EXTRACT_ENTITIES)} BE ${ms(Sections.EXTRACT_BLOCK_ENTITIES)}" +
                 " | submit E ${ms(Sections.SUBMIT_ENTITIES)} BE ${ms(Sections.SUBMIT_BLOCK_ENTITIES)} ms"
         )
-        displayer.addLine(
+        lines.add(
             "Mobium pose E ${ms(Sections.POSE_ENTITIES)} BE ${ms(Sections.POSE_BLOCK_ENTITIES)}" +
                 " | tessellate E ${ms(Sections.TESSELLATE_ENTITIES)} BE ${ms(Sections.TESSELLATE_BLOCK_ENTITIES)} ms"
         )
-        displayer.addLine(
+        lines.add(
             "Mobium prepare ${ms(Sections.PREPARE)} | draw ${ms(Sections.DRAW)} ms" +
                 " | ${Sections.averageEntities()} entities, ${Sections.averageBlockEntities()} block entities"
         )
         if (Sections.averageMillis(Sections.SHADOW) > 0.0) {
-            displayer.addLine(
+            lines.add(
                 "Mobium shadow ${ms(Sections.SHADOW)} | extract ${ms(Sections.SHADOW_EXTRACT)}" +
                     " | submit ${ms(Sections.SHADOW_SUBMIT)} | pose ${ms(Sections.SHADOW_POSE)}" +
                     " | tessellate E ${ms(Sections.SHADOW_TESSELLATE_ENTITIES)}" +
@@ -43,6 +44,8 @@ object DebugLines : DebugScreenEntry {
                     " | prepare ${ms(Sections.SHADOW_PREPARE)} | draw ${ms(Sections.SHADOW_DRAW)} ms"
             )
         }
+        // One column for all of them, as for mobium:modules.
+        displayer.addToGroup(ID, lines)
     }
 
     private fun ms(section: Int) = String.format(Locale.ROOT, "%.2f", Sections.averageMillis(section))
