@@ -11,6 +11,26 @@ Features still decide how everything looks: Mobium changes how geometry reaches 
 
 ---
 
+## ⚡ Performance
+
+| Test scene | Without Mobium | With Mobium | Gain |
+| --- | ---: | ---: | ---: |
+| 1,000 chests and 300 signs | 300 FPS | 586 FPS | **+95 %** |
+| 500 mobs | 282 FPS | 335 FPS | **+19 %** |
+| 500 mobs with Fresh Animations | 101 FPS | 137 FPS | **+36 %** |
+| 500 mobs with Fresh Animations and Complementary Reimagined | 15 FPS | 18 FPS | **+20 %** |
+
+Average FPS on a laptop with Intel Arc 140V graphics, Sodium, 1920×1080. The mobs are walking cows, villagers and
+zombies. With the shader pack the graphics card sets the frame rate; the CPU time for the 500 mobs still fell from
+14.9 ms to 6.8 ms per frame.
+
+The gain in your world depends on how much of it Mobium draws: chests, signs, item frames, displays and mobs on
+screen. An empty field gets neither faster nor slower, and with only a few mobs in view the GPU part transform can
+cost about 0.1 ms per frame (see its *Known limit*). Details and raw data are in
+[docs/benchmarks.md](https://github.com/btwonion/mobium/blob/main/docs/benchmarks.md).
+
+---
+
 ## ✨ Features
 
 ### Static cache
@@ -35,10 +55,6 @@ Everything else is not cached: mobs and other animated models go through the GPU
 are being broken (the cracks), the farthest objects once the GPU memory budget is full, and anything Mobium does not
 recognise are drawn by the game as usual.
 
-**What it gains:** in a test room with 1,000 chests and 300 signs (Sodium, 1920×1080, Intel Arc 140V laptop GPU), the
-frame time dropped from 3.3 ms to 1.7 ms, about twice the frame rate. In a normal base the gain depends on how many
-chests, signs, item frames and displays are on screen; an empty field gets neither faster nor slower.
-
 ### GPU part transform
 
 Mobs, armor, saddles, banners, bells, lecterns and everything else the game builds from model parts are posed and
@@ -47,16 +63,11 @@ of the CPU working out and writing every corner of every cube, a shader on the G
 bytes the game would have written, also in Iris's shader pack formats and its shadow pass. Automated test scenes
 compare them byte for byte with the game's own.
 
-Posing and animations stay on the CPU, so the gain is largest where writing the vertices is expensive, as with a
-shader pack. Translucent models (unless the game's Improved Transparency is on), the enchantment glint, the
-outline of glowing entities and the breaking overlay are drawn by the game as usual. The GPU part transform needs
-OpenGL 4.3 compute shaders (current Windows and Linux drivers; not macOS, which stops at OpenGL 4.1); without them the
+Posing and animations stay on the CPU, so the gain is largest where writing the vertices is expensive, as with Fresh
+Animations or a shader pack. Translucent models (unless the game's Improved Transparency is on), the enchantment
+glint, the outline of glowing entities and the breaking overlay are drawn by the game as usual. The GPU part transform
+needs OpenGL 4.3 compute shaders (current Windows and Linux drivers; not macOS, which stops at OpenGL 4.1); without them the
 game writes the vertices itself.
-
-**What it gains:** in 500 walking cows, villagers and zombies (Sodium, 1920×1080, Intel Arc 140V laptop GPU), the
-frame time dropped from 3.5 ms to 3.0 ms with the game's own models (282 → 335 FPS), and from 9.9 ms to 7.3 ms with
-Fresh Animations (101 → 137 FPS). With Fresh Animations and Complementary Reimagined on top, the entities' CPU work per
-frame fell from 14.9 ms to 6.8 ms, and the frame rate rose from 15 to 18 FPS.
 
 **Known limit:** with only a few animated models on screen, the GPU part transform can cost a little more than it
 saves: about 0.1 ms per frame on the same laptop without a shader pack. That shows only at several hundred FPS (about
@@ -122,9 +133,9 @@ and please report it.
 
 **Does it help with lots of mobs?**
 
-Yes, since 0.2: that is what the GPU part transform is for. The more mobs on screen, the more CPU work it takes away;
-the frame gains most with Fresh Animations or a shader pack (with vanilla models on integrated graphics, see the known
-limit under *GPU part transform*).
+Yes, since 0.2: that is what the GPU part transform is for. The more mobs on screen, the more CPU work it takes away:
+with 500 mobs the frame rate rose by 19 % with the game's own models and by 36 % with Fresh Animations (see
+*Performance*).
 
 **Does Mobium work with Vulkan?**
 
