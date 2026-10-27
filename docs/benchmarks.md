@@ -169,9 +169,14 @@ A–D, `/mobium gatec` in A, C and D, and in A also `/mobium stages 60 3 display
 (`bench/BenchAutorun.kt`) puts the fullscreen window on the monitor whose name contains `--display` (default `AOC`) at
 1920×1080, runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it
 measured on) and closes the game. Afterwards the script copies the round's files into
-`docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/` (`-<build>` appended when an earlier round of the day is
-there) and prints the medians. Nobody may use the computer while it
+`<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (`-<build>` appended when an earlier round of the day is
+there), prints the medians, and commits and pushes the round. Nobody may use the computer while it
 runs: the game owns the monitor, and anything else running costs frame time.
+
+The data repository is [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks); the raw-data
+links below point into it. Its checkout sits next to this one (`../mobium-benchmarks`, or `--data`); the script
+clones it when missing and pulls it before a round. If the commit fails at the end (for example
+because the signing key is locked), the script prints the commands to finish by hand.
 
 ### Running a setup by hand
 
@@ -184,8 +189,8 @@ runs: the game owns the monitor, and anything else running costs frame time.
 3. Setup A only: `/mobium gateb` for Gate B (about 16 minutes); `/mobium gatea` gives the cache's speed-up in
    `storage_room` (about 7 minutes).
 4. Do this for all four setups, then copy each instance's `minecraft/mobium-bench/` folder into
-   `docs/benchmarks/results/<yyyy-mm-dd>-<machine>/<setup>/` (per-run CSVs gzipped) and fill in the tables below, or
-   hand the folders to Claude Code.
+   `<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (per-run CSVs gzipped), commit and push it there, and
+   fill in the tables below, or hand the folders to Claude Code.
 
 By hand instead: `/function mobium-bench:<scene>`, wait for "Scene <scene> is ready" plus 10 seconds, then
 `/mobium bench <scene> 60` three times without touching anything.
@@ -196,7 +201,7 @@ By hand instead: `/function mobium-bench:<scene>`, wait for "Scene <scene> is re
 
 Machine: Lenovo ThinkPad X9-14 Gen 1, Intel Core Ultra 7 258V, Intel Arc 140V iGPU (`xe` driver, Mesa 26.2.4, OpenGL
 4.6), 32 GB, Fedora 44 · Mobium 0.1.0-beta1 (M3 branch) · Graphics preset: custom (Fancy with the protocol's changes) ·
-Raw data: [`results/2026-10-19-thinkpad-x9/`](benchmarks/results/2026-10-19-thinkpad-x9/) (`summary.csv`, the suite
+Raw data: [`mobium-benchmarks/2026-10-19-thinkpad-x9/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-19-thinkpad-x9/) (`summary.csv`, the suite
 and Gate A medians, and one gzipped CSV per run).
 
 This round does not cover the whole protocol. The table says what was actually measured:
@@ -305,7 +310,7 @@ open.)
 Machine as on 19 Oct · every run fullscreen at 1920×1080 on the external AOC monitor (240 Hz), on mains power · Mobium
 0.1.0-beta1 from `m5-static-cache` (block entities cached; item frames, armor stands and displays not yet) ·
 Complementary Reimagined r5.9.3 selected in B and D, Fresh Animations 1.11.1 in C and D (installed and selected by
-`benchmark/prism_instances.py`) · Raw data: [`results/2026-10-20-thinkpad-x9/`](benchmarks/results/2026-10-20-thinkpad-x9/).
+`benchmark/prism_instances.py`) · Raw data: [`mobium-benchmarks/2026-10-20-thinkpad-x9/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-20-thinkpad-x9/).
 
 - Every suite ran with the static cache on (the setups are `…+cache`); the only vanilla runs of this round are
   Gate B's `control` runs. Speed-ups against vanilla below compare with 19 Oct, another session.
@@ -360,7 +365,7 @@ What the round shows:
 
 ### Gate B (20 Oct 2026): first definition failed at 1.39×, redefined
 
-`/mobium gateb` in setup A ([`gateb-20261020-164524.csv`](benchmarks/results/2026-10-20-thinkpad-x9/A/gateb-20261020-164524.csv),
+`/mobium gateb` in setup A ([`gateb-20261020-164524.csv`](https://github.com/btwonion/mobium-benchmarks/blob/main/2026-10-20-thinkpad-x9/A/gateb-20261020-164524.csv),
 three rounds of 60 s, medians):
 
 | Run | Frame | p95 | Extract BE | Prepare | Draw | GPU MHz |
@@ -442,11 +447,11 @@ fingerprint cannot see a mesh. In `map_wall` all 400 frames hold maps, which sta
 Machine and settings as on 20 Oct · every run fullscreen at 1920×1080 on the AOC (240 Hz), on mains power, uncapped,
 VSync off · Mobium 0.1.0-beta1, **build 6fb45dc** (`build` column in every `summary.csv`): block entities and entities
 (item frames, armor stands, displays) cached · A and B on 21 Oct evening, C and D on 22 Oct afternoon · Raw data:
-[`results/2026-10-21-thinkpad-x9/`](benchmarks/results/2026-10-21-thinkpad-x9/).
+[`mobium-benchmarks/2026-10-21-thinkpad-x9/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-21-thinkpad-x9/).
 
 #### Gate B
 
-`/mobium gateb` in setup A ([`gateb-20261021-201631.csv`](benchmarks/results/2026-10-21-thinkpad-x9/A/gateb-20261021-201631.csv),
+`/mobium gateb` in setup A ([`gateb-20261021-201631.csv`](https://github.com/btwonion/mobium-benchmarks/blob/main/2026-10-21-thinkpad-x9/A/gateb-20261021-201631.csv),
 three rounds of 60 s, medians):
 
 | Run | Frame | p95 | Extract BE | Prepare | Draw | GPU MHz |
@@ -527,7 +532,7 @@ commits behind `m5-static-cache`, so the kit held the build of df4080d, the same
 cached, and `/mobium gateb` recorded the first Gate B definition** without the run that skips the cache's draw calls.
 The round therefore does not decide Gate B (the re-run on the current build is the next section); it is kept as a
 repeat of 20 Oct.
-Raw data: [`results/2026-10-21-thinkpad-x9-df4080d/`](benchmarks/results/2026-10-21-thinkpad-x9-df4080d/).
+Raw data: [`mobium-benchmarks/2026-10-21-thinkpad-x9-df4080d/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-21-thinkpad-x9-df4080d/).
 
 - **Old Gate B, again failed:** `storage_room` 1.436 ms, `control` with the cache 1.014 ms, without 1.023 ms (medians
   of 3): 1.416× (20 Oct: 1.39×); `control` with/without the cache 0.992× (passes).
@@ -556,7 +561,7 @@ Machine and settings as on 20 Oct · every run fullscreen at 1920×1080 on the A
 VSync off · Mobium 0.1.0-beta2, **build a6997e5** (`main` after #12: light checks per section, shadow-pass timers) ·
 A, B and C on 23 Oct afternoon, C again and D on 25 Oct evening (C's second suite gives D a reference from its own
 session) · `-Dmobium.bench.expect` in effect again (it was not on 21–22 Oct, *Measurement pitfalls*) · Raw data:
-[`results/2026-10-23-thinkpad-x9/`](benchmarks/results/2026-10-23-thinkpad-x9/).
+[`mobium-benchmarks/2026-10-23-thinkpad-x9/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-23-thinkpad-x9/).
 
 #### Suites
 
@@ -712,7 +717,7 @@ and the upload leaving the reserved bytes out. Timer averages in ms:
 #### Gate C: passed (26 Oct 2026)
 
 Anton's `/mobium gatec` (60 s, 3 runs each way, alternating) in the Prism instances C and D, build `b41d342` (the
-`m6-part-transform` branch), 1920×1080, mains power; files in `docs/benchmarks/results/2026-10-26-thinkpad-x9/`.
+`m6-part-transform` branch), 1920×1080, mains power; files in `mobium-benchmarks/2026-10-26-thinkpad-x9/`.
 Medians, ms:
 
 | `mob_pen_live` | Module 2 off | Module 2 on | Gate C |
@@ -736,7 +741,7 @@ Machine and settings as on 23–25 Oct · fullscreen 1920×1080 on the AOC, main
 **b41d342** (the jar is named `0.1.0-beta3`; `main` at 0.2.0-beta1 differs from it only in `gradle.properties`' version)
 · static cache and Module 2 on (setup names `+parts+cache`) · A on 26 Oct at 22:06, right after Gate C's runs; B, C and
 D on 27 Oct afternoon · A's `control` has one run (the suite was left after it) · Raw data:
-[`results/2026-10-27-thinkpad-x9/`](benchmarks/results/2026-10-27-thinkpad-x9/).
+[`mobium-benchmarks/2026-10-27-thinkpad-x9/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-27-thinkpad-x9/).
 
 #### Suites
 
@@ -857,7 +862,7 @@ window and display it measured on), mains power, uncapped, VSync off · build **
 on: the vertex stage in A and C (setup names `+parts-vertex+cache`), compute in B and D (`+parts+cache`, shader pack),
 as `ExpandPass.stage` chooses · the first unattended round (`python3 benchmark/bench_round.py`, *Running a round
 unattended*), 20:06–22:30 without anyone at the computer · Raw data:
-[`results/2026-10-27-thinkpad-x9-8d26a26/`](benchmarks/results/2026-10-27-thinkpad-x9-8d26a26/).
+[`mobium-benchmarks/2026-10-27-thinkpad-x9-8d26a26/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-27-thinkpad-x9-8d26a26/).
 
 #### Same session: the two stages and Gate C
 
