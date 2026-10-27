@@ -1,0 +1,8 @@
+scene,setup,runs,avg_ms,avg_fps,low1_fps,p95_ms,extract_entities_ms,extract_block_entities_ms,submit_entities_ms,submit_block_entities_ms,pose_entities_ms,pose_block_entities_ms,tessellate_entities_ms,tessellate_block_entities_ms,prepare_ms,draw_ms,shadow_ms,shadow_extract_ms,shadow_submit_ms,shadow_pose_ms,shadow_tessellate_entities_ms,shadow_tessellate_block_entities_ms,shadow_prepare_ms,shadow_draw_ms
+mob_pen_static,sodium+iris+parts+cache,3,29.8745,33.47,21.57,40.7795,1.0438,0.0046,0.4151,0.0022,0.1071,0.0000,0.6138,0.0000,1.0225,0.0503,1.6817,0.4451,0.1259,0.0318,0.1960,0.0000,0.3725,0.0874
+mob_pen_live,sodium+iris+parts+cache,3,31.6732,31.57,22.17,41.0983,0.9686,0.0018,0.4582,0.0001,0.1194,0.0000,0.7142,0.0000,1.1655,0.0494,1.7522,0.4796,0.1323,0.0329,0.2148,0.0000,0.3916,0.0849
+storage_room,sodium+iris+parts+cache,3,30.1023,33.22,27.87,33.9786,0.0085,0.2588,0.0002,0.0040,0.0000,0.0000,0.0000,0.0000,0.0219,0.2152,0.4354,0.0011,0.0003,0.0000,0.0000,0.0000,0.0052,0.0006
+map_wall,sodium+iris+parts+cache,3,53.3851,18.73,14.08,57.4577,2.2146,0.2311,0.8292,0.2401,0.0000,0.0000,0.0000,0.0000,4.8009,0.8287,2.8586,1.0080,0.2148,0.0000,0.0000,0.0000,1.0276,0.0680
+display_build,sodium+iris+parts+cache,3,28.1050,35.58,21.71,41.8691,0.9729,0.0024,0.3069,0.0001,0.0016,0.0000,0.0135,0.0000,0.2819,0.0910,3.3193,0.7538,0.2374,0.0010,0.0090,0.0000,1.5239,0.1089
+control,sodium+iris+parts+cache,3,27.7616,36.02,30.71,30.5956,0.0087,0.0023,0.0002,0.0001,0.0000,0.0000,0.0000,0.0000,0.0098,0.0003,0.4219,0.0007,0.0003,0.0000,0.0000,0.0000,0.0051,0.0006
+# build,8d26a26
