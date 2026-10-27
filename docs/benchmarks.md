@@ -40,7 +40,16 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
   the medians and those numbers, plus the run without draw calls over `control` before their CPU time is added back
   (`gate_b_nodraw_over_control`). Both gate commands switch the cache themselves for the plan, even when it is off
   in the settings (which they do not save).
-- **Setup names** get `+cache` while the static cache is active. Since M5 the cache is on by default, so a plain
+- **`/mobium gatec [seconds] [runs]`** — Gate C: records `mob_pen_live` with Module 2 off and on, alternating
+  (defaults: 60 s, 3 runs each), then prints the entity CPU work (`prepare` + `shadow_prepare`) without over with
+  Module 2 (target at least 1.5× in setup D) and the frame time with over without (must not be slower), and writes
+  `mobium-bench/gatec-<timestamp>.csv`.
+- **`/mobium stages [seconds] [runs] [scene]`** — Module 2's expand pass as a compute dispatch and in the vertex stage
+  (`parts/ExpandPass.kt`), alternating, in one scene (defaults: 60 s, 3 runs each, `mob_pen_live`; about 7 minutes),
+  then prints the frame time with the vertex stage over compute's and writes `mobium-bench/stages-<timestamp>.csv`.
+  Refused where vertex shaders cannot write storage buffers. Like the gates, it switches Module 2 on for the plan.
+- **Setup names** get `+cache` while the static cache is active and `+parts` while Module 2 is (`+parts-vertex` when
+  its expand pass runs in the vertex stage, since 0.2.0-beta2: without a shader pack where the GPU has it). Since M5 the cache is on by default, so a plain
   `/mobium suite` measures with it; switch Mobium off in the settings (or with the A/B key, the key right of P: `]` on US, `+` on German keyboards) for
   vanilla numbers.
 - **F3 entry `mobium:timings`** — the same timers averaged over the last 64 frames. Enable it in the debug options
@@ -776,6 +785,55 @@ What the round shows:
   models' vertices; `prepare` 0.68 → 0.77 ms. Module 2's own methods are 0.2 % of the render thread's samples (JFR), so
   the 0.15–0.3 ms per frame are outside its CPU code: the dispatch, the barrier, or a sync in the driver (not measured
   yet). In B and D (30–55 ms frames, GPU-bound) it does not show. Follow-up in `PLAN.md` (M6, *Module 2 follow-ups*).
+
+### 27 Oct 2026, Module 2's fixed cost: a compute batch of its own (dev client)
+
+The follow-up to `display_build`'s 0.15–0.3 ms above, in the Fabric dev client (1423×800 window, mains power, Mesa
+26.2.5, uncapped), with `python3 scripts/self_check.py fabric --mode expand-cost` (`--scene mob_pen_live`, `--scene
+"mob_pen_live stages"`): each condition 8 s, in 4 rounds whose order rotates, static cache on. A fixed order did not
+work: the laptop's CPU clocks drift within a round, and even `extract_entities`, which Module 2 does not touch, came
+out 10 % apart between conditions. *GPU* is the time from a frame's start to its submit in GL timestamps; *passes* the
+GPU time of the expand passes themselves, from a timestamp before each pass to one after its barrier (for a dispatch
+that includes the hand-over between batches below).
+
+**What costs:** Mesa's iris records `glDispatchCompute` in a compute batch of its own, apart from the render batch
+with vanilla's upload and the draws, so each expand pass flushes both batches in the middle of the frame and the GPU
+waits for the hand-over: three submissions per frame instead of one (`INTEL_DEBUG=submit`; docs/vanilla-notes.md
+§16). Module 2's own CPU time is 25–30 µs per pass (records 5–7 µs for the shields, the dispatch call 10–15 µs). The
+same shader compiled as a vertex shader and drawn as points with rasterisation off (the *vertex stage*) stays in the
+render batch: one submission per frame, as without Module 2, and the same bytes (`--mode parts`).
+
+| Scene, setup | Module 2 off | compute | vertex stage | no vertices |
+| --- | --- | --- | --- | --- |
+| `display_build`, A: frame / GPU | 1.150 / 0.568 ms | 1.337 / 0.810 ms | 1.252 / 0.600 ms | 1.102 / 0.589 ms |
+| `mob_pen_live`, A | 4.18 / 1.10 ms | 3.05 / 1.34 ms | 3.06 / 1.19 ms | 2.22 / 0.54 ms |
+| `mob_pen_live`, C | 11.46 / 2.38 ms | 8.98 / 2.90 ms | 9.00 / 2.46 ms | 6.77 / 1.19 ms |
+| `mob_pen_live`, D | 66.7 / 29.2 ms | 48.8 / 26.4 ms | 58.6 / 30.9 ms | 44.8 / 22.7 ms |
+
+The passes alone, two runs of compute against the vertex stage in each setup (frames in brackets):
+
+| `mob_pen_live` | compute: passes (frame) | vertex stage: passes (frame) |
+| --- | --- | --- |
+| A | 320, 320 µs (2.73, 2.68 ms) | 121, 118 µs (2.65, 2.49 ms) |
+| B (shader pack, two passes: level and shadow) | 1,880, 1,892 µs (33.8, 37.6 ms) | 762, 688 µs (40.0, 40.4 ms) |
+| C | 735, 850 µs (9.19, 9.58 ms) | 279, 300 µs (9.40, 9.16 ms) |
+| D | 3,794, 3,410 µs (59.5, 50.1 ms) | 1,015, 942 µs (64.8, 63.7 ms) |
+
+What it shows:
+
+- **Without a shader pack the vertex stage removes most of the fixed cost.** In `display_build` Module 2 costs the GPU
+  0.03 ms per frame instead of 0.24, the frame 0.10 ms instead of 0.19; the passes cost the GPU 2.6–2.8× less in A
+  and C. With the dev window CPU-bound, A's and C's frames are within noise of compute's; at 1920×1080, where A is
+  closer to GPU-bound, the 0.2 ms should show (Anton's `/mobium stages`).
+- **With a shader pack compute's frames are faster**, by 3–14 ms in B and D in every run, although its passes cost the
+  GPU 1–2.8 ms more. The batch flushes a dispatch causes submit the frame's first part (shadow pass, terrain) early,
+  so the GPU starts on it while the CPU still records; with the pack's 25–35 ms of GPU work per frame that matters more
+  than the pass. A `glFlush` after the vertex stage's pass got half of D's difference back (63.7 → 56.3 ms, compute
+  50.1), but with Mesa's threaded driver `glFlush` waits for the driver thread: 0.06 ms per frame in A, 2.5 ms in D.
+  The dispatch's flushes happen on the driver thread.
+- So since 0.2.0-beta2 the expand pass runs in the vertex stage without a shader pack and as a compute dispatch with
+  one (`ExpandPass.stage`); `-Dmobium.parts.stage=compute|vertex` overrides that. Frames with a shader pack are as in
+  0.2.0-beta1. Single frames in B and D vary by ±5 ms between runs of the same condition in the dev window.
 
 ### Measurement pitfalls
 

@@ -5,6 +5,7 @@ import dev.nyon.konfig.config.loadConfig
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.MobiumKeys
 import dev.nyon.mobium.bench.BenchSuite
+import dev.nyon.mobium.bench.MachineState
 import dev.nyon.mobium.bench.SceneBuilder
 import dev.nyon.mobium.cache.ArmorStands
 import dev.nyon.mobium.cache.Displays
@@ -30,9 +31,11 @@ import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.core.OffReason
 import dev.nyon.mobium.debug.AbToggle
+import dev.nyon.mobium.debug.ExpandProfile
 import dev.nyon.mobium.debug.ModuleLines
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.debug.Validation
+import dev.nyon.mobium.parts.ExpandPass
 import dev.nyon.mobium.parts.PartTransform
 import dev.nyon.mobium.parts.PartValidation
 import jdk.jfr.Configuration
@@ -95,6 +98,8 @@ object SelfCheck {
     private const val IRIS_WITHOUT_MOBIUM = "iris-without-mobium"
     private const val PROFILE = "profile"
     private const val PROFILE_MOBS = "profile-mobs"
+    private const val EXPAND_COST = "expand-cost"
+    private const val DISPLAY_SCENE = "display_build"
     private const val PARTS = "parts"
     private const val MOB_SCENE = "mob_pen_live"
     private const val PART_GALLERY = "part_gallery"
@@ -146,6 +151,7 @@ object SelfCheck {
             IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
             PROFILE -> profile(minecraft)
             PROFILE_MOBS -> profileMobs(minecraft, argument.ifEmpty { MOB_SCENE })
+            EXPAND_COST -> expandCost(minecraft, argument.substringBefore(' ').ifEmpty { DISPLAY_SCENE }, argument.endsWith(" stages"))
             PARTS -> parts(minecraft)
             GATE_B -> gateB(minecraft)
             GALLERY_ONLY -> galleryOnly(minecraft)
@@ -552,6 +558,179 @@ object SelfCheck {
     }
 
     /**
+     * `--mode expand-cost`: Module 2's fixed cost per frame (PLAN.md M6, *Module 2 follow-ups*) in [scene] (default
+     * `display_build`, where Module 2 takes only the 17 shields) with the default config, the static cache on as in the
+     * benchmark; `mob_pen_live` also with Fresh Animations (setup C) and with the first shader pack on top (setup D).
+     * Each setup is measured by [recordExpand]. With [stagesOnly] (`--scene "mob_pen_live stages"`), only compute
+     * against the vertex stage, in all four setups.
+     */
+    private fun expandCost(minecraft: Minecraft, scene: String, stagesOnly: Boolean) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config())
+        minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
+        minecraft.options.enableVsync().set(false)
+        minecraft.createWorldOpenFlows().openWorld(WORLD) { }
+        yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        minecraft.options.cloudStatus().set(CloudStatus.OFF)
+        if (!minecraft.gui.hud.isHidden) minecraft.gui.hud.toggle()
+        val repository = minecraft.resourcePackRepository
+        repository.reload()
+        val fresh = if (scene == MOB_SCENE) repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) } else null
+        if (stagesOnly && buildScene(minecraft, scene)) {
+            // Compute against the vertex stage with the models of all four setups: A, B (the shader pack), D (and
+            // Fresh Animations), C (Fresh Animations alone).
+            recordExpand(minecraft, scene, "a", STAGES)
+            val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            var restore: (() -> Unit)? = null
+            if (pack != null) {
+                restore = IrisCheck.select(pack, emptyMap())
+                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                recordExpand(minecraft, scene, "b", STAGES)
+            }
+            if (fresh != null) {
+                repository.addPack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
+                if (restore != null) recordExpand(minecraft, scene, "d", STAGES)
+            }
+            if (restore != null) {
+                restore()
+                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+            }
+            if (fresh != null) {
+                recordExpand(minecraft, scene, "c", STAGES)
+                repository.removePack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
+            }
+        } else if (buildScene(minecraft, scene)) {
+            recordExpand(minecraft, scene, "plain")
+            if (fresh != null) {
+                repository.addPack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
+                recordExpand(minecraft, scene, "c")
+                val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+                if (pack != null) {
+                    val restore = IrisCheck.select(pack, emptyMap())
+                    yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                    recordExpand(minecraft, scene, "d")
+                    restore()
+                    yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+                }
+                repository.removePack(fresh)
+                minecraft.options.updateResourcePacks(repository)
+                yield(ticks(10))
+                yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
+            }
+        }
+        applyConfig(saved)
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        finish(minecraft)
+    }
+
+    /**
+     * One setup of `--mode expand-cost`: Module 2 off, Module 2 with the compute dispatch, Module 2 with the vertex-stage
+     * variant ([ExpandPass.STAGE_VERTEX]) and the models' vertex writes skipped, 8 s each, in 4 rounds whose order
+     * rotates, so that every condition comes first once (the laptop's clocks drift within a round). Reports the frame
+     * times, the GPU time per frame, the stage timers and [ExpandProfile]'s CPU time per step. Each condition is logged,
+     * so that a driver's own log (Mesa's `INTEL_DEBUG=submit`) can be split by it.
+     */
+    private suspend fun SequenceScope<Wait>.recordExpand(
+        minecraft: Minecraft,
+        scene: String,
+        setup: String,
+        conditions: List<ExpandCondition> = COST_CONDITIONS
+    ) {
+        yield(ticks(10 * TICKS_PER_SECOND))
+        Sections.forceTimers = true
+        val names = conditions.map { it.name }
+        val rounds = maxOf(names.size, 4)
+        val samples = 8
+        val sums = Array(names.size) { DoubleArray(Sections.COUNT) }
+        val steps = Array(names.size) { DoubleArray(ExpandProfile.COUNT) }
+        val frameMs = DoubleArray(names.size)
+        val passes = DoubleArray(names.size)
+        val gpuMs = DoubleArray(names.size)
+        val passUs = DoubleArray(names.size)
+        val mhz = DoubleArray(names.size)
+        val clockFile = MachineState.SYSTEM.gpuClockFile()
+        val partsBefore = config.parts.enabled
+        val forcedBefore = ExpandPass.forcedStage
+        for (run in 0 until names.size * rounds) {
+            val condition = (run + run / names.size % names.size) % names.size
+            val settings = conditions[condition]
+            config.parts.enabled = settings.parts
+            ExpandPass.forcedStage = settings.stage
+            ModuleStates.refresh("self-check")
+            Sections.skipModelVertices = settings.skipVertices
+            Mobium.LOGGER.info("Mobium self-check: expand-cost {}, {}, round {}", setup, names[condition], run / names.size + 1)
+            yield(ticks(2 * TICKS_PER_SECOND))
+            ExpandProfile.reset()
+            ExpandProfile.enabled = true
+            val framesBefore = Sections.frame
+            val start = System.nanoTime()
+            repeat(samples) {
+                yield(ticks(TICKS_PER_SECOND))
+                for (i in 0 until Sections.COUNT) sums[condition][i] += Sections.averageMillis(i) / (samples * rounds)
+                if (clockFile != null) mhz[condition] += MachineState.readClock(clockFile).toDouble() / (samples * rounds)
+            }
+            val frames = (Sections.frame - framesBefore).toDouble()
+            frameMs[condition] += (System.nanoTime() - start) / 1e6 / frames / rounds
+            ExpandProfile.enabled = false
+            for (i in 0 until ExpandProfile.COUNT) steps[condition][i] += ExpandProfile.nanos[i] / 1e3 / frames / rounds
+            passes[condition] += ExpandProfile.passes / frames / rounds
+            if (ExpandProfile.gpuFrames > 0) gpuMs[condition] += ExpandProfile.gpuNanos / 1e6 / ExpandProfile.gpuFrames / rounds
+            if (ExpandProfile.passGpuFrames > 0) passUs[condition] += ExpandProfile.passGpuNanos / 1e3 / ExpandProfile.passGpuFrames / rounds
+        }
+        Mobium.LOGGER.info("Mobium self-check: expand-cost {} done", setup)
+        Sections.skipModelVertices = false
+        Sections.forceTimers = false
+        config.parts.enabled = partsBefore
+        ExpandPass.forcedStage = forcedBefore
+        ModuleStates.refresh("self-check")
+        val window = minecraft.window
+        for ((index, name) in names.withIndex()) {
+            results += String.format(
+                Locale.ROOT, "NOTE %s, setup %s, %s, window %dx%d: frame %.3f ms, GPU %.3f ms at %.0f MHz, expand passes on the GPU %.1f µs; ",
+                scene, setup, name, window.width, window.height, frameMs[index], gpuMs[index], mhz[index], passUs[index]
+            ) +
+                Sections.NAMES.indices.filter { sums[index][it] > 0.0005 }
+                    .joinToString { String.format(Locale.ROOT, "%s %.3f", Sections.NAMES[it], sums[index][it]) } +
+                String.format(Locale.ROOT, "; µs per frame: %.2f expand passes, ", passes[index]) +
+                ExpandProfile.NAMES.indices.joinToString { String.format(Locale.ROOT, "%s %.1f", ExpandProfile.NAMES[it], steps[index][it]) }
+        }
+        check("expand-cost, setup $setup: every condition measured", frameMs.all { it > 0.0 })
+    }
+
+    /** One condition of `--mode expand-cost`. */
+    private class ExpandCondition(
+        val name: String,
+        val parts: Boolean,
+        val stage: Int = ExpandPass.STAGE_COMPUTE,
+        val skipVertices: Boolean = false
+    )
+
+    private val COST_CONDITIONS = listOf(
+        ExpandCondition("Module 2 off", parts = false),
+        ExpandCondition("compute", parts = true),
+        ExpandCondition("vertex stage", parts = true, stage = ExpandPass.STAGE_VERTEX),
+        ExpandCondition("no vertices", parts = false, skipVertices = true)
+    )
+
+    private val STAGES = listOf(
+        ExpandCondition("compute", parts = true),
+        ExpandCondition("vertex stage", parts = true, stage = ExpandPass.STAGE_VERTEX)
+    )
+
+    /**
      * `--mode parts`: Module 2 in `mob_pen_live` and `part_gallery` with the models of the four benchmark setups
      * (vanilla, with the first shader pack, with the pack and Fresh Animations, with Fresh Animations). In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
      * byte), then Mobium's picture against vanilla's behind a pause screen, and two vanilla frames as the floor.
@@ -681,7 +860,14 @@ object SelfCheck {
         for ((scene, file) in listOf(MOB_SCENE to "pens", PART_GALLERY to "gallery")) {
             if (!buildScene(minecraft, scene)) continue
             val name = "$setup, $scene"
-            validateParts(name, expectParts = true)
+            // Both stages where the GPU has the vertex stage (which one runs depends on the shader pack), compute else.
+            if (ExpandPass.vertexStores) {
+                ExpandPass.forcedStage = ExpandPass.STAGE_VERTEX
+                validateParts("$name, vertex stage", expectParts = true)
+            }
+            ExpandPass.forcedStage = ExpandPass.STAGE_COMPUTE
+            validateParts("$name, compute", expectParts = true)
+            ExpandPass.forcedStage = -1
             comparePaused(minecraft, "parts: $name", "parts-${file}-${setup.replace(", ", "-").replace(' ', '-')}")
         }
     }

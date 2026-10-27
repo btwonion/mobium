@@ -13,6 +13,7 @@ import dev.nyon.mobium.core.CompatMod
 import dev.nyon.mobium.core.Fallback
 import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.core.Module
+import dev.nyon.mobium.debug.ExpandProfile
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.gpu.gl.GlCompute
 import net.caffeinemc.mods.sodium.api.vertex.buffer.VertexBufferWriter
@@ -327,9 +328,16 @@ object PartTransform {
         return irisFormat
     }
 
+    /** Called right before [staged]'s `upload()` (dev measurement only, [ExpandProfile]). */
+    @JvmStatic
+    fun beforeUpload() {
+        if (ExpandProfile.enabled) ExpandProfile.uploadStart = System.nanoTime()
+    }
+
     /** Runs the expand pass for what [staged] collected; called right after its `upload()`. */
     @JvmStatic
     fun afterUpload(staged: StagedVertexBuffer) {
+        if (ExpandProfile.enabled) ExpandProfile.lap(ExpandProfile.UPLOAD, ExpandProfile.uploadStart)
         val batch = (staged as PartStaged).`mobium$batch`() ?: return
         if (batch.isEmpty) return
         val vertexBuffer = staged.`mobium$vertexBuffer`() as GlBuffer
@@ -399,11 +407,11 @@ object PartTransform {
         quads = 0
     }
 
-    /** F3 `mobium:modules`: what Module 2 took over in the last frame and what its meshes hold. */
+    /** F3 `mobium:modules`: what Module 2 took over in the last frame, what its meshes hold and how it expands. */
     fun debugLine(): String = String.format(
         java.util.Locale.ROOT,
-        "Mobium part transform: %d parts, %d quads last frame; meshes %d quads; GPU %.1f MB",
-        lastParts, lastQuads, MeshPool.quadCount, ExpandPass.bytesAllocated / 1048576.0
+        "Mobium part transform: %d parts, %d quads last frame; meshes %d quads; GPU %.1f MB, %s",
+        lastParts, lastQuads, MeshPool.quadCount, ExpandPass.bytesAllocated / 1048576.0, ExpandPass.stageName
     )
 
     /** A new level, a resource reload or a render distance change: every mesh is written again. */
