@@ -13,9 +13,9 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#15 are merged; `main` has M0–M5 (#7), the release preps
-  (#8, #13, #14), the new icon (#10), the beta2 work (#11, #12) and the switch to GPL-3.0 (#15, 25 Oct 2026). One
-  branch from `main` per milestone, one PR against `main`; merging is Anton's call.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#16 are merged; `main` has M0–M5 (#7), the release preps
+  (#8, #13, #14), the new icon (#10), the beta2 work (#11, #12), the switch to GPL-3.0 (#15, 25 Oct 2026) and M6
+  (#16, 26 Oct 2026). One branch from `main` per milestone, one PR against `main`; merging is Anton's call.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
   `.github/workflows/build-commit.yml`); `release.yml` does the same. Mesa's software renderer has compute shaders and
@@ -29,8 +29,8 @@ Read this first when picking the work up in a new session.
   `v0.1.0-beta2-26.3+fabric` / `+neoforge`), both beta on Modrinth `mobium` (`8i5oedw8`) and CurseForge `mobium-perf`
   (`1759818`). Never run `release.yml` or `releaseMod` yourself. No tester reports so far
   (`.github/ISSUE_TEMPLATE/bug_report.yml`).
-- **Now M6** (Module 2, GPU part transform → Gate C), branch `m6-part-transform`, PR open for Anton (see §M6, *Status*).
-  Built and verified in the dev clients: Module 2 takes every model part drawn into a staged entity-format draw
+- **M6 merged** (#16, 26 Oct 2026; Module 2, GPU part transform, see §M6, *Status*). Built and verified in the dev
+  clients: Module 2 takes every model part drawn into a staged entity-format draw
   (vanilla cubes as vanilla or Sodium writes them, EMF's cubes, in Iris's formats and its shadow pass too), and the
   GPU writes exactly the vertices the CPU would have: the self-check (`--mode parts`) and the gametests compare them
   byte for byte, 0 differences in every setup; pictures identical. `mob_pen_live` in the dev client: entity CPU work in
@@ -43,10 +43,17 @@ Read this first when picking the work up in a new session.
     `ModelPart.render` and the shader pack's GPU work dominates D (`docs/benchmarks.md` *Gate C: what M6 can reach*).
   - **Gate C passed on 26 Oct 2026** (§M6): in D the entity CPU work 1.90× lower, frames 1.18× (D) and 1.25× (C)
     faster at 1920×1080 (`docs/benchmarks.md` *Gate C: passed*).
-  - **Left for Anton:** the PR's visual checks (*How to verify* step 4) and the merge. Then the release prep (§10:
-    README for Module 2, a benchmark round A–D, then `release.yml`).
+  - Anton's visual checks (#16's *How to verify* step 4) done and #16 merged on 26 Oct 2026.
+  - **Now the release prep for `0.2.0-beta1`** (§10), branch `release-0.2.0-beta1`: README for Module 2 (PR open; merge
+    it right before `release.yml`, because `readme-modrinth-sync.yml` publishes README changes on `main` at once).
+    Benchmark round A–D done (26–27 Oct 2026, jar built from `b41d342`, named `0.1.0-beta3`; `main` differs from it
+    only in `gradle.properties`' version): Module 2 lowers the mob pens' CPU work in every setup, but costs
+    `display_build` 0.15–0.3 ms per frame (17 shields only), and A's mob pens have no same-session frame comparison
+    at 1920×1080 (§M6, *Module 2 follow-ups*). Anton's decision (27 Oct 2026): release as is, with both noted as a
+    known limit. **Left for Anton:** merge #17 (README, changelog, round), then run `release.yml` on `main` right
+    after (the README sync publishes on merge).
   - Known limits (`docs/compat.md`): translucent models without improved transparency (sorted on upload), glint,
-    outline and breaking overlay stay on the CPU; Vulkan has no Module 2 until M7.
+    outline and breaking overlay stay on the CPU; on Vulkan both modules stay off (`OffReason.BACKEND`) until M7.
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
   `beta2-cache-followups`, 23 Oct 2026):
   - [x] one light epoch for the whole level sent every cached object through the full check after any light update.
@@ -811,11 +818,24 @@ expensive), at most 3.1× lower.
 Earlier definitions, both out of reach: 1.5× frame time in D (the plan's first; at most 1.20× from the 23–25 Oct
 round), then 1.5× frame time in C and no slower in D (first redefinition, 25 Oct 2026; at most about 1.35×, above).
 
+**Module 2 follow-ups** (from the 0.2.0-beta1 release round, 26–27 Oct 2026, `docs/benchmarks.md` *26–27 Oct 2026*):
+- [ ] **Setup A at 1920×1080:** across sessions A's mob pens are 1.07–1.14× slower with Module 2 at about the same
+      GPU clock, although `prepare` fell by 0.65–0.73 ms; the dev client's 854×480 comparison was 1.22× faster. A
+      same-session `/mobium gatec` in A decides whether A's frame is GPU-bound there and Module 2 costs it frame time.
+- [ ] **Fixed cost with few parts:** in `display_build` Module 2 expands only 17 shields (special item renderers the
+      cache leaves to vanilla) and the frame gets 0.15–0.3 ms slower (A 1.64 → 1.89 ms at the same clock; dev client
+      1.69 → 1.98 ms, same session), with Module 2's own methods at 0.2 % of the render thread's samples. Measure the
+      dispatch, the barrier and `upload()` with GL timer queries; candidates: leave small frames on the CPU path (decide
+      from the previous frame's quad count before reserving), or one dispatch for all staged buffers of a frame.
+
 ### M7 · Phase 3: Vulkan, Aperture, Module 3, 26.4
 - [ ] Add `26.4-fabric` / `26.4-neoforge` Stonecutter targets when 26.4 releases (track its snapshots in a branch
       before that). Vulkan becomes the default there.
 - [ ] `VkCompute` on the game's own Vulkan device and queue; same GLSL compiled to SPIR-V.
 - [ ] Aperture (Iris's Vulkan successor) support once public; contact the Iris team before starting.
+- [ ] Vitrail (runs OptiFine-format shader packs on the game's Vulkan renderer; 0.7 beta for Fabric and NeoForge since
+      Aug 2026; asked about on 26 Oct 2026): check how it changes entity vertex formats and the shadow pass once
+      Mobium runs on Vulkan. Until then Mobium is off on Vulkan (README *FAQ*).
 - [ ] Module 3 (`lod/`): throttle by projected size; hurt flash, death animation and targeted mob always full
       rate; presets Off / Subtle / Aggressive; per-type exclusions; exclude EMF-animated models until tested.
 - [ ] Glint and outline passes generated from the same records.
@@ -895,12 +915,18 @@ benchmark numbers if performance changed.
       C: frame 0.80×), results in `docs/benchmarks.md` and `docs/benchmarks/results/2026-10-26-thinkpad-x9/`.
 - [x] `changelog.md` contains only this release's notes (26 Oct 2026: Module 2, `/mobium gatec`, GPL-3.0).
 - [x] `docs/compat.md` updated for Module 2 (26 Oct 2026).
-- [ ] `README.md` describes Module 2 (in the release prep: `readme-modrinth-sync.yml` publishes every README change on
-      `main` to Modrinth, so it must not describe an unreleased module).
+- [x] `README.md` describes Module 2 (26 Oct 2026, branch `release-0.2.0-beta1`; merge right before `release.yml`:
+      `readme-modrinth-sync.yml` publishes every README change on `main` to Modrinth, so it must not describe an
+      unreleased module).
 - [x] Self-check on both loaders with Module 2 on (26 Oct 2026: regular Fabric 74/74, NeoForge 67/67; `--mode parts`
       on Fabric 25/25, NeoForge without the shader pack).
-- [ ] Benchmark round A–D on the release build.
-- [ ] Anton's visual checks of the M6 PR's *How to verify*.
+- [x] Benchmark round A–D on the release build (26–27 Oct 2026, build `b41d342`, `docs/benchmarks.md` *26–27 Oct
+      2026*, `docs/benchmarks/results/2026-10-27-thinkpad-x9/`): Module 2 lowers the mob pens' `prepare` in every
+      setup (A 1.6×, B 5×, C 1.5×, D 1.8×); two open points under M6, *Module 2 follow-ups*.
+- [x] Anton's decision on the two open points (27 Oct 2026): release as is, without `/mobium gatec` in A; both are a
+      known limit in `changelog.md`, `README.md` and `docs/compat.md`. The changelog's "about 1.2× faster with vanilla
+      models" (dev client, 854×480) was replaced by Gate C's numbers.
+- [x] Anton's visual checks of the M6 PR's *How to verify* (#16, 26 Oct 2026).
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
 ---
