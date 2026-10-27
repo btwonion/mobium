@@ -31,10 +31,10 @@ Requires JDK 25 (same as CI).
 python3 benchmark/prism_instances.py       # creates/updates the Prism instances "Mobium Bench A–D" from the two above
 python3 benchmark/bench_round.py           # unattended round A–D in those instances (about 3 h; --quick, --dry-run),
                                            # CSVs pushed to btwonion/mobium-benchmarks (checkout ../mobium-benchmarks)
-python3 scripts/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
+python3 benchmark/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
 ```
 
-`scripts/self_check.py` starts each dev client with a request file; `debug/selfcheck/SelfCheck.kt` (dev environments
+`benchmark/self_check.py` starts each dev client with a request file; `debug/selfcheck/SelfCheck.kt` (dev environments
 only) then walks through the checks inside the game: screens opened the loader's way, both languages, the Sodium page,
 and in the benchmark world key presses, commands and pixel comparisons against vanilla. It writes
 `<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched, and closes the game.

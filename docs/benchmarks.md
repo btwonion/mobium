@@ -427,7 +427,7 @@ Mobium's own draw calls (0.05–0.06 ms of CPU for about 16 buckets in `storage_
 
 ### Entity scenes, first look (M5, not a measurement)
 
-20 Oct 2026, `python3 scripts/self_check.py fabric --mode gateb` on the development laptop, Fabric dev client's
+20 Oct 2026, `python3 benchmark/self_check.py fabric --mode gateb` on the development laptop, Fabric dev client's
 1423×800 window (Sodium + EMF/ETF, no packs), 15-second runs, the static cache off and on twice:
 
 | Scene | Cache off | Cache on | Extract E | Submit E | Prepare | Cached |
@@ -654,7 +654,7 @@ static cache takes, so this round's numbers are what M6 starts from. D, 25 Oct:
   with Module 2 in setup C, and in D at most 1.03× the frame time without it (no slower).
 
 **What tessellation is made of (25 Oct 2026, dev client).** The 1.98× bound for C above assumed that Module 2 removes
-all of `tessellate_entities`. It does not: `--mode profile-mobs` of the self-check (`scripts/self_check.py`) builds
+all of `tessellate_entities`. It does not: `--mode profile-mobs` of the self-check (`benchmark/self_check.py`) builds
 `mob_pen_live` in the Fabric dev client and records it, alternating 4 × 8 s, once as drawn and once with every model
 part's vertex writes skipped (`Sections.skipModelVertices`, hooks on `ModelPart.compile` and EMF's
 `EMFModelPart.compile`; the mobs vanish). The difference is the most Module 2 can take off the CPU. Dev window
@@ -689,8 +689,8 @@ Fresh Animations 1.10.3, Complementary Reimagined r5.9.3 at its defaults; timer 
 
 #### Module 2, first measurement (26 Oct 2026, dev client)
 
-Not the protocol (dev window 854×480, the dev client's mods, one session): `python3 scripts/self_check.py fabric --mode
-profile-mobs` records `mob_pen_live` alternating Module 2 off, Module 2 on and the models' vertex writes skipped
+Not the protocol (dev window 854×480, the dev client's mods, one session): `python3 benchmark/self_check.py fabric
+--mode profile-mobs` records `mob_pen_live` alternating Module 2 off, Module 2 on and the models' vertex writes skipped
 (the floor Module 2 can approach), 2 × 8 s each, build of 26 Oct 2026 with the Sodium cube path, the normals on the GPU
 and the upload leaving the reserved bytes out. Timer averages in ms:
 
@@ -809,7 +809,7 @@ What the round shows:
 ### 27 Oct 2026, Module 2's fixed cost: a compute batch of its own (dev client)
 
 The follow-up to `display_build`'s 0.15–0.3 ms above, in the Fabric dev client (1423×800 window, mains power, Mesa
-26.2.5, uncapped), with `python3 scripts/self_check.py fabric --mode expand-cost` (`--scene mob_pen_live`, `--scene
+26.2.5, uncapped), with `python3 benchmark/self_check.py fabric --mode expand-cost` (`--scene mob_pen_live`, `--scene
 "mob_pen_live stages"`): each condition 8 s, in 4 rounds whose order rotates, static cache on. A fixed order did not
 work: the laptop's CPU clocks drift within a round, and even `extract_entities`, which Module 2 does not touch, came
 out 10 % apart between conditions. *GPU* is the time from a frame's start to its submit in GL timestamps; *passes* the
@@ -999,8 +999,8 @@ them; treat this as a hint for what to look for in the real baselines, not as a 
 
 ### Gate B first look (M5, not a measurement)
 
-20 Oct 2026, `python3 scripts/self_check.py fabric --mode gateb` on the development laptop: `/mobium gateb 20 2` in the
-Fabric dev client's 1423×800 window (Sodium + EMF/ETF, no shader pack), then `storage_room` with the static cache
+20 Oct 2026, `python3 benchmark/self_check.py fabric --mode gateb` on the development laptop: `/mobium gateb 20 2` in
+the Fabric dev client's 1423×800 window (Sodium + EMF/ETF, no shader pack), then `storage_room` with the static cache
 twice with its draw calls on and twice with them skipped (a dev switch; the cached objects then vanish):
 
 | Run | Frame |

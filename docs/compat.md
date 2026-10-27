@@ -26,7 +26,7 @@ F3 `mobium:modules`, log). Mod ids from the mods' own sources, 20 Oct 2026.
 
 ## Tested (M5, static cache)
 
-How: the dev self-check (`python3 scripts/self_check.py`) compares Mobium's picture with vanilla's from two consecutive
+How: the dev self-check (`benchmark/self_check.py`) compares Mobium's picture with vanilla's from two consecutive
 frames of one client tick, in `storage_room` (1,000 chests, 300 signs) and in the `cache_gallery` scene (every cached
 type, including item frames, armor stands and display entities, and the variants that stay vanilla), after changes the
 cache must notice (lid opened and closed, breaking overlay, light, sign text, block state, an item frame turned and its
@@ -42,7 +42,7 @@ fog. "Identical" means 0 changed pixels. Dev clients run the compat stack of `ve
 
 ## Tested (M6, GPU part transform)
 
-How: the dev self-check `--mode parts` (`python3 scripts/self_check.py <loader> --mode parts`) builds `mob_pen_live`
+How: the dev self-check `--mode parts` (`python3 benchmark/self_check.py <loader> --mode parts`) builds `mob_pen_live`
 (500 cows, villagers and zombies walking in place) and `part_gallery` (banners, a bell, a conduit, a lectern, an
 enchanting table, armour with a trim, a saddle, wolf armour, a trident and a shield) with the models of the four
 benchmark setups. In each it compiles every part Module 2 takes over on the CPU as well, reads the GPU's vertices back

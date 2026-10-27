@@ -90,7 +90,7 @@ Read this first when picking the work up in a new session.
   US one; chat and action-bar messages name the bound key.
 - **Known issue (not Mobium):** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
   `CenterDepthSampler` ("Missing uniform InSampler"), also with Mobium switched off
-  (`python3 scripts/self_check.py neoforge --mode iris-without-mobium`); the self-check skips the shader pack there.
+  (`python3 benchmark/self_check.py neoforge --mode iris-without-mobium`); the self-check skips the shader pack there.
 - **Working in a worktree:** the gitignored dev run folders are not there. Copy `versions/26.3-fabric/run/` and `run/`
   (`options.txt`, `config`, `saves`, `shaderpacks`, `resourcepacks`), `versions/26.3-fabric/build/bench-world` and
   `versions/26.3-fabric/build/bench-packs` from the main checkout before running the self-check or the Prism script.
@@ -623,7 +623,7 @@ Done when both loaders show identical settings, toggling a module at runtime log
 exception in a module disables it with one toast.
 
 Status (20 Oct 2026): done on branch `m4-core`, verified on both loaders with the in-game self-check
-(`scripts/self_check.py`: Fabric 26/26, NeoForge 27/27 checks; screenshots read by eye). The self-check runs #5's
+(`benchmark/self_check.py`: Fabric 26/26, NeoForge 27/27 checks; screenshots read by eye). The self-check runs #5's
 *How to verify* inside the dev clients: settings through Mod Menu's factory and the NeoForge mod list's Config button,
 English and German without raw keys, Mobium's Sodium page and its Apply path, saved settings, and in `storage_room`
 the A/B key (Mobium and vanilla pictures: 0 differing pixels), F3 `mobium:modules`, `/mobium debug fail` (one toast,
@@ -886,7 +886,7 @@ round), then 1.5× frame time in C and no slower in D (first redefinition, 25 Oc
 | `./gradlew build` both targets | Claude Code + CI | Every PR |
 | Unit tests (pure Kotlin: ring buffer, budget, record packing, expand reference math, config migration) | CI | Every PR |
 | Fabric client gametests: scene smoke tests and screenshots | CI under xvfb with Mesa's software OpenGL (supports compute, so correctness of the compute path can be checked; speed cannot) | Every PR from M2 |
-| In-game self-check on both dev clients (`scripts/self_check.py`): the PR's *How to verify* as scripted checks, pixel comparisons and screenshots | Claude Code, locally | Every rendering PR from M4 |
+| In-game self-check on both dev clients (`benchmark/self_check.py`): the PR's *How to verify* as scripted checks, pixel comparisons and screenshots | Claude Code, locally | Every rendering PR from M4 |
 | Visual check with shader packs and Fresh Animations | Anton | Every rendering PR |
 | Benchmarks (`/mobium bench`, all scenes, four setups) | Anton | Gates A–C and before each release |
 | NeoForge parity | Anton (manual) + CI build | Every rendering PR |

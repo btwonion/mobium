@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Runs Mobium's in-game self-check (dev environments only) on one or both loaders and prints the report.
 
-    python3 scripts/self_check.py              # Fabric, then NeoForge
-    python3 scripts/self_check.py neoforge     # one loader
-    python3 scripts/self_check.py fabric --mode gallery    # only the cache_gallery checks, for quick iterations
-    python3 scripts/self_check.py neoforge --mode iris-without-mobium   # shader pack with Mobium off (crash triage)
-    python3 scripts/self_check.py fabric --mode profile    # storage_room under JFR -> mobium-selfcheck/*.jfr
-    python3 scripts/self_check.py fabric --mode profile-mobs   # mob_pen_live without packs, in setups C and D under JFR
-    python3 scripts/self_check.py fabric --mode profile-mobs --scene storage_room   # another scene, cache off
-    python3 scripts/self_check.py fabric --mode parts      # Module 2: GPU vertices against the CPU's, pictures
-    python3 scripts/self_check.py fabric --mode expand-cost   # Module 2's fixed cost per frame in display_build
+    python3 benchmark/self_check.py              # Fabric, then NeoForge
+    python3 benchmark/self_check.py neoforge     # one loader
+    python3 benchmark/self_check.py fabric --mode gallery    # only the cache_gallery checks, for quick iterations
+    python3 benchmark/self_check.py neoforge --mode iris-without-mobium   # shader pack with Mobium off (crash triage)
+    python3 benchmark/self_check.py fabric --mode profile    # storage_room under JFR -> mobium-selfcheck/*.jfr
+    python3 benchmark/self_check.py fabric --mode profile-mobs   # mob_pen_live without packs, setups C and D under JFR
+    python3 benchmark/self_check.py fabric --mode profile-mobs --scene storage_room   # another scene, cache off
+    python3 benchmark/self_check.py fabric --mode parts      # Module 2: GPU vertices against the CPU's, pictures
+    python3 benchmark/self_check.py fabric --mode expand-cost   # Module 2's fixed cost per frame in display_build
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
 both languages, Sodium's page, and in the benchmark world's storage_room the A/B key, F3 and a forced module failure,
