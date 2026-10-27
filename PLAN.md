@@ -46,9 +46,12 @@ Read this first when picking the work up in a new session.
   testers report. Branch `beta2-parts-followups` (27 Oct 2026, #19, on top of the bookkeeping PR #18): Module 2's fixed cost found and
   fixed (the compute dispatch's batch hand-over on Mesa's iris; the expand pass runs in the vertex stage without a
   shader pack), `/mobium stages`, `--mode expand-cost`, the F3 line groups. Validated in the dev clients (both stages
-  byte for byte in all four setups). **Left for Anton** (§10, beta2): the PR's *How to verify*, then on the beta2
-  build `/mobium stages` in A (`mob_pen_live` and `display_build`) and D and `/mobium gatec` in A at 1920×1080, which
-  decide the stage choice at the protocol's resolution and A's open follow-up, and the release round A–D.
+  byte for byte in all four setups). The beta2 round runs unattended: `python3 benchmark/bench_round.py` (Mobium's
+  `bench/BenchAutorun.kt` opens the world, moves the fullscreen window to the AOC at 1920×1080, runs the setup's plan
+  and quits; the script runs A–D in turn and files the results; smoke-tested in A and D on 27 Oct 2026). Build
+  `8d26a26` is installed in the four instances. **Left for Anton:** start the round (or tell Claude to) and leave the
+  laptop for about three hours; then Claude writes up the results and decides the stage choice with them (§10,
+  beta2), and Anton merges #19 and the release prep and runs `release.yml`.
 - **Then M7.** Minecraft 26.4 is in snapshots (`26.4-snapshot-1` on 22 Sep 2026, `26.4-snapshot-6` on 27 Oct 2026);
   Vulkan is to become its default backend there (*(verify)* in the snapshots), and Mobium is off on Vulkan, so the
   snapshot-tracking branch and `VkCompute` come first in M7.
@@ -947,11 +950,12 @@ benchmark numbers if performance changed.
 - [ ] `changelog.md` contains only beta2's notes (drafted 27 Oct 2026 on `beta2-parts-followups`).
 - [ ] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices in both stages,
       pictures identical).
-- [ ] Anton's visual checks of the beta2 PR's *How to verify*.
-- [ ] Anton, on the beta2 build at 1920×1080: `/mobium stages` in A (`mob_pen_live`, then `/mobium stages 60 3
-      display_build`) and in D, `/mobium gatec` in A. If the vertex stage is slower than compute in A, or faster in
-      D, change the choice in `ExpandPass.stage` before the release.
-- [ ] Benchmark round A–D on beta2, committed to `docs/benchmarks.md`.
+- [ ] Anton's visual checks of the beta2 PR's *How to verify* (optional: the self-check compares both stages' pictures
+      with vanilla's pixel for pixel in all four setups).
+- [ ] Benchmark round A–D on beta2 at 1920×1080, unattended (`python3 benchmark/bench_round.py`: the suite in every
+      setup, `/mobium stages` in A–D and on `display_build` in A, `/mobium gatec` in A, C and D), committed to
+      `docs/benchmarks.md`. If the vertex stage is slower than compute in A or C, or faster in B or D, change the choice
+      in `ExpandPass.stage` before the release.
 - [ ] `README.md` updated from that round (in the release-prep PR, merged right before `release.yml`): Module 2's
       known limit, and "a compute shader … writes the vertices" (without a shader pack a vertex shader does now).
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
