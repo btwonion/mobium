@@ -706,6 +706,76 @@ Medians, ms:
 - Tessellation still left with Module 2: C 3.22 ms (of 4.45), D 5.17 + 0.73 ms (of 9.15 + 2.04): Fresh Animations'
   animations and the part walk, which Module 2 keeps on the CPU.
 
+### 26–27 Oct 2026, 0.2.0-beta1 release round (Module 2 on), all four setups
+
+Machine and settings as on 23–25 Oct · fullscreen 1920×1080 on the AOC, mains power, uncapped, VSync off · build
+**b41d342** (the jar is named `0.1.0-beta3`; `main` at 0.2.0-beta1 differs from it only in `gradle.properties`' version)
+· static cache and Module 2 on (setup names `+parts+cache`) · A on 26 Oct at 22:06, right after Gate C's runs; B, C and
+D on 27 Oct afternoon · A's `control` has one run (the suite was left after it) · Raw data:
+[`results/2026-10-27-thinkpad-x9/`](benchmarks/results/2026-10-27-thinkpad-x9/).
+
+#### Suites
+
+Median of three 60-second runs, ms per frame, columns as on 23–25 Oct. *23–25 Oct* is the same scene with the static
+cache only (build a6997e5; C and D from their 25 Oct suites), *Ratio* the frame against it, and the two *(23–25 Oct)*
+columns that round's `prepare` and `shadow_prepare`. Frames from different sessions are not a Module 2 comparison
+(below); the stage times are.
+
+| Scene | Setup | Avg FPS | 1% low | Avg ms | 23–25 Oct | Ratio | p95 ms | Extract | Submit | Pose | Tessellate | Prepare | (23–25 Oct) | Draw | Shadow | Shadow prepare | (23–25 Oct) | GPU MHz |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mob_pen_static | A | 287 | 167 | 3.49 | 3.07 | 1.14× | 4.12 | 0.68 | 0.24 | 0.09 | 0.45 | 1.15 | 1.80 | 0.03 | 0.00 | 0.00 | 0.00 | 650–1025 |
+| mob_pen_live | A | 294 | 169 | 3.40 | 3.19 | 1.07× | 4.03 | 0.73 | 0.27 | 0.10 | 0.48 | 1.18 | 1.91 | 0.03 | 0.00 | 0.00 | 0.00 | 650–722 |
+| storage_room | A | 546 | 322 | 1.83 | 1.56 | 1.17× | 2.30 | 0.12 | 0.00 | 0.00 | 0.00 | 0.01 | 0.01 | 0.05 | 0.00 | 0.00 | 0.00 | 760–802 |
+| map_wall | A | 217 | 99 | 4.60 | 4.12 | 1.12× | 5.17 | 0.93 | 0.45 | 0.00 | 0.00 | 2.16 | 1.98 | 0.51 | 0.00 | 0.00 | 0.00 | 1021–1131 |
+| display_build | A | 529 | 286 | 1.89 | 1.64 | 1.16× | 2.24 | 0.54 | 0.09 | 0.00 | 0.00 | 0.53 | 0.09 | 0.02 | 0.00 | 0.00 | 0.00 | 718–722 |
+| control (1 run) | A | 879 | 520 | 1.14 | 1.13 | 1.00× | 1.49 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1035 |
+| mob_pen_static | B | 32 | 19 | 31.09 | 58.65 | 0.53× | 46.11 | 1.22 | 0.43 | 0.10 | 0.56 | 0.97 | 5.38 | 0.05 | 1.78 | 0.37 | 1.24 | 1340–1495 |
+| mob_pen_live | B | 34 | 20 | 29.46 | 51.99 | 0.57× | 44.15 | 1.00 | 0.42 | 0.11 | 0.62 | 1.02 | 4.85 | 0.05 | 1.62 | 0.36 | 1.24 | 1392–1458 |
+| storage_room | B | 25 | 20 | 39.96 | 36.41 | 1.10× | 47.82 | 0.34 | 0.00 | 0.00 | 0.00 | 0.03 | 0.02 | 0.28 | 0.56 | 0.01 | 0.00 | 699–747 |
+| map_wall | B | 18 | 13 | 56.45 | 53.39 | 1.06× | 60.19 | 2.77 | 1.24 | 0.00 | 0.00 | 5.18 | 4.66 | 0.86 | 3.45 | 1.21 | 0.89 | 550 |
+| display_build | B | 36 | 20 | 28.12 | 50.00 | 0.56× | 45.83 | 1.04 | 0.30 | 0.00 | 0.01 | 0.30 | 0.40 | 0.09 | 3.42 | 1.67 | 2.01 | 1274–1430 |
+| control | B | 31 | 23 | 32.31 | 31.60 | 1.02× | 42.13 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.01 | 0.00 | 0.46 | 0.01 | 0.01 | 755–886 |
+| mob_pen_static | C | 150 | 78 | 6.67 | 8.70 | 0.77× | 10.82 | 0.77 | 1.18 | 0.16 | 2.99 | 3.44 | 5.35 | 0.01 | 0.00 | 0.00 | 0.00 | 1176–1245 |
+| mob_pen_live | C | 146 | 77 | 6.86 | 8.98 | 0.76× | 10.83 | 0.79 | 1.22 | 0.16 | 3.13 | 3.60 | 5.32 | 0.02 | 0.00 | 0.00 | 0.00 | 1040–1282 |
+| storage_room | C | 682 | 411 | 1.47 | 1.64 | 0.90× | 1.86 | 0.10 | 0.00 | 0.00 | 0.00 | 0.01 | 0.01 | 0.04 | 0.00 | 0.00 | 0.00 | 980–1015 |
+| map_wall | C | 244 | 114 | 4.09 | 4.25 | 0.96× | 4.54 | 0.82 | 0.45 | 0.00 | 0.00 | 1.97 | 2.02 | 0.44 | 0.00 | 0.00 | 0.00 | 1148–1164 |
+| display_build | C | 547 | 314 | 1.83 | 1.70 | 1.08× | 2.17 | 0.50 | 0.09 | 0.00 | 0.00 | 0.54 | 0.09 | 0.02 | 0.00 | 0.00 | 0.00 | 733–748 |
+| control | C | 937 | 554 | 1.07 | 1.26 | 0.85× | 1.36 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1160–1195 |
+| mob_pen_static | D | 16 | 13 | 61.93 | 69.13 | 0.90× | 71.95 | 1.59 | 3.54 | 0.24 | 4.89 | 5.92 | 11.01 | 0.05 | 3.00 | 1.03 | 2.75 | 586–751 |
+| mob_pen_live | D | 18 | 14 | 56.53 | 68.14 | 0.83× | 66.94 | 1.20 | 3.77 | 0.27 | 5.34 | 6.52 | 10.85 | 0.05 | 3.26 | 1.14 | 2.70 | 609–756 |
+| storage_room | D | 27 | 20 | 37.12 | 31.40 | 1.18× | 46.95 | 0.38 | 0.00 | 0.00 | 0.00 | 0.03 | 0.02 | 0.25 | 0.55 | 0.01 | 0.00 | 786–909 |
+| map_wall | D | 18 | 13 | 55.91 | 55.59 | 1.01× | 59.77 | 2.70 | 1.32 | 0.00 | 0.00 | 4.85 | 4.79 | 0.82 | 3.28 | 1.01 | 0.97 | 550 |
+| display_build | D | 36 | 20 | 27.74 | 46.27 | 0.60× | 46.46 | 1.07 | 0.40 | 0.00 | 0.02 | 0.31 | 0.39 | 0.09 | 3.30 | 1.48 | 1.91 | 1265–1360 |
+| control | D | 29 | 23 | 34.18 | 28.89 | 1.18× | 42.24 | 0.02 | 0.00 | 0.00 | 0.00 | 0.02 | 0.01 | 0.00 | 0.54 | 0.01 | 0.00 | 668–766 |
+
+What the round shows:
+
+- **Module 2's CPU saving holds in every setup.** The mob pens' `prepare` fell from 1.80–1.91 to 1.15–1.18 ms in A
+  (1.6×), 4.85–5.38 to 0.97–1.02 ms in B (5×: Iris's 56-byte vertices with vanilla models were the most expensive
+  writes), 5.32–5.35 to 3.44–3.60 ms in C (1.5×) and 10.85–11.01 to 5.92–6.52 ms in D (1.8×); the shadow pass's
+  `shadow_prepare` in B and D from 1.24 and 2.70–2.75 to 0.36–0.37 and 1.03–1.14 ms. Scenes without model parts
+  (`storage_room`, `map_wall`, `control`) kept their stage times.
+- **Frames between sessions follow the GPU clock, not Mobium.** `control` (nothing for Mobium to do) is 1.18× slower
+  in D at 668–766 MHz against 900–942, 0.85× in C at 1160–1195 against 904–958; `storage_room` (Module 2 idle,
+  `prepare` 0.01 ms) 1.17× slower in A at 760–802 against 905–940 MHz, `map_wall` 1.12× at 1021–1131 against
+  1133–1160. B's and D's GPU ran at 1270–1500 MHz in the mob pens and in `display_build` (552–611 then), which halved
+  their frame times in `display_build` too, a scene whose stage times barely moved. So B's 0.53–0.57× in the mob pens
+  does not mean Module 2 doubles B's frame rate; the same-session comparison is Gate C's (C 1.25×, D 1.18× faster).
+- **A's mob pens are open.** At about the clock of 23 Oct (650–722 against 650–753 MHz) their frame is 1.07–1.14×
+  slower, although `prepare` fell by 0.65–0.73 ms. At 1920×1080 A's frame may be bound by the GPU, where the expand
+  pass's work and the fixed cost below outweigh the CPU saving; the dev client's comparison at 854×480 was 1.22× faster
+  (*Module 2, first measurement*). Only a same-session run tells: `/mobium gatec` in A.
+- **With only a few parts, Module 2 costs more than it saves.** `display_build`'s `prepare` rose from 0.09 to 0.53 ms
+  in A and C (median 0.27–0.34 ms, p90 1.2 ms, single frames up to 12 ms), and its frame from 1.64 to 1.89 ms in A at
+  the same GPU clock (700 against 718–722 MHz), 1.70 to 1.83 ms in C. The displays stay cached (`submit`, `pose` and
+  `tessellate` as before). What Module 2 takes there are the 17 shields among the 100 item displays: a special item
+  renderer built from model parts, which the cache leaves to vanilla (`ItemFingerprint`), and whose vertices cost the
+  CPU 0.06 ms. Same session in the dev client (`self_check.py fabric --mode profile-mobs --scene display_build`,
+  27 Oct, 1423×800, static cache off, 2 × 8 s each): frame 1.69 ms with Module 2 off, 1.98 ms on, 1.63 ms without the
+  models' vertices; `prepare` 0.68 → 0.77 ms. Module 2's own methods are 0.2 % of the render thread's samples (JFR), so
+  the 0.15–0.3 ms per frame are outside its CPU code: the dispatch, the barrier, or a sync in the driver (not measured
+  yet). In B and D (30–55 ms frames, GPU-bound) it does not show. Follow-up in `PLAN.md` (M6, *Module 2 follow-ups*).
+
 ### Measurement pitfalls
 
 - Instance settings Prism ignores: until 23 Oct 2026 `benchmark/prism_instances.py` appended `-Dmobium.bench.expect`
