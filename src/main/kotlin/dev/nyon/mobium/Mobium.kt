@@ -2,6 +2,7 @@ package dev.nyon.mobium
 
 import dev.nyon.konfig.config.config
 import dev.nyon.konfig.config.loadConfig
+import dev.nyon.mobium.bench.BenchAutorun
 import dev.nyon.mobium.config.CONFIG_VERSION
 import dev.nyon.mobium.config.Config
 import dev.nyon.mobium.config.config
@@ -48,5 +49,6 @@ object Mobium {
         if (capabilities.compute) LOGGER.info("Part transform: expand pass as {}", ExpandPass.describeChoice())
         ModuleStates.onClientStarted()
         SelfCheck.startIfRequested(Minecraft.getInstance())
+        BenchAutorun.startIfRequested(Minecraft.getInstance())
     }
 }

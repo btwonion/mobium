@@ -1,6 +1,7 @@
 package dev.nyon.mobium.mixins;
 
 import dev.nyon.mobium.MobiumKeys;
+import dev.nyon.mobium.bench.BenchAutorun;
 import dev.nyon.mobium.bench.BenchSuite;
 import dev.nyon.mobium.bench.FrameRecorder;
 import dev.nyon.mobium.debug.ExpandProfile;
@@ -32,10 +33,12 @@ public class MinecraftMixin {
         ExpandProfile.frameEnd();
     }
 
-    // Handles Mobium's key bindings and advances a running benchmark suite once per client tick. No behaviour change.
+    // Handles Mobium's key bindings and advances a running benchmark suite and an unattended round (BenchAutorun) once
+    // per client tick. No behaviour change.
     @Inject(method = "tick", at = @At("TAIL"))
     private void mobium$handleKeys(CallbackInfo ci) {
         MobiumKeys.tick((Minecraft) (Object) this);
         BenchSuite.tick((Minecraft) (Object) this);
+        BenchAutorun.tick((Minecraft) (Object) this);
     }
 }
