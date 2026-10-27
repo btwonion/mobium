@@ -9,12 +9,12 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 ---
 
-## Current state (updated 26 Oct 2026)
+## Current state (updated 27 Oct 2026)
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#16 are merged; `main` has M0–M5 (#7), the release preps
-  (#8, #13, #14), the new icon (#10), the beta2 work (#11, #12), the switch to GPL-3.0 (#15, 25 Oct 2026) and M6
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#17 are merged; `main` has M0–M5 (#7), the release preps
+  (#8, #13, #14, #17), the new icon (#10), the beta2 work (#11, #12), the switch to GPL-3.0 (#15, 25 Oct 2026) and M6
   (#16, 26 Oct 2026). One branch from `main` per milestone, one PR against `main`; merging is Anton's call.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
@@ -24,36 +24,30 @@ Read this first when picking the work up in a new session.
 - **Done:** M0–M5. Gate A passed (1.53×), **Gate B passed (1.17×**, Anton's `/mobium gateb` on 21 Oct, build 6fb45dc;
   §M5). Module 1, the static cache, caches chests, signs (with text), skulls, decorated pots, shelves, item frames,
   armor stands without armor and `FIXED` display entities; on by default.
-- **Released:** `0.1.0-beta1` on 22 Oct 2026 (`release.yml` run 39831233395) and **`0.1.0-beta2` on 25 Oct 2026**
-  (run 40224786286: per-section light checks, cache cleanups, shadow-pass timers; GitHub pre-releases
-  `v0.1.0-beta2-26.3+fabric` / `+neoforge`), both beta on Modrinth `mobium` (`8i5oedw8`) and CurseForge `mobium-perf`
-  (`1759818`). Never run `release.yml` or `releaseMod` yourself. No tester reports so far
-  (`.github/ISSUE_TEMPLATE/bug_report.yml`).
-- **M6 merged** (#16, 26 Oct 2026; Module 2, GPU part transform, see §M6, *Status*). Built and verified in the dev
-  clients: Module 2 takes every model part drawn into a staged entity-format draw
-  (vanilla cubes as vanilla or Sodium writes them, EMF's cubes, in Iris's formats and its shadow pass too), and the
-  GPU writes exactly the vertices the CPU would have: the self-check (`--mode parts`) and the gametests compare them
-  byte for byte, 0 differences in every setup; pictures identical. `mob_pen_live` in the dev client: entity CPU work in
-  D 2.12× lower, frames 1.11–1.25× faster (`docs/benchmarks.md` *Module 2, first measurement*). Version `0.2.0-beta1`
-  in `gradle.properties` (Anton's choice on 26 Oct 2026: a new module is a new minor version); `changelog.md` holds
-  its notes.
-  - **Gate C, redefined a second time with Anton on 25 Oct 2026** (§M6): in D, `prepare` + `shadow_prepare` of
-    `mob_pen_live` at least 1.5× lower with Module 2; in C and D its frame no slower (≤ 1.03×). The first two
-    definitions (1.5× frame time in D, then in C) were out of reach because Fresh Animations animates inside
-    `ModelPart.render` and the shader pack's GPU work dominates D (`docs/benchmarks.md` *Gate C: what M6 can reach*).
-  - **Gate C passed on 26 Oct 2026** (§M6): in D the entity CPU work 1.90× lower, frames 1.18× (D) and 1.25× (C)
-    faster at 1920×1080 (`docs/benchmarks.md` *Gate C: passed*).
-  - Anton's visual checks (#16's *How to verify* step 4) done and #16 merged on 26 Oct 2026.
-  - **Now the release prep for `0.2.0-beta1`** (§10), branch `release-0.2.0-beta1`: README for Module 2 (PR open; merge
-    it right before `release.yml`, because `readme-modrinth-sync.yml` publishes README changes on `main` at once).
-    Benchmark round A–D done (26–27 Oct 2026, jar built from `b41d342`, named `0.1.0-beta3`; `main` differs from it
-    only in `gradle.properties`' version): Module 2 lowers the mob pens' CPU work in every setup, but costs
-    `display_build` 0.15–0.3 ms per frame (17 shields only), and A's mob pens have no same-session frame comparison
-    at 1920×1080 (§M6, *Module 2 follow-ups*). Anton's decision (27 Oct 2026): release as is, with both noted as a
-    known limit. **Left for Anton:** merge #17 (README, changelog, round), then run `release.yml` on `main` right
-    after (the README sync publishes on merge).
+- **Released:** `0.1.0-beta1` on 22 Oct 2026 (`release.yml` run 39831233395), `0.1.0-beta2` on 25 Oct 2026
+  (run 40224786286: per-section light checks, cache cleanups, shadow-pass timers) and **`0.2.0-beta1` on 27 Oct 2026**
+  (run 40539171559 on `main` at `f59751a`: Module 2; GitHub pre-releases `v0.2.0-beta1-26.3+fabric` / `+neoforge`),
+  all beta on Modrinth `mobium` (`8i5oedw8`) and CurseForge `mobium-perf` (`1759818`). Never run `release.yml` or
+  `releaseMod` yourself. No tester reports so far (`.github/ISSUE_TEMPLATE/bug_report.yml`).
+- **M6 done and released** (#16, 26 Oct 2026; Module 2, GPU part transform, see §M6, *Status*): Module 2 takes every
+  model part drawn into a staged entity-format draw (vanilla cubes as vanilla or Sodium writes them, EMF's cubes, in
+  Iris's formats and its shadow pass too), and the GPU writes exactly the vertices the CPU would have: the self-check
+  (`--mode parts`) and the gametests compare them byte for byte, 0 differences in every setup; pictures identical.
+  Version scheme: a new module is a new minor version (Anton, 26 Oct 2026).
+  - **Gate C passed on 26 Oct 2026** (§M6, as redefined with Anton on 25 Oct 2026): in D the entity CPU work 1.90×
+    lower, frames 1.18× (D) and 1.25× (C) faster at 1920×1080 (`docs/benchmarks.md` *Gate C: passed*).
+  - Release round A–D (26–27 Oct 2026, build `b41d342`): Module 2 lowers the mob pens' CPU work in every setup, but
+    costs `display_build` 0.15–0.3 ms per frame (17 shields only), and A's mob pens have no same-session frame
+    comparison at 1920×1080. Released with both as a known limit (Anton, 27 Oct 2026; §M6, *Module 2 follow-ups*).
   - Known limits (`docs/compat.md`): translucent models without improved transparency (sorted on upload), glint,
     outline and breaking overlay stay on the CPU; on Vulkan both modules stay off (`OffReason.BACKEND`) until M7.
+- **Next: `0.2.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
+  Module 2 follow-ups (§M6), so that the two known limits of beta1 go away or are measured, plus fixes for whatever
+  testers report. The fixed cost with few parts is Claude's to measure (GL timer queries in the dev client) and fix;
+  A's same-session frame comparison needs Anton's `/mobium gatec` in setup A on the beta2 build.
+- **Then M7.** Minecraft 26.4 is in snapshots (`26.4-snapshot-1` on 22 Sep 2026, `26.4-snapshot-6` on 27 Oct 2026);
+  Vulkan is to become its default backend there (*(verify)* in the snapshots), and Mobium is off on Vulkan, so the
+  snapshot-tracking branch and `VkCompute` come first in M7.
 - **Follow-ups for Module 1** (from the #7 review, none affects what is drawn; the first four done for beta2 on
   `beta2-cache-followups`, 23 Oct 2026):
   - [x] one light epoch for the whole level sent every cached object through the full check after any light update.
@@ -927,6 +921,15 @@ benchmark numbers if performance changed.
       known limit in `changelog.md`, `README.md` and `docs/compat.md`. The changelog's "about 1.2× faster with vanilla
       models" (dev client, 854×480) was replaced by Gate C's numbers.
 - [x] Anton's visual checks of the M6 PR's *How to verify* (#16, 26 Oct 2026).
+- [x] Run `release.yml` (manual dispatch on `main`; Anton): released on 27 Oct 2026 (run 40539171559).
+
+`0.2.0-beta2` (Module 2 follow-ups, §M6):
+
+- [ ] `changelog.md` contains only beta2's notes.
+- [ ] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices, pictures
+      identical).
+- [ ] Benchmark round A–D on beta2, committed to `docs/benchmarks.md`, with `/mobium gatec` in setup A.
+- [ ] Anton's visual checks of the beta2 PR's *How to verify*.
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
 ---
