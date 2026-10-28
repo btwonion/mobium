@@ -1,0 +1,35 @@
+name: Benchmark result
+description: How fast your game runs with Mobium on and off
+title: "Benchmark: "
+labels: ["benchmark"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for measuring! Set Max Framerate to Unlimited and VSync off, stand still somewhere with lots of chests,
+        signs or mobs, then:
+
+        1. Type `/mobium bench test 30` and wait until the result shows in chat.
+        2. Press the A/B key to switch Mobium off (right of P: `]` on US, `+` on German keyboards).
+        3. Type `/mobium bench test 30` again.
+
+        Chat notes about the resolution or the power profile are fine; the file records both.
+  - type: textarea
+    id: summary
+    attributes:
+      label: summary.csv
+      description: Drag `mobium-bench/summary.csv` from your game folder into this box, or paste its content.
+    validations:
+      required: true
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+      placeholder: "AMD Ryzen 5 7600"
+    validations:
+      required: true
+  - type: textarea
+    id: scene
+    attributes:
+      label: Where you measured
+      description: A screenshot of the spot, or a few words (a storage room with 200 chests, a villager breeder, ...).
