@@ -9,13 +9,18 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 ---
 
-## Current state (updated 27 Oct 2026)
+## Current state (updated 28 Oct 2026)
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#17 are merged; `main` has M0–M5 (#7), the release preps
-  (#8, #13, #14, #17), the new icon (#10), the beta2 work (#11, #12), the switch to GPL-3.0 (#15, 25 Oct 2026) and M6
-  (#16, 26 Oct 2026). One branch from `main` per milestone, one PR against `main`; merging is Anton's call.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#22 are merged; `main` has M0–M5 (#7), the release preps
+  (#8, #13, #14, #17, #20), the new icon (#10), the 0.1.0-beta2 work (#11, #12), the switch to GPL-3.0 (#15, 25 Oct
+  2026), M6 (#16, 26 Oct 2026), the 0.2.0-beta2 work (#18, #19) and the moves of the raw benchmark data (#21) and of
+  the self-check (#22). One branch from `main` per piece of work, one PR against `main`; merging is Anton's call.
+- **From 28 Oct 2026 (Anton):** PRs are squash-merged (#22 was the last merge commit; the PR title becomes the commit
+  title on `main`), and every `changelog.md` entry is one line of at most 120 characters, saying what changed for
+  players; numbers, causes and details go in the PR, `docs/benchmarks.md` or `docs/compat.md`. #23 (open) writes both
+  rules into `CLAUDE.md`.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
   `.github/workflows/build-commit.yml`); `release.yml` does the same. Mesa's software renderer has compute shaders and
@@ -25,10 +30,12 @@ Read this first when picking the work up in a new session.
   §M5). Module 1, the static cache, caches chests, signs (with text), skulls, decorated pots, shelves, item frames,
   armor stands without armor and `FIXED` display entities; on by default.
 - **Released:** `0.1.0-beta1` on 22 Oct 2026 (`release.yml` run 39831233395), `0.1.0-beta2` on 25 Oct 2026
-  (run 40224786286: per-section light checks, cache cleanups, shadow-pass timers) and **`0.2.0-beta1` on 27 Oct 2026**
-  (run 40539171559 on `main` at `f59751a`: Module 2; GitHub pre-releases `v0.2.0-beta1-26.3+fabric` / `+neoforge`),
-  all beta on Modrinth `mobium` (`8i5oedw8`) and CurseForge `mobium-perf` (`1759818`). Never run `release.yml` or
-  `releaseMod` yourself. No tester reports so far (`.github/ISSUE_TEMPLATE/bug_report.yml`).
+  (run 40224786286: per-section light checks, cache cleanups, shadow-pass timers), `0.2.0-beta1` on 27 Oct 2026
+  (run 40539171559 on `main` at `aba2f6a`: Module 2) and **`0.2.0-beta2` on 27 Oct 2026** (run 40590266354 on `main`
+  at `81b7d71`: Module 2's expand pass in the vertex stage without a shader pack, `/mobium stages`, F3 line groups;
+  GitHub pre-releases `v0.2.0-beta2-26.3+fabric` / `+neoforge`), all beta on Modrinth `mobium` (`8i5oedw8`) and
+  CurseForge `mobium-perf` (`1759818`). Never run `release.yml` or `releaseMod` yourself. No tester reports so far
+  (`.github/ISSUE_TEMPLATE/bug_report.yml`).
 - **M6 done and released** (#16, 26 Oct 2026; Module 2, GPU part transform, see §M6, *Status*): Module 2 takes every
   model part drawn into a staged entity-format draw (vanilla cubes as vanilla or Sodium writes them, EMF's cubes, in
   Iris's formats and its shadow pass too), and the GPU writes exactly the vertices the CPU would have: the self-check
@@ -38,23 +45,28 @@ Read this first when picking the work up in a new session.
     lower, frames 1.18× (D) and 1.25× (C) faster at 1920×1080 (`docs/benchmarks.md` *Gate C: passed*).
   - Release round A–D (26–27 Oct 2026, build `b41d342`): Module 2 lowers the mob pens' CPU work in every setup, but
     costs `display_build` 0.15–0.3 ms per frame (17 shields only), and A's mob pens have no same-session frame
-    comparison at 1920×1080. Released with both as a known limit (Anton, 27 Oct 2026; §M6, *Module 2 follow-ups*).
+    comparison at 1920×1080. Released with both as a known limit (Anton, 27 Oct 2026); beta2 fixed the first and
+    measured the second (§M6, *Module 2 follow-ups*).
   - Known limits (`docs/compat.md`): translucent models without improved transparency (sorted on upload), glint,
     outline and breaking overlay stay on the CPU; on Vulkan both modules stay off (`OffReason.BACKEND`) until M7.
-- **Next: `0.2.0-beta2`** (version from `gradle.properties`, `mod.beta=2`; `changelog.md` collects its notes): the
-  Module 2 follow-ups (§M6), so that the two known limits of beta1 go away or are measured, plus fixes for whatever
-  testers report. Branch `beta2-parts-followups` (27 Oct 2026, #19; #18 merged): Module 2's fixed cost found and
-  fixed (the compute dispatch's batch hand-over on Mesa's iris; the expand pass runs in the vertex stage without a
-  shader pack), `/mobium stages`, `--mode expand-cost`, the F3 line groups, and unattended benchmark rounds
-  (`python3 benchmark/bench_round.py` with Mobium's `bench/BenchAutorun.kt`). Validated in the dev clients (both
-  stages byte for byte in all four setups). **The beta2 round ran unattended on 27 Oct 2026** (20:06–22:30, build
-  `8d26a26`, 1920×1080 on the AOC; `docs/benchmarks.md` *27 Oct 2026, 0.2.0-beta2 round*): without a shader pack the
-  vertex stage is faster than compute in every pair (A 0.98×, `display_build` 0.93×, C 0.98×), with one both are
-  equal within the GPU clock's spread (B, D), so the stage choice stays; Module 2 makes A's frame 1.19× faster in the
-  same session (beta1's known limit was a cross-session artefact); Gate C holds (D 2.18× lower CPU work, 1.20×
-  faster frame; C 1.36×). Release prep: #20 (README only). **Left for Anton:** merge #19, then #20, then run
-  `release.yml` on `main` right after #20 (the README goes to Modrinth on merge). Optional: the visual check in #19's
-  *How to verify*.
+- **`0.2.0-beta2` done and released** (#18–#20, 27 Oct 2026; the Module 2 follow-ups, §M6): Module 2's fixed cost
+  found and fixed (the compute dispatch's batch hand-over on Mesa's iris; the expand pass runs in the vertex stage
+  without a shader pack), `/mobium stages`, `--mode expand-cost`, the F3 line groups, and unattended benchmark rounds
+  (`python3 benchmark/bench_round.py` with Mobium's `bench/BenchAutorun.kt`). Both stages validated byte for byte in
+  all four setups. Its round (27 Oct 2026, build `8d26a26`, 1920×1080 on the AOC; `docs/benchmarks.md` *27 Oct 2026,
+  0.2.0-beta2 round*): without a shader pack the vertex stage is faster than compute in every pair (A 0.98×,
+  `display_build` 0.93×, C 0.98×), with one both are equal within the GPU clock's spread (B, D), so the stage choice
+  stays; Module 2 makes A's frame 1.19× faster in the same session (beta1's known limit was a cross-session
+  artefact); Gate C holds (D 2.18× lower CPU work, 1.20× faster frame; C 1.36×).
+- **After the release:** #21 (27 Oct 2026) moved the raw benchmark CSVs from `docs/benchmarks/results` to
+  `btwonion/mobium-benchmarks` (checkout `../mobium-benchmarks`; `bench_round.py` pulls it before a round and pushes
+  the round's folder after it), and the history was then rewritten without them. Commit ids from before the rewrite
+  (the build ids in this file and in `docs/benchmarks.md`, every `summary.csv`'s `build`, the release runs' head
+  commits) no longer exist here: `grep ^<id> ../mobium-benchmarks/commit-map.txt` gives the current one. #22 (28 Oct
+  2026) moved `self_check.py` from `scripts/` to `benchmark/`.
+- **Next: `0.2.0`, the first stable release** (Anton, 28 Oct 2026; `mod.beta=0` in `gradle.properties`, so the
+  version has no `-betaN`, Modrinth and CurseForge get it as stable and the changelog loses its beta line): what
+  0.2.0-beta2 has, plus fixes for whatever testers report; checklist in §10. `changelog.md` collects its notes.
 - **Then M7.** Minecraft 26.4 is in snapshots (`26.4-snapshot-1` on 22 Sep 2026, `26.4-snapshot-6` on 27 Oct 2026);
   Vulkan is to become its default backend there (*(verify)* in the snapshots), and Mobium is off on Vulkan, so the
   snapshot-tracking branch and `VkCompute` come first in M7.
@@ -965,6 +977,18 @@ benchmark numbers if performance changed.
 - [x] `README.md` updated from that round (#20, `release-0.2.0-beta2`, 27 Oct 2026; merge right before
       `release.yml`): "a shader" instead of "a compute shader", the beta2 round's Gate C numbers, and the known limit
       down to the 0.1 ms with few animated models.
+- [x] Run `release.yml` (manual dispatch on `main`; Anton): released on 27 Oct 2026 (run 40590266354).
+
+`0.2.0` (first stable release; `mod.beta=0`, Anton's choice on 28 Oct 2026):
+
+- [ ] `changelog.md` contains only 0.2.0's notes, one line of at most 120 characters per entry.
+- [ ] `README.md` without its *Beta.* note (merge right before `release.yml`: `readme-modrinth-sync.yml` publishes
+      every README change on `main` to Modrinth at once).
+- [ ] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices in both stages,
+      pictures identical).
+- [ ] Benchmark round A–D (`python3 benchmark/bench_round.py`) if rendering changed since 0.2.0-beta2, committed to
+      `docs/benchmarks.md`.
+- [ ] Anton's go for the release.
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
 ---
