@@ -1,7 +1,9 @@
 # Vanilla notes (Minecraft 26.3)
 
 How Minecraft 26.3 draws entities and block entities, where Sodium, Iris, EMF and ETF change that, and where Mobium
-hooks in. Written in M1 from the decompiled sources; every claim below names the class and method it comes from.
+hooks in. Started in M1 from the decompiled sources and extended with every milestone (each section says when it was
+read); every claim below names the class and method it comes from. How Mobium uses all this: `docs/architecture.md`.
+Section numbers are referenced from the code; new findings get a new section at the end.
 
 Sources read (19 Oct 2026):
 
@@ -309,7 +311,7 @@ path (with `RenderSystem.getSequentialBuffer(topology)` as index buffer for unso
 | Buffers | `GpuDevice.createBuffer(Supplier<String> label, @Usage int usage, long size)` or `(…, ByteBuffer data)`. Usages: `MAP_READ 1`, `MAP_WRITE 2`, `HINT_CLIENT_STORAGE 4`, `COPY_DST 8`, `COPY_SRC 16`, `VERTEX 32`, `INDEX 64`, `UNIFORM 128`, `UNIFORM_TEXEL_BUFFER 256`, `INDIRECT_PARAMETERS 512`. **No storage-buffer usage.** |
 | Upload | `CommandEncoder.writeToBuffer(GpuBufferSlice, ByteBuffer)`, `copyToBuffer(GpuBufferSlice, GpuBufferSlice)`, `GpuBuffer.map(offset, length, read, write)` → `GpuBufferSlice.MappedView`; `createFence()`. Vanilla stages through a mapped buffer and copies (`StagedVertexBuffer.uploadDrawsToBuffers`). |
 | Drawing | `CommandEncoder.createRenderPass(RenderPassDescriptor)`; `RenderPass.setPipeline(CompiledRenderPipeline)`, `setUniform(name, GpuBufferSlice / GpuTextureView + GpuSampler)`, `setVertexBuffer(slot, slice)`, `setIndexBuffer(GpuBuffer, IndexType)`, `drawIndexed`, `multiDrawIndexed`, `drawIndexedIndirect`, `pushConstants`. Pipelines come from `RenderSystem.getCompiledPipeline(RenderPipeline)`. |
-| Compute | **None in the API.** No compute pipeline, no dispatch, no storage buffers. `VulkanDevice` creates an internal `computeQueue` (falls back to the graphics queue) but does not expose compute. |
+| Compute | **None in the API.** No compute pipeline, no dispatch, no storage buffers. `VulkanDevice` creates an internal `computeQueue` (falls back to the graphics queue) but does not expose compute. The Vulkan backend in detail: §18. |
 | GL interop | Buffers from the GL backend are `com.mojang.renderpearl.backend.opengl.GlBuffer` (returned unwrapped by `FrontendGpuDevice.createBuffer`) with public `int handle()`. LWJGL capabilities are created on the render thread in the `GlDevice` constructor (`GL.createCapabilities()`), so `GL.getCapabilities()` works there. Mobium's GL compute path therefore uses raw GL 4.3 on a Renderpearl-created buffer's handle plus `glMemoryBarrier`. |
 | Backend selection | `Minecraft` constructor: `PreferredGraphicsApi` (`DEFAULT`, `OPENGL`, `VULKAN`) from options or the `forcedGraphicsApi` launch argument; `getBackendsToTry()` is `{gl, vulkan}` for `DEFAULT`/`OPENGL` and `{vulkan, gl}` for `VULKAN`. OpenGL is the 26.3 default (confirmed). After an unclean start the option falls back to `DEFAULT`/`OPENGL`. |
 
@@ -480,8 +482,9 @@ Open points for later milestones (not answered by reading code):
 
 - *Answered in M6 (§16):* Module 2 reserves the vertex bytes in the builder and leaves them out of the upload's copy;
   Iris's three entity ids travel per part record (they are the same for all vertices of one part).
-- `RenderType.prepare()` writes `DynamicTransforms` from the current model-view matrix. Calling it from the execute
-  stage for section buckets needs a check that dynamic uniform writes are allowed there on Vulkan (M3/M5).
+- `RenderType.prepare()` writes `DynamicTransforms` from the current model-view matrix. The static cache calls it in
+  the prepare stage, after the level's own prepare; that this is allowed on Vulkan is checked in game in M7
+  (`PLAN.md`, Module 1 on Vulkan).
 
 ---
 
@@ -623,3 +626,28 @@ NeoForge's `AddPackFindersEvent`, was half right: Fabric API for 26.3 has no `fa
 | Chat links | `ClickEvent.OpenFile(Path)` and `ClickEvent.OpenUrl(URI)`; `Screen.defaultHandleClickEvent` opens files and folders with `Blaze3D.openPath`, URLs through `ConfirmLinkScreen`. Vanilla's screenshot message uses `OpenFile` on a client system message. |
 | CPU name | `DebugEntrySystemSpecs.getCpuInfo()` (public, cached): OSHI's `"<logical cores>x <processor name>"`, as F3 shows it. |
 | Saving options | `Options.save()` runs when an options screen closes and on F11 (`Minecraft.toggleFullscreen`), not when the game quits. |
+
+---
+
+## 18. Vulkan backend (26.3)
+
+Read on 28 Oct 2026 for M7 (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`: `com.mojang.renderpearl.backend.vulkan`,
+`frontend`, `api`, and `StagedVertexBuffer`). 26.4's backend is not read yet (`PLAN.md`, M7 step 1). Vulkan is an
+option in 26.3; `26.4-snapshot-1` (22 Sep 2026) makes "Default" behave like "Prefer Vulkan" and no longer switches the
+graphics API by itself after a startup crash (snapshot changelog, not read in code).
+
+| Topic | Finding |
+| --- | --- |
+| Reaching the backend | `RenderSystem.getDevice()` is a `FrontendGpuDevice` around a private `GpuDeviceBackend backend`; on Vulkan that is a `VulkanDevice` with public `vkDevice()`, `vma()` (the VMA allocator), `instance()`, `graphicsQueue()`, `computeQueue()` and `transferQueue()` (own queue families where the GPU has them, else the graphics queue), and `createCommandEncoder()`, which returns its one `VulkanCommandEncoder` (the frontend wraps it in `FrontendCommandEncoder`). `VulkanBackend` requires a queue family that does graphics, compute and present together, so compute work can always go on the graphics queue. |
+| Buffers | `VulkanGpuBuffer.Direct`, allocated through VMA, with public `vkBuffer()`. `VulkanConst.bufferUsageToVk` maps Renderpearl's usages one to one: `COPY_DST` → `TRANSFER_DST`, `COPY_SRC` → `TRANSFER_SRC`, `VERTEX` → `VERTEX_BUFFER`, `INDEX` → `INDEX_BUFFER`, `UNIFORM` → `UNIFORM_BUFFER`, `UNIFORM_TEXEL_BUFFER` → `UNIFORM_TEXEL_BUFFER`, `INDIRECT_PARAMETERS` → `INDIRECT_BUFFER`. **No buffer is ever a storage buffer** (`VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`), so binding one to a shader's storage block is invalid. `MAP_READ` / `MAP_WRITE` ask for host-visible, coherent memory. The transient memory blocks (`VulkanTransientMemory`, behind `CommandEncoder.transientMemory()`) are created with a fixed usage (471: transfer source and target, uniform texel, uniform, index, vertex, indirect), no storage either. |
+| Staged vertex buffer | `StagedVertexBuffer`'s three pools: staging usage 22 (`MAP_WRITE`, `HINT_CLIENT_STORAGE`, `COPY_SRC`), vertex 40 (`COPY_DST`, `VERTEX`), index 72 (`COPY_DST`, `INDEX`). `upload()` maps a staging buffer and `copyToBuffer`s it into a pooled vertex buffer, as on OpenGL (§16). |
+| Recording and submission | One `VulkanCommandEncoder`. Commands go into a current command buffer, begun on demand (`commandBuffer()` throws while a render pass is open), object-initialisation commands into a second one. `submit()` ends both, adds them to one `VulkanQueue.Submission` on the graphics queue, signals a timeline semaphore, waits for the submit two frames back (`MAX_SUBMITS_IN_FLIGHT = 2`, 5 s timeout) and resets that frame's command pool. Public for other code: `allocateAndBeginTransientCommandBuffer()` (a one-time-submit buffer from the current frame's pool), `execute(VkCommandBuffer)` (ends the current command buffer and appends the given one to the same submission, so it runs in order; throws inside a render pass), `waitSemaphore` / `signalSemaphore`, and the static `memoryBarrier(VkCommandBuffer, MemoryStack)`. |
+| Ordering | `writeToBuffer` (transient staging plus `vkCmdCopyBuffer`) and `copyToBuffer` (`vkCmdCopyBuffer`) record into the frame's command buffer, each followed by a full barrier (`vkCmdPipelineBarrier2KHR`, all commands to all commands, memory read and write). Anything executed after `StagedVertexBuffer.upload()` therefore sees the uploaded vertices. |
+| Device features | Required (`VulkanFeatureSets.REQUIRED_FEATURESET`): `VK_KHR_dynamic_rendering`, `VK_KHR_push_descriptor`, `VK_KHR_synchronization2`, `VK_EXT_vertex_attribute_divisor`, `VK_KHR_swapchain`; `multiDrawIndirect`, `drawIndirectFirstInstance`, `samplerAnisotropy`, `shaderDrawParameters`, `timelineSemaphore`, `hostQueryReset`, `synchronization2`, `dynamicRendering`, `vertexAttributeInstanceRateDivisor`. Optional where supported (`optionalFeatureSets()`): calibrated timestamps, `fillModeNonSolid`, NV diagnostic checkpoints or the AMD buffer marker, `VK_EXT_multi_draw`; the portability subset where present. **Not enabled: `shaderFloat64` and `vertexPipelineStoresAndAtomics`.** A feature has to be enabled when the device is created; the sets come from the static `requiredFeatureSets()` and `optionalFeatureSets()`. |
+| Shaders and pipelines | GLSL is compiled to SPIR-V with LWJGL's shaderc (`frontend.shaders.GlslCompiler`, `SpvModule` with SPIR-V reflection). `VulkanRenderPipeline` builds graphics pipelines whose descriptors are uniform buffers, combined image samplers and texel buffers; push descriptors (required extension) bind them. No compute pipelines. |
+| Timestamps | `GpuDevice.createTimestampQueryPool(int)` and `CommandEncoder.writeTimestamp(GpuQueryPool, int)`, on both backends. |
+
+What it means for Mobium: the static cache uses only Renderpearl's API and should work unchanged. Module 2's expand
+pass can run as a command buffer of its own, recorded with `allocateAndBeginTransientCommandBuffer` and handed to
+`execute` right after `upload()`, but needs storage usage on vanilla's vertex buffers and its own, an optional device
+feature set for `shaderFloat64`, and the shader in Vulkan's GLSL dialect (`PLAN.md`, M7).

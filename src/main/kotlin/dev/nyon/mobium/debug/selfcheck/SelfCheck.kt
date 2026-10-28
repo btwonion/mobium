@@ -757,7 +757,7 @@ object SelfCheck {
             yield(ticks(2 * TICKS_PER_SECOND))
             val recording = if (round == 1) Recording(Configuration.getConfiguration("profile")) else null
             recording?.enable("jdk.ExecutionSample")?.withPeriod(Duration.ofMillis(1))
-            // Allocation samples too: Module 2's per-part path must not allocate (PLAN.md §8).
+            // Allocation samples too: Module 2's per-part path must not allocate (CLAUDE.md, *Hot paths*).
             recording?.enable("jdk.ObjectAllocationSample")?.with("throttle", "1000/s")?.withStackTrace()
             val framesBefore = Sections.frame
             val start = System.nanoTime()
@@ -788,11 +788,11 @@ object SelfCheck {
     }
 
     /**
-     * `--mode expand-cost`: Module 2's fixed cost per frame (PLAN.md M6, *Module 2 follow-ups*) in [scene] (default
-     * `display_build`, where Module 2 takes only the 17 shields) with the default config, the static cache on as in the
-     * benchmark; `mob_pen_live` also with Fresh Animations (setup C) and with the first shader pack on top (setup D).
-     * Each setup is measured by [recordExpand]. With [stagesOnly] (`--scene "mob_pen_live stages"`), only compute
-     * against the vertex stage, in all four setups.
+     * `--mode expand-cost`: Module 2's fixed cost per frame (docs/benchmarks.md, *Module 2's fixed cost*) in [scene]
+     * (default `display_build`, where Module 2 takes only the 17 shields) with the default config, the static cache on
+     * as in the benchmark; `mob_pen_live` also with Fresh Animations (setup C) and with the first shader pack on top
+     * (setup D). Each setup is measured by [recordExpand]. With [stagesOnly] (`--scene "mob_pen_live stages"`), only
+     * compute against the vertex stage, in all four setups.
      */
     private fun expandCost(minecraft: Minecraft, scene: String, stagesOnly: Boolean) = sequence {
         snapshotOptions(minecraft)

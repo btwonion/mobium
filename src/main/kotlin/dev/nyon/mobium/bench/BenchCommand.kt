@@ -143,8 +143,9 @@ object BenchCommand {
 
     /**
      * Dev environments only: `/mobium debug fail <module>` throws inside the module's fallback path, which must switch
-     * the module off with one toast (PLAN.md M4), `/mobium debug validate` requests a validation frame, and
-     * `/mobium debug gpucheck` makes Module 2's GPU check find a difference, as on a driver that rounds otherwise.
+     * the module off with one toast (docs/architecture.md, *Core*), `/mobium debug validate` requests a validation
+     * frame, and `/mobium debug gpucheck` makes Module 2's GPU check find a difference, as on a driver that rounds
+     * otherwise.
      */
     private fun <S> debug(): LiteralArgumentBuilder<S> = LiteralArgumentBuilder.literal<S>("debug")
         .then(

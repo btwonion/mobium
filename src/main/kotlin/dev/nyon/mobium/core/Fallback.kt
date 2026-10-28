@@ -7,7 +7,7 @@ import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.network.chat.Component
 
 /**
- * Bookkeeping of the fallback ladder (PLAN.md §6) without Minecraft classes, unit-tested:
+ * Bookkeeping of the fallback ladder (docs/architecture.md, *Core*) without Minecraft classes, unit-tested:
  * - a module failure switches the module off for the session; only its first failure is reported;
  * - a type that fails [TYPE_FAILURE_LIMIT] times takes the vanilla path for the session.
  * Per-submit fallbacks (an unknown vertex consumer, an unsupported object) are not failures; the caller just takes

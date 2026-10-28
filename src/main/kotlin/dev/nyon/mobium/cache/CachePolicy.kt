@@ -30,7 +30,8 @@ import java.util.IdentityHashMap
 import java.util.Optional
 
 /**
- * One row of Module 1's policy table (PLAN.md M5), for block entities ([CacheRule]) or entities ([EntityRule]).
+ * One row of Module 1's policy table (docs/architecture.md), for block entities ([CacheRule]) or entities
+ * ([EntityRule]).
  *
  * @param key names the per-type switch (`mobium.settings.type.<key>`) and the type in failure reports.
  */

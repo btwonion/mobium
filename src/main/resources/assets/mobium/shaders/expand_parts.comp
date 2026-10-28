@@ -1,10 +1,10 @@
 #version 430 core
 
-// Module 2 (PLAN.md M6): expands part records into the vertices vanilla's CPU path would have written, bit for bit.
-// One invocation per quad. Every float operation is `precise` and written in the order of the Java code it replaces
-// (docs/vanilla-notes.md §16): JOML without fused multiply-adds for positions and the face normal, Iris 1.11.7's
-// NormalHelper for the tangent. Square roots and divisions are correctly rounded as in Java (`(float) Math.sqrt(double)`,
-// float division), which GPUs do not do on their own: see sqrtFloat.
+// Module 2 (docs/architecture.md): expands part records into the vertices vanilla's CPU path would have written, bit
+// for bit. One invocation per quad. Every float operation is `precise` and written in the order of the Java code it
+// replaces (docs/vanilla-notes.md §16): JOML without fused multiply-adds for positions and the face normal, Iris
+// 1.11.7's NormalHelper for the tangent. Square roots and divisions are correctly rounded as in Java
+// (`(float) Math.sqrt(double)`, float division), which GPUs do not do on their own: see sqrtFloat.
 //
 // Buffers, all arrays of 32-bit words:
 //   meshes   per quad 21 words (MeshPool.kt): 4 x (x/16, y/16, z/16, u, v), then the face's Direction ordinal; or in

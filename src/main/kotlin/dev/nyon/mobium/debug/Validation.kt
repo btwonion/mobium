@@ -13,7 +13,7 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /**
- * Validation mode (PLAN.md §5.3, dev builds only): draws a frame both ways, Mobium's and vanilla's, and compares the
+ * Validation mode (dev builds only): draws a frame both ways, Mobium's and vanilla's, and compares the
  * pictures pixel by pixel, so a difference shows up as a number instead of relying on someone looking.
  *
  * The two pictures come from consecutive frames ([FramePair]): at the start of a frame the last frame (Mobium) is
