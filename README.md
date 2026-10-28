@@ -58,7 +58,9 @@ Mobs, armor, saddles, banners, bells, lecterns and everything else the game buil
 animated exactly as before, by the game, Entity Model Features and Fresh Animations. Only the last step moves: instead
 of the CPU working out and writing every corner of every cube, a shader on the GPU writes the vertices, exactly the
 bytes the game would have written, also in Iris's shader pack formats and its shadow pass. Automated test scenes
-compare them byte for byte with the game's own.
+compare them byte for byte with the game's own, and so does Mobium on your GPU: it compares the first parts of each
+kind it draws with the game's own vertices and, should a graphics driver round differently, switches the GPU part
+transform off and lets the game draw as usual.
 
 Posing and animations stay on the CPU, so the gain is largest where writing the vertices is expensive, as with Fresh
 Animations or a shader pack. Translucent models (unless the game's Improved Transparency is on), the enchantment
@@ -125,8 +127,9 @@ No. Mobium is client-side only and works in singleplayer and on any server.
 
 It must not. Scripted test scenes compare Mobium's picture pixel by pixel with the game's own, on Fabric and NeoForge
 (on Fabric also with a shader pack and with Fresh Animations), and the GPU part transform's vertices byte for byte with
-the ones the game writes. If you see a difference, press the A/B key to check whether it goes away with Mobium off,
-and please report it (see *Support*), ideally with a screenshot taken with Mobium on and one with it off.
+the ones the game writes, in those scenes and, for its first parts, on your GPU. If you see a difference, press the
+A/B key to check whether it goes away with Mobium off, and please report it (see *Support*), ideally with a screenshot
+taken with Mobium on and one with it off.
 
 **Does it help with lots of mobs?**
 

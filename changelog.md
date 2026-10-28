@@ -1,5 +1,6 @@
-- first stable release: the same mod as 0.2.0-beta2, now on the stable channel
+- first stable release: the same mod as 0.2.0-beta3, now on the stable channel
 - **static cache:** chests, signs, heads, pots, shelves, item frames, armor stands and displays drawn from GPU buffers
 - **GPU part transform:** the GPU writes the vertices of mobs and other animated models instead of the CPU
+- the GPU part transform checks its first vertices against the game's own on your GPU and turns off if any differ
 - works with Sodium, Iris shader packs, Entity Model Features and Fresh Animations; Vulkan is not supported yet
 - the A/B key (right of P) switches Mobium off and on live, to compare it with the game's own rendering

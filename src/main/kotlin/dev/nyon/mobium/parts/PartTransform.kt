@@ -66,6 +66,13 @@ object PartTransform {
     @JvmField
     var validating = false
 
+    /**
+     * Set by [compile] when the part it just took over is compared with the CPU's ([validating], or a [PartCheck]
+     * sample): the caller then compiles it once more into [validationConsumer] and calls [endValidation].
+     */
+    @JvmField
+    var checkPart = false
+
     /** Parts and quads taken over in the last frame, for F3. */
     @JvmField
     var lastParts = 0
@@ -128,6 +135,7 @@ object PartTransform {
         overlay: Int,
         color: Int
     ): Boolean {
+        checkPart = false
         if (Sections.skipModelVertices) return true
         if (!active || excluded) return false
         try {
@@ -174,6 +182,7 @@ object PartTransform {
         }
 
         var quadTotal = 0
+        var anySodiumLayout = false
         for (i in 0 until cubes.size) {
             val cube = cubes[i]
             val type = cube.javaClass
@@ -181,6 +190,7 @@ object PartTransform {
             val sodiumLayout = if (type === emfCube) false else if (type === ModelPart.Cube::class.java) sodiumCubes else return false
             if (MeshPool.firstQuad(cube, sodiumLayout) < 0) return false
             quadTotal += MeshPool.quads(cube)
+            if (sodiumLayout) anySodiumLayout = true
         }
         if (quadTotal == 0) return false
         if (target.`mobium$vertexCount`() + quadTotal * 4 > MAX_VERTICES) return false
@@ -198,7 +208,7 @@ object PartTransform {
         val slot = batch.slotOf(draw)
         val drawBytes = target.`mobium$drawBytesBefore`() + offset
         batch.reserved(slot).add(drawBytes, drawBytes + quadTotal * 4 * vertexSize)
-        writePart(batch.addPart(), pose, light, overlay, color, sprite, iris, slot)
+        val flags = writePart(batch.addPart(), pose, light, overlay, color, sprite, iris, slot)
         for (i in 0 until cubes.size) {
             val cube = cubes[i]
             val cubeQuads = MeshPool.quads(cube)
@@ -207,10 +217,14 @@ object PartTransform {
         }
         parts++
         quads += quadTotal
-        if (validating) PartValidation.begin(staged, draw, (target.`mobium$drawBytesBefore`() + offset) / vertexSize, quadTotal * 4, format, sprite)
+        if (validating || PartCheck.sample(PartCheck.path(flags, anySodiumLayout, ExpandPass.lastStage))) {
+            PartValidation.begin(staged, draw, (target.`mobium$drawBytesBefore`() + offset) / vertexSize, quadTotal * 4, format, sprite)
+            checkPart = true
+        }
         return true
     }
 
+    /** Writes the part record at [address]; returns its flags. */
     private fun writePart(
         address: Long,
         pose: PoseStack.Pose,
@@ -220,7 +234,7 @@ object PartTransform {
         sprite: TextureAtlasSprite?,
         iris: Boolean,
         slot: Int
-    ) {
+    ): Int {
         val matrix: Matrix4f = pose.pose()
         MemoryUtil.memPutFloat(address, matrix.m00())
         MemoryUtil.memPutFloat(address + 4, matrix.m01())
@@ -292,6 +306,7 @@ object PartTransform {
         MemoryUtil.memPutInt(address + PartBatch.P_SLOT * 4L, slot)
         MemoryUtil.memPutInt(address + PartBatch.P_IDS * 4L, ids)
         MemoryUtil.memPutInt(address + (PartBatch.P_IDS + 1) * 4L, item)
+        return flags
     }
 
     /** Whether the GPU can do this normal matrix: every entry finite and small enough that no square overflows. */
@@ -347,13 +362,28 @@ object PartTransform {
                 blank(batch, vertexBuffer.handle())
             } else {
                 ExpandPass.dispatch(batch, vertexBuffer.handle())
-                if (validating) PartValidation.check(staged, vertexBuffer.handle())
+                if (PartValidation.pending(staged)) compareWithCpu(staged, vertexBuffer.handle())
             }
         } catch (e: Throwable) {
             Fallback.moduleFailed(Module.PART_TRANSFORM, e)
             runCatching { blank(batch, vertexBuffer.handle()) }
         } finally {
+            // Parts left uncompared (a blanked frame, an error) must not be compared against next frame's buffer.
+            PartValidation.discard(staged)
             batch.clear()
+        }
+    }
+
+    /**
+     * Compares the parts of [staged] that were compiled on the CPU as well. In normal play ([PartCheck]) a differing
+     * part gets the CPU's bytes in this frame and Module 2 switches off; the dev validation ([validating]) only counts
+     * differences, for the self-check's and the gametests' reports.
+     */
+    private fun compareWithCpu(staged: StagedVertexBuffer, vertexBuffer: Int) {
+        PartValidation.check(staged, vertexBuffer, repair = !validating)
+        if (validating) return
+        if (PartValidation.lastDiffering > 0 || PartValidation.lastUnmatched > 0) {
+            PartCheck.failed(PartValidation.lastDiffering, PartValidation.lastUnmatched, ExpandPass.stageName(ExpandPass.lastStage))
         }
     }
 
@@ -379,7 +409,7 @@ object PartTransform {
             Mobium.LOGGER.debug("Mobium part_transform: records discarded without an upload")
             batch.clear()
         }
-        if (validating) PartValidation.discard(staged)
+        PartValidation.discard(staged)
     }
 
     /**
@@ -401,6 +431,7 @@ object PartTransform {
     @JvmStatic
     fun endFrame() {
         failedThisFrame = false
+        PartCheck.endFrame()
         lastParts = parts
         lastQuads = quads
         parts = 0
@@ -425,7 +456,18 @@ object PartTransform {
     fun validationConsumer(): VertexConsumer = PartValidation.consumer()
 
     @JvmStatic
-    fun endValidation() = PartValidation.end()
+    fun endValidation() {
+        checkPart = false
+        try {
+            PartValidation.end()
+        } catch (e: Throwable) {
+            Fallback.moduleFailed(Module.PART_TRANSFORM, e)
+        }
+    }
+
+    /** The CPU compile for a comparison threw: Module 2 fails (the GPU's vertices of the part are drawn this frame). */
+    @JvmStatic
+    fun validationFailed(error: Throwable) = Fallback.moduleFailed(Module.PART_TRANSFORM, error)
 
     private const val MAX_VERTICES = 16777215
 

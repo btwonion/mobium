@@ -86,6 +86,7 @@
     "mobium.debug.validate_identical": "Validierung: identisch (%s). Bilder: %s-*.png",
     "mobium.debug.validate_different": "Validierung: die Bilder unterscheiden sich (%s). Bilder: %s-*.png",
     "mobium.debug.unavailable": "Nur in einer Entwicklungsumgebung verfügbar, und nicht während einer Validierung",
+    "mobium.debug.gpucheck": "GPU-Prüfung: der nächste verglichene Teil weicht auf der GPU um ein Bit ab",
     "mobium.settings.type.chests": "Truhen",
     "mobium.settings.type.chests.tooltip": "Truhen, Redstone-Truhen, Endertruhen und Shulker-Kisten, solange sie geschlossen sind",
     "mobium.settings.type.signs": "Schilder",

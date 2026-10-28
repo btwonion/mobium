@@ -75,7 +75,7 @@ object GlCompute {
         GL15C.glBindBuffer(GL31C.GL_COPY_WRITE_BUFFER, 0)
     }
 
-    /** Reads [bytes] bytes of [buffer] at [offset] into [address], waiting for the GPU (dev validation only). */
+    /** Reads [bytes] bytes of [buffer] at [offset] into [address], waiting for the GPU (Module 2's comparison only). */
     fun read(buffer: Int, offset: Long, bytes: Long, address: Long) {
         GL43C.glMemoryBarrier(GL43C.GL_BUFFER_UPDATE_BARRIER_BIT)
         GL15C.glBindBuffer(GL31C.GL_COPY_READ_BUFFER, buffer)
