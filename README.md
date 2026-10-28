@@ -6,9 +6,6 @@ models' vertices, instead of the CPU rebuilding them every frame.**
 Mobium is a client-side performance mod for Minecraft (Fabric, Quilt and NeoForge). Vanilla, Iris and Entity Model
 Features still decide how everything looks: Mobium changes how geometry reaches the GPU, never what ends up on screen.
 
-> **Beta.** If anything looks different with Mobium than without it, please report it (see *Support*), ideally with a
-> screenshot taken with Mobium on and one with it off (A/B key, below).
-
 ---
 
 ## ⚡ Performance
@@ -129,7 +126,7 @@ No. Mobium is client-side only and works in singleplayer and on any server.
 It must not. Scripted test scenes compare Mobium's picture pixel by pixel with the game's own, on Fabric and NeoForge
 (on Fabric also with a shader pack and with Fresh Animations), and the GPU part transform's vertices byte for byte with
 the ones the game writes. If you see a difference, press the A/B key to check whether it goes away with Mobium off,
-and please report it.
+and please report it (see *Support*), ideally with a screenshot taken with Mobium on and one with it off.
 
 **Does it help with lots of mobs?**
 
