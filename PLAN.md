@@ -13,14 +13,15 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#22 are merged; `main` has M0–M5 (#7), the release preps
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#24 are merged; `main` has M0–M5 (#7), the release preps
   (#8, #13, #14, #17, #20), the new icon (#10), the 0.1.0-beta2 work (#11, #12), the switch to GPL-3.0 (#15, 25 Oct
-  2026), M6 (#16, 26 Oct 2026), the 0.2.0-beta2 work (#18, #19) and the moves of the raw benchmark data (#21) and of
-  the self-check (#22). One branch from `main` per piece of work, one PR against `main`; merging is Anton's call.
+  2026), M6 (#16, 26 Oct 2026), the 0.2.0-beta2 work (#18, #19), the moves of the raw benchmark data (#21) and of
+  the self-check (#22) and the post-release bookkeeping (#23, #24). One branch from `main` per piece of work, one PR
+  against `main`; merging is Anton's call.
 - **From 28 Oct 2026 (Anton):** PRs are squash-merged (#22 was the last merge commit; the PR title becomes the commit
   title on `main`), and every `changelog.md` entry is one line of at most 120 characters, saying what changed for
-  players; numbers, causes and details go in the PR, `docs/benchmarks.md` or `docs/compat.md`. #23 (open) writes both
-  rules into `CLAUDE.md`.
+  players; numbers, causes and details go in the PR, `docs/benchmarks.md` or `docs/compat.md`. Both rules are in
+  `CLAUDE.md` (#23).
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL forced onto Mesa's EGL (`SDL_VIDEO_FORCE_EGL=1`,
   `LIBGL_ALWAYS_SOFTWARE=1`), because Xvfb's GLX has no sRGB-capable visual (comments in
   `.github/workflows/build-commit.yml`); `release.yml` does the same. Mesa's software renderer has compute shaders and
@@ -66,7 +67,10 @@ Read this first when picking the work up in a new session.
   2026) moved `self_check.py` from `scripts/` to `benchmark/`.
 - **Next: `0.2.0`, the first stable release** (Anton, 28 Oct 2026; `mod.beta=0` in `gradle.properties`, so the
   version has no `-betaN`, Modrinth and CurseForge get it as stable and the changelog loses its beta line): what
-  0.2.0-beta2 has, plus fixes for whatever testers report; checklist in §10. `changelog.md` collects its notes.
+  0.2.0-beta2 has, plus fixes for whatever testers report; checklist in §10. Release prep on `release-0.2.0`
+  (28 Oct 2026): changelog, README without its *Beta.* note, self-check on both loaders passed; no benchmark round,
+  since nothing that renders changed since beta2. **Left for Anton:** the go, merge the PR, then run `release.yml` on
+  `main` right after it (the README goes to Modrinth on merge).
 - **Then M7.** Minecraft 26.4 is in snapshots (`26.4-snapshot-1` on 22 Sep 2026, `26.4-snapshot-6` on 27 Oct 2026);
   Vulkan is to become its default backend there (*(verify)* in the snapshots), and Mobium is off on Vulkan, so the
   snapshot-tracking branch and `VkCompute` come first in M7.
@@ -981,13 +985,17 @@ benchmark numbers if performance changed.
 
 `0.2.0` (first stable release; `mod.beta=0`, Anton's choice on 28 Oct 2026):
 
-- [ ] `changelog.md` contains only 0.2.0's notes, one line of at most 120 characters per entry.
-- [ ] `README.md` without its *Beta.* note (merge right before `release.yml`: `readme-modrinth-sync.yml` publishes
-      every README change on `main` to Modrinth at once).
-- [ ] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices in both stages,
-      pictures identical).
-- [ ] Benchmark round A–D (`python3 benchmark/bench_round.py`) if rendering changed since 0.2.0-beta2, committed to
-      `docs/benchmarks.md`.
+- [x] `changelog.md` contains only 0.2.0's notes, one line of at most 120 characters per entry (28 Oct 2026, branch
+      `release-0.2.0`: first stable release, the two modules, compatibility, the A/B key; no tester reports to add).
+- [x] `README.md` without its *Beta.* note (28 Oct 2026, `release-0.2.0`; its screenshot tip moved to the FAQ; merge
+      right before `release.yml`: `readme-modrinth-sync.yml` publishes every README change on `main` to Modrinth at
+      once). The bug report template's version placeholder is `0.2.0`.
+- [x] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices in both stages,
+      pictures identical). 28 Oct 2026 on `release-0.2.0`: regular Fabric 74/74, NeoForge 67/67; `--mode parts`
+      Fabric 33/33, NeoForge 17/17 (NeoForge without the shader pack, as before).
+- [x] Benchmark round A–D (`python3 benchmark/bench_round.py`) if rendering changed since 0.2.0-beta2, committed to
+      `docs/benchmarks.md`. Not needed: since `81b7d71` (beta2's release commit) `src/` changed only in a dev-only
+      self-check message (`git diff 81b7d71 -- src/`), so the beta2 round (27 Oct 2026) stands for 0.2.0.
 - [ ] Anton's go for the release.
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
