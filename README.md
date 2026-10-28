@@ -6,8 +6,8 @@ models' vertices, instead of the CPU rebuilding them every frame.**
 Mobium is a client-side performance mod for Minecraft (Fabric, Quilt and NeoForge). Vanilla, Iris and Entity Model
 Features still decide how everything looks: Mobium changes how geometry reaches the GPU, never what ends up on screen.
 
-> **Beta.** If anything looks different with Mobium than without it, please report it (see *Support*), ideally with a
-> screenshot taken with Mobium on and one with it off (A/B key, below).
+> **Beta.** If anything looks different with Mobium than without it, please report it, ideally with a screenshot taken
+> with Mobium on and one with it off.
 
 ---
 
@@ -20,14 +20,25 @@ Features still decide how everything looks: Mobium changes how geometry reaches 
 | 500 mobs with Fresh Animations | 101 FPS | 137 FPS | **+36 %** |
 | 500 mobs with Fresh Animations and Complementary Reimagined | 15 FPS | 18 FPS | **+20 %** |
 
-Average FPS on a laptop with Intel Arc 140V graphics, Sodium, 1920×1080. The mobs are walking cows, villagers and
-zombies. With the shader pack the graphics card sets the frame rate; the CPU time for the 500 mobs still fell from
-14.9 ms to 6.8 ms per frame.
+Average FPS on a laptop with Intel Arc 140V graphics, Sodium, 1920×1080. The more chests, signs, item frames and mobs
+are on screen, the more Mobium gains; an empty field gets neither faster nor slower.
 
-The gain in your world depends on how much of it Mobium draws: chests, signs, item frames, displays and mobs on
-screen. An empty field gets neither faster nor slower, and with only a few mobs in view the GPU part transform can
-cost about 0.1 ms per frame (see its *Known limit*). Details and raw data are in
-[docs/benchmarks.md](https://github.com/btwonion/mobium/blob/main/docs/benchmarks.md).
+### 📊 Benchmarks wanted
+
+These numbers come from one laptop. To find out how Mobium does on other hardware, we need your results, and a run
+takes three minutes:
+
+1. Set Max Framerate to Unlimited and turn VSync off, then stand still somewhere with lots of chests, signs or mobs.
+2. Type `/mobium bench test 30` and wait until the result shows in chat.
+3. Press the A/B key to switch Mobium off (the key right of <kbd>P</kbd>: <kbd>]</kbd> on a US keyboard,
+   <kbd>+</kbd> on a German one), then run `/mobium bench test 30` twice.
+4. Press the A/B key again to switch Mobium back on, and run `/mobium bench test 30` once more.
+5. Send us `mobium-bench/summary.csv` from your game folder: drop it in our
+   [Discord server](https://nyon.dev/discord) or attach it to a
+   [benchmark report](https://github.com/btwonion/mobium/issues/new?template=benchmark.yml) on GitHub.
+
+The file already names your GPU, mods and shader pack and whether Mobium was on; your CPU and a screenshot of the
+spot are all we still need.
 
 ---
 
@@ -35,68 +46,47 @@ cost about 0.1 ms per frame (see its *Known limit*). Details and raw data are in
 
 ### Static cache
 
-Objects that do not change are captured once, the first frame they are seen, through the game's own rendering code
-(so resource packs and other mods' changes are captured as well). From the next frame on, Mobium draws them from GPU
-buffers, and the game skips building, posing and writing their vertices every frame. As soon as something changes, the
-object is captured again.
+Things that stand still are captured once through the game's own rendering code, resource packs and other mods'
+changes included, and from then on drawn from GPU buffers instead of being rebuilt every frame. As soon as something
+changes, Mobium captures it again.
 
-| Cached | While | Drawn by the game as usual while |
-| --- | --- | --- |
-| Chests, trapped, copper and ender chests, shulker boxes | Closed | Opening, open or closing |
-| Signs and hanging signs, including their text and glow ink | Always | Being edited; obfuscated text |
-| Skulls and heads | Always | A powered dragon or piglin head moves its mouth; player heads with a skin |
-| Decorated pots | Always | Wobbling after a hit |
-| Shelves and their items | The items look the same | An item animates (a spinning compass) |
-| Item frames and glow item frames | Item and rotation unchanged | Holding a map; a name is shown; glowing |
-| Armor stands | Pose and held items unchanged | Wearing armor; wobbling after a hit; name shown; glowing |
-| Item and block display entities | Not moving, `fixed` billboard | Moving, interpolating or turning with the camera |
+- Chests of all kinds and shulker boxes
+- Signs and hanging signs, with their text
+- Skulls and heads, decorated pots, shelves
+- Item frames, armor stands without armor, item and block displays
 
-Everything else is not cached: mobs and other animated models go through the GPU part transform (below). Objects that
-are being broken (the cracks), the farthest objects once the GPU memory budget is full, and anything Mobium does not
-recognise are drawn by the game as usual.
+While a chest opens, a pot wobbles or anything else moves, the game draws it as usual.
 
 ### GPU part transform
 
-Mobs, armor, saddles, banners, bells, lecterns and everything else the game builds from model parts are posed and
-animated exactly as before, by the game, Entity Model Features and Fresh Animations. Only the last step moves: instead
-of the CPU working out and writing every corner of every cube, a shader on the GPU writes the vertices, exactly the
-bytes the game would have written, also in Iris's shader pack formats and its shadow pass. Automated test scenes
-compare them byte for byte with the game's own.
+Mobs, armor, banners and everything else built from model parts are still posed and animated by the game, Entity Model
+Features and Fresh Animations. Only the last step moves: instead of the CPU writing every corner of every cube, a
+shader on the GPU writes exactly the same vertices, also in Iris's shader pack formats. Mobium checks this on your GPU
+and lets the game draw as usual should a graphics driver ever disagree.
 
-Posing and animations stay on the CPU, so the gain is largest where writing the vertices is expensive, as with Fresh
-Animations or a shader pack. Translucent models (unless the game's Improved Transparency is on), the enchantment
-glint, the outline of glowing entities and the breaking overlay are drawn by the game as usual. The GPU part transform
-needs OpenGL 4.3 compute shaders (current Windows and Linux drivers; not macOS, which stops at OpenGL 4.1); without
-them the game writes the vertices itself.
-
-**Known limit:** with only a few animated models on screen, the GPU part transform can cost a little more than it
-saves: about 0.1 ms per frame on the same laptop without a shader pack. That shows only at several hundred FPS (about
-5 % at 500 FPS, under 1 % at 60); its switch in the settings turns it off.
+The gain is largest where writing vertices is expensive: many mobs, Fresh Animations or a shader pack. With only a few
+mobs on screen it can cost slightly more than it saves, which shows only at several hundred FPS. It needs OpenGL 4.3
+(current Windows and Linux drivers; not macOS).
 
 ### Coming later
 
-- **Animation LOD (optional, off by default):** far-away mobs reuse last frame's pose.
-- **Vulkan:** Mobium needs the OpenGL backend for now (see *FAQ*).
-- Armor on armor stands is drawn by the game for now.
+- **Animation LOD (optional):** far-away mobs reuse last frame's pose.
+- **Vulkan** support.
 
 ---
 
 ## 📖 Usage
 
-Mobium works out of the box; the static cache and the GPU part transform are on by default.
+Mobium works out of the box.
 
-- **Settings:** the config button in Mod Menu (Fabric) or the mods list (NeoForge), or Mobium's page in Sodium's video
-  settings. Every cached type has its own switch, and the GPU memory budget (default 128 MB) can be changed. The GPU
-  part transform has its own switch; to keep single entity types on the game's own path, list them in
-  `parts.excludedEntities` in `config/mobium.json` (for example `"minecraft:zombie"`).
-- **A/B key:** switches all of Mobium off and on live, so you can compare in the same spot. It is the key right of
-  <kbd>P</kbd>: <kbd>]</kbd> on a US keyboard, <kbd>+</kbd> on a German one (rebind it in the controls).
-- **F3:** the debug entries `mobium:modules` (what is on, why something is off, and how many parts the GPU wrote last
-  frame) and `mobium:timings` (where the frame time goes, with a shader pack also in Iris's shadow pass) can be enabled
-  in the debug options.
+- **Settings:** Mod Menu (Fabric), the mods list (NeoForge) or Mobium's page in Sodium's video settings, with a switch
+  for every cached type.
+- **A/B key:** switches Mobium off and on live, to compare in the same spot. It is the key right of <kbd>P</kbd>:
+  <kbd>]</kbd> on a US keyboard, <kbd>+</kbd> on a German one.
+- **F3:** the debug entries `mobium:modules` and `mobium:timings` show what Mobium does and where the frame time goes.
 
-If something goes wrong inside Mobium, it switches the affected part off for the rest of the session, shows one
-message and lets the game draw everything as usual.
+If something goes wrong inside Mobium, it switches the affected part off, shows one message and lets the game draw as
+usual.
 
 ---
 
@@ -104,17 +94,11 @@ message and lets the game draw everything as usual.
 
 | Mod | Status |
 | --- | --- |
-| [Sodium](https://modrinth.com/mod/sodium) 0.9 | Works; Mobium adds a page to Sodium's video settings, and the GPU part transform writes cubes the way Sodium does |
-| [Iris](https://modrinth.com/mod/iris) 1.11 with shader packs | Works; cached objects are captured in Iris's formats and captured again when the shader pack or its options change, and the GPU part transform writes Iris's formats, shadow pass included. Tested with Complementary Reimagined |
-| [Entity Model Features](https://modrinth.com/mod/entity-model-features) / [Entity Texture Features](https://modrinth.com/mod/entitytexturefeatures), [Fresh Animations](https://modrinth.com/resourcepack/fresh-animations) | Works; models that EMF animates (for example a breathing chest) are not cached, and the GPU part transform writes their vertices while EMF animates them as usual |
-| [Mod Menu](https://modrinth.com/mod/modmenu) | Opens Mobium's settings |
-| Enhanced Block Entities (Reloaded), Vanillate (CrankShaft), Accelerated Rendering | These do the same job; while one is installed, Mobium switches off its overlapping part and says so in its settings |
-
-Known issue (not caused by Mobium): on NeoForge, Iris 1.11.7 crashes with Complementary Reimagined r5.9.3, also
-without Mobium.
-
-The full list, with what was tested how, is in
-[docs/compat.md](https://github.com/btwonion/mobium/blob/main/docs/compat.md).
+| Sodium | Works; Mobium adds a page to Sodium's video settings |
+| Iris with shader packs | Works, shadow pass included; tested with Complementary Reimagined |
+| Entity Model Features / Entity Texture Features, Fresh Animations | Works |
+| Mod Menu | Opens Mobium's settings |
+| Enhanced Block Entities, Vanillate, Accelerated Rendering | These do the same job; Mobium switches off its overlapping part |
 
 ---
 
@@ -126,35 +110,13 @@ No. Mobium is client-side only and works in singleplayer and on any server.
 
 **Does Mobium change how things look?**
 
-It must not. Scripted test scenes compare Mobium's picture pixel by pixel with the game's own, on Fabric and NeoForge
-(on Fabric also with a shader pack and with Fresh Animations), and the GPU part transform's vertices byte for byte with
-the ones the game writes. If you see a difference, press the A/B key to check whether it goes away with Mobium off,
-and please report it.
-
-**Does it help with lots of mobs?**
-
-Yes, since 0.2: that is what the GPU part transform is for. The more mobs on screen, the more CPU work it takes away:
-with 500 mobs the frame rate rose by 19 % with the game's own models and by 36 % with Fresh Animations (see
-*Performance*).
+It must not. Automated test scenes compare Mobium's picture pixel by pixel with the game's own. If you see a
+difference, press the A/B key to check whether it goes away with Mobium off, and please report it.
 
 **Does Mobium work with Vulkan?**
 
-Not yet. Mobium needs the OpenGL backend, Minecraft 26.3's default. On the Vulkan renderer, also with Vulkan shader
-mods such as Vitrail, Mobium stays switched off and the game draws everything itself (F3 `mobium:modules` says so).
-Vulkan support is planned for a later version.
-
----
-
-## 📦 Installation
-
-Download the file for your loader from [Modrinth](https://modrinth.com/mod/mobium/versions)
-or [CurseForge](https://www.curseforge.com/minecraft/mc-mods/mobium-perf/files), put it in your `mods` folder and add
-the required dependencies. Mobium 0.2 is for Minecraft 26.3.
-
-| Loader | Required dependencies | Optional |
-| --- | --- | --- |
-| Fabric / Quilt | [Fabric API](https://modrinth.com/mod/fabric-api), [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin) | [Mod Menu](https://modrinth.com/mod/modmenu), [Sodium](https://modrinth.com/mod/sodium) |
-| NeoForge | [KotlinLangForge](https://modrinth.com/mod/kotlin-lang-forge) | [Sodium](https://modrinth.com/mod/sodium) |
+Not yet. Mobium needs OpenGL, the game's default renderer; on Vulkan it stays off and the game draws everything itself.
+Vulkan support is planned.
 
 ---
 
@@ -162,8 +124,3 @@ the required dependencies. Mobium 0.2 is for Minecraft 26.3.
 
 If you need help with any of my mods, join my [Discord server](https://nyon.dev/discord), or open an issue on
 [GitHub](https://github.com/btwonion/mobium/issues).
-
-## License
-
-Mobium is licensed under the
-[GNU General Public License v3.0](https://github.com/btwonion/mobium/blob/main/LICENSE).
