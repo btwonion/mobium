@@ -1,4 +1,1 @@
-- the GPU part transform checks its first vertices against the game's own on your GPU and turns off if any differ
-- F3 `mobium:modules` shows what that check compared, for bug reports from GPUs not tested yet
-- Mobium loads only on Minecraft 26.3.x; it loaded on 26.4 snapshots before, where it was never tested
 - `/mobium benchmark` measures Mobium off and on in built-in scenes, so results from different PCs compare

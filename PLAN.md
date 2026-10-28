@@ -13,10 +13,11 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8 and #10–#24 are merged; `main` has M0–M5 (#7), the release preps
-  (#8, #13, #14, #17, #20), the new icon (#10), the 0.1.0-beta2 work (#11, #12), the switch to GPL-3.0 (#15, 25 Oct
-  2026), M6 (#16, 26 Oct 2026), the 0.2.0-beta2 work (#18, #19), the moves of the raw benchmark data (#21) and of
-  the self-check (#22) and the post-release bookkeeping (#23, #24). #25 (0.2.0's release prep) is a draft, on hold.
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8, #10–#24 and #26–#28 are merged; `main` has M0–M5 (#7), the
+  release preps (#8, #13, #14, #17, #20), the new icon (#10), the 0.1.0-beta2 work (#11, #12), the switch to GPL-3.0
+  (#15, 25 Oct 2026), M6 (#16, 26 Oct 2026), the 0.2.0-beta2 work (#18, #19), the moves of the raw benchmark data
+  (#21) and of the self-check (#22), the post-release bookkeeping (#23, #24), 0.2.0-beta3 (#26), the README for
+  players (#27) and `/mobium benchmark` (#28). #25 (0.2.0's release prep) is a draft, on hold.
   One branch from `main` per piece of work, one PR against `main`; merging is Anton's call.
 - **From 28 Oct 2026 (Anton):** PRs are squash-merged (#22 was the last merge commit; the PR title becomes the commit
   title on `main`), and every `changelog.md` entry is one line of at most 120 characters, saying what changed for
@@ -32,11 +33,12 @@ Read this first when picking the work up in a new session.
   armor stands without armor and `FIXED` display entities; on by default.
 - **Released:** `0.1.0-beta1` on 22 Oct 2026 (`release.yml` run 39831233395), `0.1.0-beta2` on 25 Oct 2026
   (run 40224786286: per-section light checks, cache cleanups, shadow-pass timers), `0.2.0-beta1` on 27 Oct 2026
-  (run 40539171559 on `main` at `aba2f6a`: Module 2) and **`0.2.0-beta2` on 27 Oct 2026** (run 40590266354 on `main`
-  at `81b7d71`: Module 2's expand pass in the vertex stage without a shader pack, `/mobium stages`, F3 line groups;
-  GitHub pre-releases `v0.2.0-beta2-26.3+fabric` / `+neoforge`), all beta on Modrinth `mobium` (`8i5oedw8`) and
-  CurseForge `mobium-perf` (`1759818`). Never run `release.yml` or `releaseMod` yourself. No tester reports so far
-  (`.github/ISSUE_TEMPLATE/bug_report.yml`).
+  (run 40539171559 on `main` at `aba2f6a`: Module 2), `0.2.0-beta2` on 27 Oct 2026 (run 40590266354 on `main` at
+  `81b7d71`: Module 2's expand pass in the vertex stage without a shader pack, `/mobium stages`, F3 line groups) and
+  **`0.2.0-beta3` on 28 Oct 2026** (run 40735230233 on `main` at `b5f0dc6`: Minecraft 26.3.x only, Module 2's check
+  on the player's GPU; GitHub pre-releases `v0.2.0-beta3-26.3+fabric` / `+neoforge`), all beta on Modrinth `mobium`
+  (`8i5oedw8`) and CurseForge `mobium-perf` (`1759818`). Never run `release.yml` or `releaseMod` yourself. No tester
+  reports so far (`.github/ISSUE_TEMPLATE/bug_report.yml`).
 - **M6 done and released** (#16, 26 Oct 2026; Module 2, GPU part transform, see §M6, *Status*): Module 2 takes every
   model part drawn into a staged entity-format draw (vanilla cubes as vanilla or Sodium writes them, EMF's cubes, in
   Iris's formats and its shadow pass too), and the GPU writes exactly the vertices the CPU would have: the self-check
@@ -76,15 +78,16 @@ Read this first when picking the work up in a new session.
   - the Minecraft version range was `>26.2`: Fabric loaded Mobium on 26.4 snapshots (`26.4-snapshot-6` reads as
     `26.4-alpha.6`), and on NeoForge `>26.2` is no Maven range at all and accepted every version (checked with
     fabric-loader 0.20.0 and maven-artifact 3.10.0, FML 12.0.12's).
-- **Next: `0.2.0-beta3`** (`mod.beta=3`; branch `beta3-gpu-selftest`, 28 Oct 2026): the range is 26.3.x only (`~26.3`,
-  `[26.3,26.4-alpha)`), and Module 2 checks itself on the player's GPU (`parts/PartCheck.kt`, docs/compat.md *On
-  players' GPUs*): the first 64 parts of each shader path are compared with the CPU's vertices; a differing part gets
-  the CPU's bytes in that frame and Module 2 switches off (toast, log with the GPU). Then `0.2.0` once beta3 has been
-  public for a while and someone has run it on a GPU other than Intel with Mesa (F3 `mobium:modules` shows the
-  check); checklists in §10.
-- **Benchmarks from players** (28 Oct 2026): #27 (merged) asks players for results in the README and a GitHub issue
-  form (`.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`). #28 (`benchmark-for-players`) replaces its by-hand
-  recipe with **`/mobium benchmark`**: the jar carries `benchmark/mobium-bench` as the
+- **`0.2.0-beta3` released** (#26, 28 Oct 2026): the range is 26.3.x only (`~26.3`, `[26.3,26.4-alpha)`), and Module 2
+  checks itself on the player's GPU (`parts/PartCheck.kt`, docs/compat.md *On players' GPUs*): the first 64 parts of
+  each shader path are compared with the CPU's vertices; a differing part gets the CPU's bytes in that frame and
+  Module 2 switches off (toast, log with the GPU). The Modrinth API still answered 404 for `8i5oedw8` afterwards.
+- **Next: `0.2.0`**, the first stable release (`mod.beta=0`, Anton, 28 Oct 2026), once beta3 has been public for a
+  while and someone has run it on a GPU other than Intel with Mesa (F3 `mobium:modules` shows the check);
+  `changelog.md` so far holds `/mobium benchmark` (#28). Checklist in §10.
+- **Benchmarks from players** (28 Oct 2026): #27 asks players for results in the README and a GitHub issue form
+  (`.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`). #28 replaces its by-hand recipe with
+  **`/mobium benchmark`** (not released yet; in 0.2.0): the jar carries `benchmark/mobium-bench` as the
   built-in data pack "Mobium Benchmark" (off unless picked under Create New World → Data Packs), and in a classic
   superflat world with it the command records `storage_room` and `mob_pen_live` with Mobium off, on, on, off (30 s
   each, about six minutes) under fixed options it restores afterwards, prints the gains and writes one CSV with the
@@ -1018,8 +1021,8 @@ benchmark numbers if performance changed.
       Fabric 39/39 (the check compared 980 parts in 21 paths before the forced difference), NeoForge 23/23 (542 in 13);
       the forced difference: Module 2 off, 1 vertex repaired, 0 still differing, one toast, pictures identical;
       gametests passed.
-- [ ] The Modrinth project is public (Anton; it was not on 28 Oct 2026).
-- [ ] Anton's go, then `release.yml` (manual dispatch on `main`; Anton).
+- [ ] The Modrinth project is public (Anton; it was not on 28 Oct 2026, also not after the release).
+- [x] Anton's go, then `release.yml` (manual dispatch on `main`; Anton): released on 28 Oct 2026 (run 40735230233).
 
 `0.2.0` (first stable release; `mod.beta=0`, Anton's choice on 28 Oct 2026; on hold until beta3 has been out):
 
