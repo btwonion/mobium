@@ -114,8 +114,16 @@ Config is stored with konfig at `config/mobium.json` (`{"version", "config"}`). 
 `CONFIG_VERSION` and add a migration branch; unknown keys must keep failing (don't enable `ignoreUnknownKeys`).
 `assets/mobium/lang/en_us.json` and `de_de.json` must keep the same keys.
 
+## Pull requests
+
+One branch from `main` per piece of work, one PR against `main`; merging is Anton's call. PRs are squash-merged
+(Anton, 28 Oct 2026): the PR title becomes the commit title on `main` and the branch's commit messages its body, so
+write both for `main`'s history. A benchmark build id from a branch commit is not on `main` after the merge;
+`git fetch origin pull/<n>/head` brings it back.
+
 ## Releases
 
-`changelog.md` holds only the notes for the upcoming release; publishing and the Discord post read it. Releases
-run from the manually dispatched `release.yml` workflow (`./gradlew releaseMod`), only after the matching gate in
-`PLAN.md` has passed.
+`changelog.md` holds only the notes for the upcoming release; publishing and the Discord post read it. Keep it short
+(Anton, 28 Oct 2026): one line of at most 120 characters per entry, saying what changed for players, not how or why;
+numbers, causes and details go in the PR, `docs/benchmarks.md` or `docs/compat.md`. Releases run from the manually
+dispatched `release.yml` workflow (`./gradlew releaseMod`), only after the matching gate in `PLAN.md` has passed.
