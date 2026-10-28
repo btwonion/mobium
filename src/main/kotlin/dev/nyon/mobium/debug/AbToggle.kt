@@ -22,6 +22,13 @@ object AbToggle {
         return Component.translatable(if (mobiumOff) "mobium.ab.vanilla" else "mobium.ab.mobium", keyName())
     }
 
+    /** Sets the state as the key would, for `/mobium benchmark`, which alternates it and puts it back afterwards. */
+    fun set(off: Boolean, cause: String) {
+        if (off == mobiumOff) return
+        mobiumOff = off
+        ModuleStates.refresh(cause)
+    }
+
     /** The A/B key as the keyboard layout names it. */
     fun keyName(): Component = MobiumKeys.AB_TOGGLE.translatedKeyMessage
 }

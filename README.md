@@ -25,20 +25,19 @@ are on screen, the more Mobium gains; an empty field gets neither faster nor slo
 
 ### 📊 Benchmarks wanted
 
-These numbers come from one laptop. To find out how Mobium does on other hardware, we need your results, and a run
-takes three minutes:
+These numbers come from one laptop. To find out how Mobium does on other hardware, we need your results. The
+benchmark builds its own scenes, so results from different computers compare, and it takes about six minutes:
 
-1. Set Max Framerate to Unlimited and turn VSync off, then stand still somewhere with lots of chests, signs or mobs.
-2. Type `/mobium bench test 30` and wait until the result shows in chat.
-3. Press the A/B key to switch Mobium off (the key right of <kbd>P</kbd>: <kbd>]</kbd> on a US keyboard,
-   <kbd>+</kbd> on a German one), then run `/mobium bench test 30` twice.
-4. Press the A/B key again to switch Mobium back on, and run `/mobium bench test 30` once more.
-5. Send us `mobium-bench/summary.csv` from your game folder: drop it in our
-   [Discord server](https://nyon.dev/discord) or attach it to a
+1. Create a new world: in the **World** tab set World Type to **Superflat** and the seed to `mobium`, and under
+   **More → Data Packs** move **Mobium Benchmark** to the selected packs.
+2. Type `/mobium benchmark` and leave the game alone until the result shows in chat. It measures a storage room and
+   mob pens with Mobium off and on, and puts your settings back at the end.
+3. Send us the file it names (in `mobium-bench` in your game folder; click the name in chat to open the folder): drop
+   it in our [Discord server](https://nyon.dev/discord) or attach it to a
    [benchmark report](https://github.com/btwonion/mobium/issues/new?template=benchmark.yml) on GitHub.
 
-The file already names your GPU, mods and shader pack and whether Mobium was on; your CPU and a screenshot of the
-spot are all we still need.
+The file already names your CPU, GPU, mods, shader pack and screen. The data pack is off in every other world, so the
+scenes are only ever built in this one.
 
 ---
 
@@ -84,6 +83,7 @@ Mobium works out of the box.
 - **A/B key:** switches Mobium off and on live, to compare in the same spot. It is the key right of <kbd>P</kbd>:
   <kbd>]</kbd> on a US keyboard, <kbd>+</kbd> on a German one.
 - **F3:** the debug entries `mobium:modules` and `mobium:timings` show what Mobium does and where the frame time goes.
+- **`/mobium benchmark`:** measures Mobium off and on in a world made with the Mobium Benchmark data pack (see above).
 
 If something goes wrong inside Mobium, it switches the affected part off, shows one message and lets the game draw as
 usual.

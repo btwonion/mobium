@@ -16,8 +16,8 @@ import net.minecraft.network.chat.Component
 /**
  * Client commands `/mobium bench <scene> <seconds> [setup]`, `/mobium suite [seconds] [runs] [scenes…]`,
  * `/mobium gatea [seconds] [runs]`, `/mobium gateb [seconds] [runs]`, `/mobium gatec [seconds] [runs]`,
- * `/mobium stages [seconds] [runs] [scene]` (see [BenchSuite]) and `/mobium stop`. The tree is built for any command
- * source type, so the same code registers with Fabric's client command API and NeoForge's
+ * `/mobium stages [seconds] [runs] [scene]`, `/mobium benchmark` (see [BenchSuite]) and `/mobium stop`. The tree is
+ * built for any command source type, so the same code registers with Fabric's client command API and NeoForge's
  * `RegisterClientCommandsEvent`. The scene is only a label; build it first with the benchmark datapack.
  */
 object BenchCommand {
@@ -120,6 +120,19 @@ object BenchCommand {
                         )
                 )
         )
+        .then(
+            LiteralArgumentBuilder.literal<S>("benchmark")
+                .executes { benchmark(BenchSuite.BENCHMARK_SECONDS) }
+                // Dev environments only: shorter runs for the self-check.
+                .also {
+                    if (Compat.isDevelopment) {
+                        it.then(
+                            RequiredArgumentBuilder.argument<S, Int>("seconds", IntegerArgumentType.integer(MIN_SECONDS, MAX_SECONDS))
+                                .executes { context -> benchmark(seconds(context)) }
+                        )
+                    }
+                }
+        )
         .then(LiteralArgumentBuilder.literal<S>("stop").executes {
             val suite = BenchSuite.stop()
             val run = FrameRecorder.stop()
@@ -189,6 +202,11 @@ object BenchCommand {
 
     private fun stages(seconds: Int, runs: Int, scene: String): Int {
         BenchSuite.startStages(seconds, runs, scene)?.let { chat(it); return 0 }
+        return 1
+    }
+
+    private fun benchmark(seconds: Int): Int {
+        BenchSuite.startBenchmark(seconds)?.let { chat(it); return 0 }
         return 1
     }
 

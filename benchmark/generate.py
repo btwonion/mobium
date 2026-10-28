@@ -460,10 +460,11 @@ def part_gallery() -> list[str]:
 
 
 def main() -> None:
+    # Mobium ships this pack as the built-in data pack "Mobium Benchmark"; its language files translate the description.
     write("pack.mcmeta", [
         "{",
         '    "pack": {',
-        '        "description": "Mobium benchmark scenes",',
+        '        "description": {"translate": "pack.mobium.benchmark.description", "fallback": "Mobium benchmark scenes"},',
         f'        "min_format": {DATA_FORMAT},',
         f'        "max_format": {DATA_FORMAT}',
         "    }",

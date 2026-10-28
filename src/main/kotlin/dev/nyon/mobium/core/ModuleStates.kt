@@ -61,10 +61,13 @@ object ModuleStates {
         if (shaderPackInUse() != shaderPack) refresh(if (shaderPack) "shader pack off" else "shader pack on")
     }
 
-    /** Hands the states to the module code. While a benchmark plan runs, it decides the modules itself. */
+    /**
+     * Hands the states to the module code. While a benchmark plan runs, it decides the modules itself, except
+     * `/mobium benchmark`, which switches Mobium off and on through the A/B state.
+     */
     private fun apply() {
         PartTransform.configure(config.parts.excludedEntities)
-        if (BenchSuite.isActive) return
+        if (BenchSuite.decidesModules) return
         StaticCache.setActive(isActive(Module.STATIC_CACHE) && StaticCache.anyTypeAllowed())
         PartTransform.setActive(isActive(Module.PART_TRANSFORM))
     }

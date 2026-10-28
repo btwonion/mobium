@@ -6,33 +6,25 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for measuring! Set Max Framerate to Unlimited and VSync off, stand still somewhere with lots of chests,
-        signs or mobs, then:
+        Thanks for measuring! The benchmark builds its own scenes, so results from different computers compare:
 
-        1. Type `/mobium bench test 30` and wait until the result shows in chat.
-        2. Press the A/B key to switch Mobium off (right of P: `]` on US, `+` on German keyboards), then run
-           `/mobium bench test 30` twice.
-        3. Press the A/B key again to switch Mobium back on, and run `/mobium bench test 30` once more.
+        1. Create a new world: in the World tab set World Type to **Superflat** and the seed to `mobium`, and under
+           More → Data Packs move **Mobium Benchmark** to the selected packs.
+        2. Type `/mobium benchmark` and leave the game alone until the result shows in chat (about six minutes).
 
-        On, off, off, on: so the game slowing down as it warms up favours neither.
-
-        Chat notes about the resolution or the power profile are fine; the file records both.
+        It measures a storage room and mob pens with Mobium off, on, on and off, so the game slowing down as it warms
+        up favours neither. Chat notes about battery power or the power profile are fine; the file records both.
   - type: textarea
-    id: summary
+    id: result
     attributes:
-      label: summary.csv
-      description: Drag `mobium-bench/summary.csv` from your game folder into this box, or paste its content.
-    validations:
-      required: true
-  - type: input
-    id: cpu
-    attributes:
-      label: CPU
-      placeholder: "AMD Ryzen 5 7600"
+      label: Benchmark file
+      description: >-
+        Drag the file chat names (`mobium-bench/benchmark-<date>.csv` in your game folder; clicking its name in chat
+        opens the folder) into this box, or paste its content. It names your CPU, GPU, mods and screen.
     validations:
       required: true
   - type: textarea
-    id: scene
+    id: notes
     attributes:
-      label: Where you measured
-      description: A screenshot of the spot, or a few words (a storage room with 200 chests, a villager breeder, ...).
+      label: Anything else
+      description: Optional. A laptop or a desktop, other mods, anything that looked wrong while it ran.

@@ -11,6 +11,9 @@ import net.irisshaders.iris.vertices.IrisVertexFormats
 object IrisCompat {
     fun isShaderPackInUse(): Boolean = IrisApi.getInstance().isShaderPackInUse
 
+    /** The selected shader pack's file name (for `/mobium benchmark`'s CSV). */
+    fun shaderPackName(): String = Iris.getCurrentPackName() ?: ""
+
     fun isRenderingShadowPass(): Boolean = IrisApi.getInstance().isRenderingShadowPass
 
     /**
