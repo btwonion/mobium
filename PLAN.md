@@ -13,11 +13,11 @@ Everything needed to build is repeated here; when this file and the design doc d
 
 Read this first when picking the work up in a new session.
 
-- **Repository:** `btwonion/mobium` on GitHub. #1–#8, #10–#24 and #26–#28 are merged; `main` has M0–M5 (#7), the
+- **Repository:** `btwonion/mobium` on GitHub. #1–#8, #10–#24 and #26–#29 are merged; `main` has M0–M5 (#7), the
   release preps (#8, #13, #14, #17, #20), the new icon (#10), the 0.1.0-beta2 work (#11, #12), the switch to GPL-3.0
   (#15, 25 Oct 2026), M6 (#16, 26 Oct 2026), the 0.2.0-beta2 work (#18, #19), the moves of the raw benchmark data
-  (#21) and of the self-check (#22), the post-release bookkeeping (#23, #24), 0.2.0-beta3 (#26), the README for
-  players (#27) and `/mobium benchmark` (#28). #25 (0.2.0's release prep) is a draft, on hold.
+  (#21) and of the self-check (#22), the post-release bookkeeping (#23, #24, #29), 0.2.0-beta3 (#26), the README for
+  players (#27) and `/mobium benchmark` (#28). #25 is 0.2.0's release prep.
   One branch from `main` per piece of work, one PR against `main`; merging is Anton's call.
 - **From 28 Oct 2026 (Anton):** PRs are squash-merged (#22 was the last merge commit; the PR title becomes the commit
   title on `main`), and every `changelog.md` entry is one line of at most 120 characters, saying what changed for
@@ -82,9 +82,11 @@ Read this first when picking the work up in a new session.
   checks itself on the player's GPU (`parts/PartCheck.kt`, docs/compat.md *On players' GPUs*): the first 64 parts of
   each shader path are compared with the CPU's vertices; a differing part gets the CPU's bytes in that frame and
   Module 2 switches off (toast, log with the GPU). The Modrinth API still answered 404 for `8i5oedw8` afterwards.
-- **Next: `0.2.0`**, the first stable release (`mod.beta=0`, Anton, 28 Oct 2026), once beta3 has been public for a
-  while and someone has run it on a GPU other than Intel with Mesa (F3 `mobium:modules` shows the check);
-  `changelog.md` so far holds `/mobium benchmark` (#28). Checklist in §10.
+- **Next: release `0.2.0` now** (Anton, 28 Oct 2026), the first stable release, so that its announcement can ask
+  players for `/mobium benchmark` results. This skips the hold above (beta3 public for a while, a report from a GPU
+  other than Intel with Mesa); beta3's GPU check switches Module 2 off on a mismatch. #25 (`release-0.2.0`, rebuilt on
+  `main` after #28 and #29) has the changelog, the README without its *Beta.* note and the self-check; **left for
+  Anton:** merge #25, then `release.yml` on `main`. Checklist in §10.
 - **Benchmarks from players** (28 Oct 2026): #27 asks players for results in the README and a GitHub issue form
   (`.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`). #28 replaces its by-hand recipe with
   **`/mobium benchmark`** (not released yet; in 0.2.0): the jar carries `benchmark/mobium-bench` as the
@@ -1024,17 +1026,24 @@ benchmark numbers if performance changed.
 - [ ] The Modrinth project is public (Anton; it was not on 28 Oct 2026, also not after the release).
 - [x] Anton's go, then `release.yml` (manual dispatch on `main`; Anton): released on 28 Oct 2026 (run 40735230233).
 
-`0.2.0` (first stable release; `mod.beta=0`, Anton's choice on 28 Oct 2026; on hold until beta3 has been out):
+`0.2.0` (first stable release; `mod.beta=0`, Anton's choice on 28 Oct 2026; released right away, Anton, 28 Oct 2026):
 
-- [ ] Beta3 public on Modrinth and CurseForge for a while; at least one report (or F3 `mobium:modules` line) from a GPU
-      other than Intel with Mesa, ideally Nvidia, AMD and Windows.
-- [ ] `changelog.md` contains only 0.2.0's notes, one line of at most 120 characters per entry.
-- [ ] `README.md` without its *Beta.* note, and a sentence on the GPU check (merge right before `release.yml`:
-      `readme-modrinth-sync.yml` publishes every README change on `main` to Modrinth at once).
-- [ ] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices in both stages,
-      pictures identical).
+- [ ] ~~Beta3 public on Modrinth and CurseForge for a while; at least one report (or F3 `mobium:modules` line) from a
+      GPU other than Intel with Mesa, ideally Nvidia, AMD and Windows.~~ Skipped (Anton, 28 Oct 2026): 0.2.0 now, so
+      its announcement can ask for `/mobium benchmark` results; those and F3 `mobium:modules` lines are the reports.
+- [x] `changelog.md` contains only 0.2.0's notes, one line of at most 120 characters per entry (#25: first stable
+      release, the two modules, the GPU check, compatibility, the A/B key, `/mobium benchmark`).
+- [x] `README.md` without its *Beta.* note, and a sentence on the GPU check (#27 added the sentence; #25 drops the note
+      and moves its screenshot tip to the FAQ; merge right before `release.yml`: `readme-modrinth-sync.yml` publishes
+      every README change on `main` to Modrinth at once). The bug report template's version placeholder is `0.2.0`.
+- [x] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices in both stages,
+      pictures identical). 28 Oct 2026 on `main` at `9add8fd`: regular Fabric 74/74 (with Complementary), NeoForge
+      67/67; `--mode parts` Fabric 39/39, NeoForge 23/23, 0 differing vertices in both stages; `--mode benchmark` 23/23
+      on both (#28).
 - [ ] Benchmark round A–D (`python3 benchmark/bench_round.py`) if rendering changed since 0.2.0-beta2, committed to
-      `docs/benchmarks.md`.
+      `docs/benchmarks.md`. Beta3 draws the same vertices; what it adds per part in steady frames is the GPU check's
+      bookkeeping (a path index and two array reads), the comparisons only in the first frames of each path; #28
+      changes nothing outside `/mobium benchmark`. A round takes three hours; Anton's call whether one comes first.
 - [ ] Anton's go for the release.
 - [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
