@@ -4,7 +4,10 @@ import com.mojang.blaze3d.platform.NativeImage
 import dev.nyon.konfig.config.loadConfig
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.MobiumKeys
+import dev.nyon.mobium.bench.BenchOptions
+import dev.nyon.mobium.bench.BenchPack
 import dev.nyon.mobium.bench.BenchSuite
+import dev.nyon.mobium.bench.FrameRecorder
 import dev.nyon.mobium.bench.MachineState
 import dev.nyon.mobium.bench.SceneBuilder
 import dev.nyon.mobium.cache.ArmorStands
@@ -56,13 +59,24 @@ import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.components.toasts.ToastManager
 import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen
 import net.minecraft.client.gui.screens.Screen
+import net.minecraft.client.gui.components.ChatComponent
 import net.minecraft.client.gui.screens.TitleScreen
+import net.minecraft.client.gui.screens.packs.PackSelectionModel
+import net.minecraft.client.gui.screens.packs.PackSelectionScreen
+import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.multiplayer.chat.GuiMessage
 import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
+import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ParticleStatus
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.packs.repository.ServerPacksSource
+import net.minecraft.world.flag.FeatureFlags
+import net.minecraft.world.level.DataPackConfig
+import net.minecraft.world.level.WorldDataConfiguration
+import net.minecraft.world.level.levelgen.presets.WorldPresets
 import net.minecraft.world.level.block.Blocks
 import java.nio.file.Files
 import java.nio.file.Path
@@ -106,6 +120,9 @@ object SelfCheck {
     private const val PART_GALLERY = "part_gallery"
     private const val GATE_B = "gateb"
     private const val GALLERY_ONLY = "gallery"
+    private const val BENCHMARK = "benchmark"
+    private const val BENCHMARK_WORLD = "Mobium Benchmark Check"
+    private const val BENCHMARK_RUN_SECONDS = 5
     private const val CHESTS = 1000
     private const val SIGNS = 300
 
@@ -156,6 +173,7 @@ object SelfCheck {
             PARTS -> parts(minecraft)
             GATE_B -> gateB(minecraft)
             GALLERY_ONLY -> galleryOnly(minecraft)
+            BENCHMARK -> benchmark(minecraft)
             else -> scenario(minecraft)
         }.iterator()
     }
@@ -214,6 +232,7 @@ object SelfCheck {
         val particles = options.particles().get()
         val framerateLimit = options.framerateLimit().get()
         val vsync = options.enableVsync().get()
+        val fov = options.fov().get()
         val onboarding = options.onboardAccessibility
         val clouds = options.cloudStatus().get()
         val preset = options.graphicsPreset().get()
@@ -228,6 +247,7 @@ object SelfCheck {
             options.particles().set(particles)
             options.framerateLimit().set(framerateLimit)
             options.enableVsync().set(vsync)
+            options.fov().set(fov)
             options.renderDistance().set(renderDistanceBefore)
             // Changing the clouds or the render distance turns the preset to "custom"; setting the old preset again
             // restores it.
@@ -404,6 +424,215 @@ object SelfCheck {
         minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
         yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
         finish(minecraft)
+    }
+
+    /**
+     * `--mode benchmark`: the players' `/mobium benchmark`, reached as a player reaches it. Creates a world through Create
+     * New World (Superflat, seed mobium, the built-in pack selected in its Data Packs screen, where it must be listed and
+     * off), runs `/mobium benchmark 5` (dev-only short runs) and checks the options and modules while it runs, the CSV
+     * and the chat result, and that every option and the A/B state are back afterwards; then `/mobium stop` and leaving
+     * the world during a run, the refusal without the pack, and that a world which has never seen the pack does not
+     * switch it on. Deletes the world it made.
+     */
+    private fun benchmark(minecraft: Minecraft) = sequence {
+        snapshotOptions(minecraft)
+        titleScreen(minecraft)
+        val saved = config.deepCopy()
+        applyConfig(Config())
+        deleteBenchmarkWorlds(minecraft)
+        existingWorldKeepsPackOff(minecraft)
+
+        CreateWorldScreen.openFresh(minecraft) { minecraft.gui.setScreen(TitleScreen()) }
+        yield(until("Create New World screen", 120) { minecraft.gui.screen() is CreateWorldScreen })
+        val create = minecraft.gui.screen() as CreateWorldScreen
+        val ui = create.uiState
+        val enabledAtStart = ui.settings.dataConfiguration().dataPacks().enabled
+        check("pack off in a new world", BenchPack.ID !in enabledAtStart, enabledAtStart.toString())
+        ui.setName(BENCHMARK_WORLD)
+        ui.setSeed("mobium")
+        val flat = ui.normalPresetList.firstOrNull { it.preset()?.`is`(WorldPresets.FLAT) == true }
+        check("Superflat is a world type", flat != null)
+        if (flat != null) ui.setWorldType(flat)
+        // What the More tab's Data Packs button does.
+        CreateWorldScreen::class.java.getDeclaredMethod("openDataPackSelectionScreen", WorldDataConfiguration::class.java)
+            .apply { isAccessible = true }.invoke(create, ui.settings.dataConfiguration())
+        yield(until("Data Packs screen", 60) { minecraft.gui.screen() is PackSelectionScreen })
+        val packs = minecraft.gui.screen() as PackSelectionScreen
+        val model = PackSelectionScreen::class.java.getDeclaredField("model").apply { isAccessible = true }.get(packs) as PackSelectionModel
+        val entry = model.unselected.filter { it.id == BenchPack.ID }.findFirst().orElse(null)
+        check(
+            "pack listed under Data Packs, not selected", entry != null && model.selected.noneMatch { it.id == BenchPack.ID },
+            model.unselected.map { it.id }.toList().toString()
+        )
+        if (entry == null) {
+            minecraft.gui.setScreen(TitleScreen())
+            applyConfig(saved)
+            finish(minecraft)
+            return@sequence
+        }
+        val title = entry.title.string
+        check("pack name translated", "Mobium Benchmark" in title, "$title: ${entry.description.string}")
+        entry.select()
+        packs.onClose()
+        yield(until("pack applied in Create New World", 120) {
+            val screen = minecraft.gui.screen()
+            screen is CreateWorldScreen && BenchPack.ID in screen.uiState.settings.dataConfiguration().dataPacks().enabled
+        })
+        CreateWorldScreen::class.java.getDeclaredMethod("onCreate").apply { isAccessible = true }.invoke(minecraft.gui.screen())
+        yield(until("benchmark world created", 300) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
+        yield(ticks(40))
+        val server = checkNotNull(minecraft.singleplayerServer)
+        check("pack on in the world made with it", BenchPack.ID in server.packRepository.selectedIds, server.packRepository.selectedIds.toString())
+
+        // The player's values before the benchmark; FOV, frame cap and VSync set apart from the benchmark's own.
+        val options = minecraft.options
+        options.fov().set(80)
+        options.framerateLimit().set(120)
+        options.enableVsync().set(true)
+        val before = optionValues(minecraft)
+        results += "NOTE options before: $before"
+        val bench = minecraft.gameDirectory.toPath().resolve("mobium-bench")
+        val filesBefore = if (Files.isDirectory(bench)) Files.list(bench).use { it.toList() }.toSet() else emptySet()
+        minecraft.gui.hud.chat.clearMessages(false)
+        benchmarkCommand(minecraft)
+        yield(ticks(TICKS_PER_SECOND))
+        check("benchmark started", BenchSuite.isActive, chatLines(minecraft).joinToString(" | "))
+        if (!BenchSuite.isActive) {
+            leaveBenchmarkWorld(minecraft, saved)
+            return@sequence
+        }
+        yield(until("first run recording", 180) { FrameRecorder.isActive })
+        val during = optionValues(minecraft)
+        check(
+            "benchmark options while it runs",
+            during == optionValues(BenchOptions.RENDER_DISTANCE, BenchOptions.ENTITY_DISTANCE, BenchOptions.FOV, Options.UNLIMITED_FRAMERATE_CUTOFF, false, before.last()),
+            during.toString()
+        )
+        check("Mobium off in the first run", AbToggle.mobiumOff && !StaticCache.active && !PartTransform.active, ModuleStates.status(Module.STATIC_CACHE).describe())
+        yield(until("second run recording", 120) { FrameRecorder.isActive && !AbToggle.mobiumOff })
+        check(
+            "Mobium on in the second run", StaticCache.active && PartTransform.active == ModuleStates.isActive(Module.PART_TRANSFORM),
+            "${ModuleStates.status(Module.STATIC_CACHE).describe()}, ${ModuleStates.status(Module.PART_TRANSFORM).describe()}"
+        )
+        yield(until("benchmark finished", 600) { !BenchSuite.isActive })
+        yield(ticks(10))
+        screenshot(minecraft, "benchmark_result")
+        val chat = chatLines(minecraft)
+        for (line in chat.filter { "FPS without Mobium" in it || "Saved as" in it }) results += "NOTE chat: $line"
+        check("result in chat", chat.count { "FPS without Mobium" in it } == 2 && chat.any { "Saved as benchmark-" in it }, chat.joinToString(" | "))
+        checkRestored(minecraft, "after the benchmark", before)
+
+        val file = Files.list(bench).use { files -> files.filter { it !in filesBefore && it.fileName.toString().startsWith("benchmark-") }.findFirst().orElse(null) }
+        if (file == null) {
+            check("benchmark CSV written", false)
+        } else {
+            Files.copy(file, directory.resolve(file.fileName))
+            val lines = Files.readAllLines(file)
+            val rows = lines.drop(1).filter { !it.startsWith("#") }
+            val notes = lines.filter { it.startsWith("#") }.associate { it.removePrefix("# ").substringBefore(',') to it.substringAfter(',') }
+            results += "NOTE ${file.fileName}: " + notes.entries.joinToString("; ") { "${it.key} ${it.value}" }
+            check(
+                "benchmark CSV: two scenes, Mobium off and on, two runs each",
+                rows.size == 4 && rows.all { it.split(',')[2] == "2" } && BenchSuite.BENCHMARK_SCENES.all { scene -> rows.count { it.startsWith("$scene,") } == 2 },
+                rows.joinToString(" | ") { it.split(',').take(4).joinToString(" ") }
+            )
+            val keys = listOf("storage_room_speedup", "mob_pen_live_speedup", "cpu", "gpu", "resolution", "power", "seed_mobium", "build")
+            check("benchmark CSV: gains and environment", keys.all { it in notes } && notes["seed_mobium"] == "true", keys.filter { it !in notes }.toString())
+        }
+
+        // /mobium stop during a run.
+        benchmarkCommand(minecraft)
+        yield(until("recording again", 180) { FrameRecorder.isActive })
+        checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium stop", null)
+        yield(ticks(5))
+        check("/mobium stop ends the benchmark", !BenchSuite.isActive && !FrameRecorder.isActive)
+        checkRestored(minecraft, "after /mobium stop", before)
+
+        // Without the pack the command refuses and touches nothing.
+        serverCommand(minecraft, "datapack disable \"${BenchPack.ID}\"")
+        yield(until("pack switched off", 60) { !SceneBuilder.hasScene(server, SCENE) })
+        minecraft.gui.hud.chat.clearMessages(false)
+        benchmarkCommand(minecraft)
+        yield(ticks(5))
+        check("refused without the pack", !BenchSuite.isActive && optionValues(minecraft) == before, chatLines(minecraft).joinToString(" | "))
+        serverCommand(minecraft, "datapack enable \"${BenchPack.ID}\"")
+        yield(until("pack switched on again", 60) { SceneBuilder.hasScene(server, SCENE) })
+
+        // Leaving the world during a run.
+        benchmarkCommand(minecraft)
+        yield(until("recording before leaving", 180) { FrameRecorder.isActive })
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        yield(ticks(5))
+        check("leaving the world ends the benchmark", !BenchSuite.isActive && !FrameRecorder.isActive)
+        checkRestored(minecraft, "after leaving the world", before)
+
+        deleteBenchmarkWorlds(minecraft)
+        applyConfig(saved)
+        finish(minecraft)
+    }
+
+    private fun benchmarkCommand(minecraft: Minecraft) =
+        checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium benchmark $BENCHMARK_RUN_SECONDS", null)
+
+    private suspend fun SequenceScope<Wait>.leaveBenchmarkWorld(minecraft: Minecraft, saved: Config) {
+        minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
+        yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
+        deleteBenchmarkWorlds(minecraft)
+        applyConfig(saved)
+        finish(minecraft)
+    }
+
+    /** The options `/mobium benchmark` sets, the graphics preset last; equal lists mean equal options. */
+    private fun optionValues(minecraft: Minecraft): List<String> {
+        val options = minecraft.options
+        return optionValues(
+            options.renderDistance().get(), options.entityDistanceScaling().get(), options.fov().get(),
+            options.framerateLimit().get(), options.enableVsync().get(), options.graphicsPreset().get().serializedName
+        )
+    }
+
+    private fun optionValues(renderDistance: Int, entityDistance: Double, fov: Int, framerateLimit: Int, vsync: Boolean, preset: String) =
+        listOf("render $renderDistance", "entities $entityDistance", "fov $fov", "fps $framerateLimit", "vsync $vsync", preset)
+
+    private fun checkRestored(minecraft: Minecraft, moment: String, before: List<String>) {
+        val after = optionValues(minecraft)
+        check("options and graphics preset back $moment", after == before, "$after, before $before")
+        check(
+            "Mobium back on $moment",
+            !AbToggle.mobiumOff && StaticCache.active == (ModuleStates.isActive(Module.STATIC_CACHE) && StaticCache.anyTypeAllowed()) &&
+                PartTransform.active == ModuleStates.isActive(Module.PART_TRANSFORM),
+            ModuleStates.status(Module.STATIC_CACHE).describe()
+        )
+    }
+
+    /**
+     * What loading an existing world that has never seen the pack does (`MinecraftServer.configurePackRepository` with
+     * only `vanilla` enabled and nothing disabled): the pack must stay off.
+     */
+    private fun existingWorldKeepsPackOff(minecraft: Minecraft) {
+        val packs = directory.resolve("datapacks")
+        Files.createDirectories(packs)
+        val repository = ServerPacksSource.createPackRepository(packs, minecraft.directoryValidator())
+        val config = MinecraftServer.configurePackRepository(
+            repository, WorldDataConfiguration(DataPackConfig(listOf("vanilla"), listOf()), FeatureFlags.DEFAULT_FLAGS), false, false
+        )
+        check("pack available to worlds", repository.isAvailable(BenchPack.ID), repository.availableIds.toString())
+        check("pack off in an existing world", BenchPack.ID !in config.dataPacks().enabled, config.dataPacks().enabled.toString())
+    }
+
+    /** Removes the worlds an earlier `--mode benchmark` made ("Mobium Benchmark Check", "… (1)"). */
+    private fun deleteBenchmarkWorlds(minecraft: Minecraft) {
+        val saves = minecraft.gameDirectory.toPath().resolve("saves")
+        if (!Files.isDirectory(saves)) return
+        val worlds = Files.list(saves).use { files -> files.filter { it.fileName.toString().startsWith(BENCHMARK_WORLD) }.toList() }
+        for (world in worlds) world.toFile().deleteRecursively()
+    }
+
+    /** The chat's messages, newest first (dev check only: the list is private). */
+    private fun chatLines(minecraft: Minecraft): List<String> {
+        val field = ChatComponent::class.java.getDeclaredField("allMessages").apply { isAccessible = true }
+        return (field.get(minecraft.gui.hud.chat) as List<*>).map { (it as GuiMessage).content().string }
     }
 
     /**

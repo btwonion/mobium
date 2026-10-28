@@ -82,6 +82,13 @@ Read this first when picking the work up in a new session.
   the CPU's bytes in that frame and Module 2 switches off (toast, log with the GPU). Then `0.2.0` once beta3 has been
   public for a while and someone has run it on a GPU other than Intel with Mesa (F3 `mobium:modules` shows the
   check); checklists in §10.
+- **Benchmarks from players** (28 Oct 2026): #27 (merged) asks players for results in the README and a GitHub issue
+  form (`.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`). #28 (`benchmark-for-players`) replaces its by-hand
+  recipe with **`/mobium benchmark`**: the jar carries `benchmark/mobium-bench` as the
+  built-in data pack "Mobium Benchmark" (off unless picked under Create New World → Data Packs), and in a classic
+  superflat world with it the command records `storage_room` and `mob_pen_live` with Mobium off, on, on, off (30 s
+  each, about six minutes) under fixed options it restores afterwards, prints the gains and writes one CSV with the
+  CPU, GPU, window, power and packs (`docs/benchmarks.md` *Tools*). Self-check: `--mode benchmark`.
 - **Then M7.** Minecraft 26.4 is in snapshots (`26.4-snapshot-1` on 22 Sep 2026, `26.4-snapshot-6` on 27 Oct 2026);
   Vulkan is to become its default backend there (*(verify)* in the snapshots), and Mobium is off on Vulkan, so the
   snapshot-tracking branch and `VkCompute` come first in M7.

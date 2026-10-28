@@ -319,7 +319,8 @@ object FrameRecorder {
 
     private fun fmt(value: Double, decimals: Int) = String.format(Locale.ROOT, "%.${decimals}f", value)
 
-    private fun csv(value: String) = if (value.any { it == ',' || it == '"' || it == '\n' }) {
+    /** Quotes a CSV field that contains a comma, a quote or a line break. */
+    fun csv(value: String) = if (value.any { it == ',' || it == '"' || it == '\n' }) {
         "\"" + value.replace("\"", "\"\"") + "\""
     } else value
 

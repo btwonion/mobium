@@ -3,15 +3,29 @@ package dev.nyon.mobium.bench
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
+import dev.nyon.mobium.core.Capabilities
+import dev.nyon.mobium.core.Compat
+import dev.nyon.mobium.core.CompatMod
+import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
+import dev.nyon.mobium.core.ModuleStatus
 import dev.nyon.mobium.core.OffReason
+import dev.nyon.mobium.debug.AbToggle
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.parts.ExpandPass
 import dev.nyon.mobium.parts.PartTransform
+import net.minecraft.ChatFormatting
+import net.minecraft.SharedConstants
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.components.debug.DebugEntrySystemSpecs
+import net.minecraft.network.chat.ClickEvent
 import net.minecraft.network.chat.Component
+import net.minecraft.server.MinecraftServer
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.levelgen.FlatLevelSource
 import java.io.IOException
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDateTime
@@ -34,7 +48,11 @@ import java.util.Locale
  *   with over without (must not be slower);
  * - `/mobium stages [seconds] [runs] [scene]`: a scene (default `mob_pen_live`) with Module 2's expand pass as a
  *   compute dispatch and in the vertex stage, alternating ([ExpandPass]), then the frame time of the vertex stage over
- *   compute's.
+ *   compute's;
+ * - `/mobium benchmark`: the players' benchmark, in a superflat world made with the built-in Mobium Benchmark data
+ *   pack ([BenchPack]): `storage_room` and `mob_pen_live` with all of Mobium off, on, on and off ([AbToggle], as the A/B
+ *   key does), [BENCHMARK_SECONDS] each, with [BenchOptions], then each scene's gain in chat and one CSV with the
+ *   medians, the gains and what the result depends on (CPU, GPU, window, power).
  *
  * Scenes are built through the integrated server (singleplayer only), so the world does not need commands enabled.
  * The medians per scene and setup are rewritten to `mobium-bench/suite-<timestamp>.csv` after every run, so quitting
@@ -48,6 +66,20 @@ object BenchSuite {
     const val SETTLE_SECONDS = 10
     const val GATE_A_TARGET = 1.5
     val SCENES = listOf("mob_pen_static", "mob_pen_live", "storage_room", "map_wall", "display_build", "control")
+    const val BENCHMARK_SECONDS = 30
+    val BENCHMARK_SCENES = listOf("storage_room", "mob_pen_live")
+
+    /** Mobium off, on, on, off in each scene: drift (a laptop warming up) then favours neither side. */
+    private val BENCHMARK_ORDER = booleanArrayOf(false, true, true, false)
+
+    /** A gain below this, in percent, is within what two runs per side can tell apart. */
+    private const val BENCHMARK_NOISE_PERCENT = 2.0
+
+    /** The first air block of the scenes (benchmark/generate.py's `GROUND`): classic superflat's surface. */
+    private const val SCENE_GROUND = -60
+    private const val BENCHMARK_SEED = "mobium"
+    private const val ISSUE_URL = "https://github.com/btwonion/mobium/issues/new?template=benchmark.yml"
+    private const val DISCORD_URL = "https://nyon.dev/discord"
 
     private const val BUILD_TIMEOUT_SECONDS = 120L
     private const val TOGGLE_SETTLE_SECONDS = 3L
@@ -59,21 +91,23 @@ object BenchSuite {
      * One benchmark run of the plan; [cache] and [parts] null leave the static cache and Module 2 as they are, [stage]
      * null leaves Module 2's expand pass to its own choice ([ExpandPass.stage]).
      * [skipDraws] records the cached objects without drawing them (`StaticCache.skipDraws`; the setup is then named
-     * `…+cache+nodraw`).
+     * `…+cache+nodraw`). [mobium] switches all of Mobium off or on through the A/B state, which then decides the
+     * modules as in normal play.
      */
     private class Step(
         val scene: String,
         val cache: Boolean?,
         val skipDraws: Boolean = false,
         val parts: Boolean? = null,
-        val stage: Int? = null
+        val stage: Int? = null,
+        val mobium: Boolean? = null
     )
 
     private enum class State { IDLE, BUILDING, SETTLING, RECORDING }
 
     /** What a plan is for: medians only, or one of the gates' verdicts. */
     private enum class Kind(val filePrefix: String) {
-        SUITE("suite"), GATE_A("gatea"), GATE_B("gateb"), GATE_C("gatec"), STAGES("stages")
+        SUITE("suite"), GATE_A("gatea"), GATE_B("gateb"), GATE_C("gatec"), STAGES("stages"), BENCHMARK("benchmark")
     }
 
     private var state = State.IDLE
@@ -92,10 +126,20 @@ object BenchSuite {
     private var settleTimeout = 0L
     private val scenes = SceneBuilder()
     private val results = ArrayList<BenchResult>()
+
+    /** Per entry of [results]: whether Mobium was on (`/mobium benchmark`). */
+    private val resultsMobium = ArrayList<Boolean>()
     private var stamp = ""
+    private var abOffBefore = false
+    private var environment: BenchEnvironment.Snapshot? = null
+    private val benchmarkNotes = ArrayList<String>()
 
     val isActive: Boolean
         get() = state != State.IDLE
+
+    /** True while a plan switches the modules itself; `/mobium benchmark` leaves that to the A/B state. */
+    val decidesModules: Boolean
+        get() = isActive && kind != Kind.BENCHMARK
 
     /** Starts `/mobium suite`; returns an error message or null. */
     fun startSuite(seconds: Int, runs: Int, scenes: List<String>): Component? {
@@ -154,6 +198,76 @@ object BenchSuite {
     }
 
     /**
+     * Starts `/mobium benchmark`; returns an error message or null. Refuses outside a classic superflat world with the
+     * Mobium Benchmark data pack, so the scenes are never built in a world the player uses, and when Mobium cannot run
+     * at all.
+     */
+    fun startBenchmark(seconds: Int): Component? {
+        if (isActive || FrameRecorder.isActive) return Component.translatable("mobium.bench.busy")
+        val minecraft = Minecraft.getInstance()
+        val server = minecraft.singleplayerServer ?: return Component.translatable("mobium.benchmark.singleplayer")
+        val level = minecraft.level ?: return Component.translatable("mobium.benchmark.singleplayer")
+        if (level.dimension() != Level.OVERWORLD || !isClassicFlat(server)) return Component.translatable("mobium.benchmark.not_flat")
+        if (BENCHMARK_SCENES.any { !SceneBuilder.hasScene(server, it) }) return Component.translatable("mobium.benchmark.no_pack")
+
+        abOffBefore = AbToggle.mobiumOff
+        AbToggle.set(false, "benchmark: Mobium")
+        val cache = ModuleStates.status(Module.STATIC_CACHE)
+        val parts = ModuleStates.status(Module.PART_TRANSFORM)
+        if (!cache.active && !parts.active) {
+            AbToggle.set(abOffBefore, "benchmark refused")
+            return Component.translatable("mobium.benchmark.unavailable", reason(cache))
+        }
+        cacheConfigBefore = config.cache.enabled
+        partsConfigBefore = config.parts.enabled
+        environment = BenchEnvironment.snapshot()
+        // WorldOptions.parseSeed turns a seed that is not a number into its hash code.
+        val seedMobium = server.overworld().seed == BENCHMARK_SEED.hashCode().toLong()
+        benchmarkNotes.clear()
+        benchmarkNotes += "seed_mobium,$seedMobium"
+        benchmarkNotes += "module_static_cache,${cache.describe()}"
+        benchmarkNotes += "module_part_transform,${parts.describe()}"
+
+        BenchOptions.apply(minecraft.options)
+        val plan = BENCHMARK_SCENES.flatMap { scene -> BENCHMARK_ORDER.map { Step(scene, null, mobium = it) } }
+        start(plan, seconds, Kind.BENCHMARK)?.let { error ->
+            BenchOptions.restore(minecraft.options)
+            AbToggle.set(abOffBefore, "benchmark refused")
+            return error
+        }
+        chat(Component.translatable("mobium.benchmark.started", BENCHMARK_SCENES.size, seconds, minutes(plan.size, BENCHMARK_SCENES.size)))
+        chat(
+            Component.translatable(
+                "mobium.benchmark.options", BenchOptions.RENDER_DISTANCE, BenchOptions.FOV, (BenchOptions.ENTITY_DISTANCE * 100).toInt()
+            )
+        )
+        moduleOff(cache, "storage_room")
+        moduleOff(parts, "mob_pen_live")
+        if (!seedMobium) chat(Component.translatable("mobium.benchmark.seed", BENCHMARK_SEED))
+        return null
+    }
+
+    /** The overworld is superflat with classic's layers, so the scenes stand on the ground and under the sky. */
+    private fun isClassicFlat(server: MinecraftServer): Boolean {
+        val overworld = server.overworld()
+        val generator = overworld.chunkSource.generator
+        return generator is FlatLevelSource && overworld.minY + generator.settings().layers.size == SCENE_GROUND
+    }
+
+    private fun moduleOff(status: ModuleStatus, scene: String) {
+        if (status.active) return
+        chat(
+            Component.translatable(
+                "mobium.benchmark.module_off", Component.translatable(status.module.translationKey), reason(status),
+                Component.translatable("mobium.benchmark.scene.$scene")
+            )
+        )
+    }
+
+    /** Why a module is off, with the overlapping mod or failure as the reason's detail (as the settings screen shows). */
+    private fun reason(status: ModuleStatus): Component = Component.translatable(status.reason!!.translationKey, status.detail)
+
+    /**
      * A gate's plan switches its module itself (the static cache, or Module 2 for Gate C), even if it is off in the
      * settings (which are not saved); the A/B key does not count.
      */
@@ -184,12 +298,13 @@ object BenchSuite {
         if (isActive || FrameRecorder.isActive) return Component.translatable("mobium.bench.busy")
         if (Minecraft.getInstance().singleplayerServer == null) return Component.translatable("mobium.suite.singleplayer")
         BenchEnvironment.setupMismatch()?.let { return it }
-        BenchEnvironment.warnings(BenchEnvironment.snapshot()).forEach(::chat)
+        BenchEnvironment.warnings(BenchEnvironment.snapshot(), display = kind != Kind.BENCHMARK).forEach(::chat)
         stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
 
         steps.clear()
         steps += plan
         results.clear()
+        resultsMobium.clear()
         index = 0
         this.seconds = seconds
         this.kind = kind
@@ -208,6 +323,11 @@ object BenchSuite {
     @JvmStatic
     fun tick(minecraft: Minecraft) {
         if (state == State.IDLE) return
+        if (minecraft.level == null) {
+            // Left the world: stop, and put back what the plan changed.
+            finishPlan(aborted = true)
+            return
+        }
         val now = System.nanoTime()
         when (state) {
             State.BUILDING -> when {
@@ -238,7 +358,10 @@ object BenchSuite {
             }
             State.RECORDING -> if (!FrameRecorder.isActive) {
                 if (FrameRecorder.completedRuns > runsBefore) {
-                    FrameRecorder.lastResult?.let(results::add)
+                    FrameRecorder.lastResult?.let { result ->
+                        results += result
+                        resultsMobium += steps[index].mobium == true
+                    }
                     writeMedians()
                 }
                 index++
@@ -262,6 +385,12 @@ object BenchSuite {
         if (step.parts != null && step.parts != PartTransform.active) {
             PartTransform.setActive(step.parts)
             toggled = true
+        }
+        if (step.mobium != null) {
+            val cacheBefore = StaticCache.active
+            val partsBefore = PartTransform.active
+            AbToggle.set(!step.mobium, if (step.mobium) "benchmark: Mobium" else "benchmark: vanilla")
+            if (StaticCache.active != cacheBefore || PartTransform.active != partsBefore) toggled = true
         }
         val stage = step.stage ?: -1
         if (stage != ExpandPass.forcedStage) {
@@ -304,7 +433,7 @@ object BenchSuite {
     }
 
     private fun fail(message: Component) {
-        chat(Component.translatable("mobium.suite.failed", message))
+        chat(Component.translatable(if (kind == Kind.BENCHMARK) "mobium.benchmark.failed" else "mobium.suite.failed", message))
         finishPlan(aborted = true)
     }
 
@@ -316,10 +445,14 @@ object BenchSuite {
         if (kind != Kind.SUITE) {
             StaticCache.setActive(false)
             PartTransform.setActive(false)
+            if (kind == Kind.BENCHMARK) {
+                BenchOptions.restore(Minecraft.getInstance().options)
+                AbToggle.set(abOffBefore, "benchmark finished")
+            }
             restoreCache()
         }
         if (aborted) {
-            chat(Component.translatable("mobium.suite.stopped"))
+            chat(Component.translatable(if (kind == Kind.BENCHMARK) "mobium.benchmark.stopped" else "mobium.suite.stopped"))
             if (results.isEmpty()) return
         }
         report()
@@ -390,6 +523,60 @@ object BenchSuite {
     private fun gateCSetupD(medians: List<Medians>): Boolean =
         medians.any { "+iris" in it.setup && "+fa" in it.setup }
 
+    /**
+     * `/mobium benchmark`: the median frame time of [scene] with Mobium off and on, in ms, or null while one side has
+     * no run yet.
+     */
+    private fun benchmarkMs(scene: String): DoubleArray? {
+        var off = 0
+        var on = 0
+        for (i in results.indices) if (results[i].scene == scene) if (resultsMobium[i]) on++ else off++
+        if (off == 0 || on == 0) return null
+        val offMs = DoubleArray(off)
+        val onMs = DoubleArray(on)
+        off = 0
+        on = 0
+        for (i in results.indices) {
+            if (results[i].scene != scene) continue
+            if (resultsMobium[i]) onMs[on++] = results[i].summary.avgMs else offMs[off++] = results[i].summary.avgMs
+        }
+        return doubleArrayOf(FrameStats.median(offMs), FrameStats.median(onMs))
+    }
+
+    /** What a `/mobium benchmark` result depends on besides Mobium, as `# key,value` lines of its CSV. */
+    private fun appendBenchmarkLines(rows: StringBuilder) {
+        for (scene in BENCHMARK_SCENES) {
+            val ms = benchmarkMs(scene) ?: continue
+            rows.append("# ${scene}_off_ms,${fmt(ms[0], 4)}\n")
+            rows.append("# ${scene}_on_ms,${fmt(ms[1], 4)}\n")
+            if (ms[1] > 0.0) rows.append("# ${scene}_speedup,${fmt(ms[0] / ms[1], 3)}\n")
+        }
+        val options = Minecraft.getInstance().options
+        val capabilities = Capabilities.current
+        val environment = environment
+        rows.append("# order,off on on off\n")
+        rows.append("# seconds,$seconds\n")
+        rows.append("# cpu,${FrameRecorder.csv(DebugEntrySystemSpecs.getCpuInfo())}\n")
+        rows.append("# gpu,${FrameRecorder.csv(capabilities?.deviceName ?: "")}\n")
+        rows.append("# backend,${FrameRecorder.csv(capabilities?.backendName ?: "")}\n")
+        rows.append("# display,${FrameRecorder.csv(environment?.display ?: "")}\n")
+        rows.append("# resolution,${environment?.resolution ?: ""}\n")
+        rows.append("# power,${environment?.power ?: ""}\n")
+        rows.append("# power_profile,${FrameRecorder.csv(environment?.powerProfile ?: "")}\n")
+        val shaderPack = if (Compat.isLoaded(CompatMod.IRIS) && IrisCompat.isShaderPackInUse()) IrisCompat.shaderPackName() else ""
+        rows.append("# mods,${FrameRecorder.csv(Compat.describe())}\n")
+        rows.append("# shader_pack,${FrameRecorder.csv(shaderPack)}\n")
+        rows.append("# resource_packs,${FrameRecorder.csv(Minecraft.getInstance().resourcePackRepository.selectedIds.joinToString(" "))}\n")
+        rows.append("# graphics_preset,${options.graphicsPreset().get().serializedName}\n")
+        rows.append("# improved_transparency,${options.improvedTransparency().get()}\n")
+        rows.append("# render_distance,${BenchOptions.RENDER_DISTANCE}\n")
+        rows.append("# fov,${BenchOptions.FOV}\n")
+        for (note in benchmarkNotes) rows.append("# ").append(note).append('\n')
+        rows.append("# minecraft,${FrameRecorder.csv(SharedConstants.getCurrentVersion().name())}\n")
+        rows.append("# mobium,${FrameRecorder.csv(Compat.modVersion(Mobium.MOD_ID) ?: "")}\n")
+        rows.append("# loader,${Compat.LOADER}\n")
+    }
+
     /** Gate A's speed-up from the medians, or null while one of the two sides has no run yet. */
     private fun gateASpeedUp(medians: List<Medians>): Double? {
         val off = medians.firstOrNull { !it.setup.endsWith("+cache") }?.avgMs
@@ -429,6 +616,7 @@ object BenchSuite {
             rows.append("# gate_c_frame_with_over_without,${fmt(gate.frame, 3)}\n")
         }
         if (kind == Kind.STAGES) stagesRatio(medians())?.let { rows.append("# stages_vertex_over_compute,${fmt(it, 3)}\n") }
+        if (kind == Kind.BENCHMARK) appendBenchmarkLines(rows)
         rows.append("# build,${Mobium.BUILD}\n")
 
         return try {
@@ -445,6 +633,10 @@ object BenchSuite {
     }
 
     private fun report() {
+        if (kind == Kind.BENCHMARK) {
+            reportBenchmark()
+            return
+        }
         val medians = medians()
         for (median in medians) {
             chat(
@@ -510,6 +702,34 @@ object BenchSuite {
 
         writeMedians()?.let { chat(Component.translatable("mobium.suite.saved", it.toString())) }
     }
+
+    /** `/mobium benchmark`'s result in player words: FPS without and with Mobium per scene, and where the file is. */
+    private fun reportBenchmark() {
+        for (scene in BENCHMARK_SCENES) {
+            val ms = benchmarkMs(scene) ?: continue
+            if (ms[0] <= 0.0 || ms[1] <= 0.0) continue
+            val percent = (ms[0] / ms[1] - 1.0) * 100.0
+            val verdict = when {
+                kotlin.math.abs(percent) < BENCHMARK_NOISE_PERCENT -> Component.translatable("mobium.benchmark.same")
+                percent > 0.0 -> Component.translatable("mobium.benchmark.faster", fmt(percent, 0))
+                else -> Component.translatable("mobium.benchmark.slower", fmt(-percent, 0))
+            }
+            chat(
+                Component.translatable(
+                    "mobium.benchmark.result", Component.translatable("mobium.benchmark.scene.$scene"),
+                    fmt(1000.0 / ms[0], 0), fmt(1000.0 / ms[1], 0), verdict
+                )
+            )
+            Mobium.LOGGER.info("Benchmark {}: {} ms without Mobium, {} ms with it", scene, fmt(ms[0], 3), fmt(ms[1], 3))
+        }
+        val file = writeMedians() ?: return
+        val folder = Component.literal(file.fileName.toString()).withStyle(ChatFormatting.UNDERLINE)
+            .withStyle { it.withClickEvent(ClickEvent.OpenFile(file.parent)) }
+        chat(Component.translatable("mobium.benchmark.saved", folder, link("GitHub", ISSUE_URL), link("Discord", DISCORD_URL)))
+    }
+
+    private fun link(text: String, url: String): Component = Component.literal(text).withStyle(ChatFormatting.UNDERLINE)
+        .withStyle { it.withClickEvent(ClickEvent.OpenUrl(URI.create(url))) }
 
     private fun restoreCache() {
         config.cache.enabled = cacheConfigBefore

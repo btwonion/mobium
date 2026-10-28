@@ -174,8 +174,16 @@ val buildInfo by tasks.registering(WriteProperties::class) {
     destinationFile = buildInfoDir.map { it.file("mobium-build.properties") }
     property("commit", gitDescribe)
 }
+// The benchmark datapack ships inside the jar as a built-in data pack that players switch on under Create New World →
+// Data Packs (bench/BenchPack.kt); benchmark/mobium-bench stays the only copy.
+val benchPackDir = layout.buildDirectory.dir("generated/mobium-bench-pack")
+val benchPack by tasks.registering(Sync::class) {
+    from(rootDir.resolve("benchmark/mobium-bench"))
+    into(benchPackDir.map { it.dir("resourcepacks/mobium-bench") })
+}
 sourceSets.main {
     resources.srcDir(files(buildInfoDir).builtBy(buildInfo))
+    resources.srcDir(files(benchPackDir).builtBy(benchPack))
 }
 
 base {

@@ -48,6 +48,21 @@ How Mobium is measured, and the results. Every gate in `PLAN.md` (A–C) is deci
   (`parts/ExpandPass.kt`), alternating, in one scene (defaults: 60 s, 3 runs each, `mob_pen_live`; about 7 minutes),
   then prints the frame time with the vertex stage over compute's and writes `mobium-bench/stages-<timestamp>.csv`.
   Refused where vertex shaders cannot write storage buffers. Like the gates, it switches Module 2 on for the plan.
+- **`/mobium benchmark`** — the players' benchmark, with the release jar (README, *Benchmarks wanted*). The jar carries
+  `benchmark/mobium-bench` as the built-in data pack "Mobium Benchmark" (`bench/BenchPack.kt`, packaged by the build),
+  which is listed under Create New World → Data Packs and never switched on by itself, in new or existing worlds
+  (`docs/vanilla-notes.md` §17). In a classic superflat world with that pack (seed `mobium` as in *World* below; another
+  seed is warned about and recorded) the command builds `storage_room` and `mob_pen_live` and records each with all of
+  Mobium off, on, on and off (the A/B state, so the modules run as the player's settings allow), 30 s per run, about six
+  minutes. For the runs it sets render distance 12, FOV 70, entity distance 100 %, no frame cap and VSync off without
+  turning the graphics preset to Custom (`bench/BenchOptions.kt`), and puts them and the A/B state back at the end, on
+  `/mobium stop` and when the player leaves the world. It prints each scene's FPS without and with Mobium and the gain
+  in chat and writes `mobium-bench/benchmark-<timestamp>.csv`: the medians as in the suite files, then
+  `<scene>_off_ms`, `_on_ms` and `_speedup` (off over on), the CPU, GPU, backend, display, window size, power, mods,
+  shader pack, resource packs, graphics preset, whether the seed is `mobium`, each module's state and the build. It
+  warns about battery power and low-power profiles but not about the window size. It refuses outside a classic
+  superflat overworld, without the pack, and when neither module can run. In dev environments
+  `/mobium benchmark <seconds>` shortens the runs (`self_check.py --mode benchmark` uses 5 s).
 - **Setup names** get `+cache` while the static cache is active and `+parts` while Module 2 is (`+parts-vertex` when
   its expand pass runs in the vertex stage, since 0.2.0-beta2: without a shader pack where the GPU has it). Since M5 the cache is on by default, so a plain
   `/mobium suite` measures with it; switch Mobium off in the settings (or with the A/B key, the key right of P: `]` on US, `+` on German keyboards) for

@@ -54,6 +54,13 @@ class SceneBuilder {
         private const val QUIET_TICK_NANOS = 25_000_000L
 
         /**
+         * Whether the world has the datapack's function for [scene]. Read on the render thread before a plan starts,
+         * so that it can refuse at once; the server only replaces the function map on `/reload`.
+         */
+        fun hasScene(server: MinecraftServer, scene: String): Boolean =
+            server.functions.get(Identifier.fromNamespaceAndPath(NAMESPACE, scene)).isPresent
+
+        /**
          * A freshly built scene keeps the game busy for a while (section rebuilds, client light updates, server
          * lighting); measuring before that ends would penalise whichever run comes first.
          */

@@ -1,6 +1,6 @@
 {
     "pack": {
-        "description": "Mobium benchmark scenes",
+        "description": {"translate": "pack.mobium.benchmark.description", "fallback": "Mobium benchmark scenes"},
         "min_format": 121,
         "max_format": 121
     }

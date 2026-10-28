@@ -77,8 +77,11 @@ object BenchEnvironment {
         return Component.translatable("mobium.bench.wrong_setup", expected, actual)
     }
 
-    /** Conditions that make a run incomparable with the protocol; empty when everything matches. */
-    fun warnings(snapshot: Snapshot): List<Component> {
+    /**
+     * Conditions that make a run incomparable with the protocol; empty when everything matches. [display] false leaves
+     * out the window size, which `/mobium benchmark` only records: players measure on the screen they play on.
+     */
+    fun warnings(snapshot: Snapshot, display: Boolean = true): List<Component> {
         val warnings = ArrayList<Component>()
         setupMismatch()?.let(warnings::add)
         if (snapshot.power == "battery") warnings += Component.translatable("mobium.bench.on_battery")
@@ -86,7 +89,7 @@ object BenchEnvironment {
             warnings += Component.translatable("mobium.bench.low_power", snapshot.powerProfile)
         }
         val window = Minecraft.getInstance().window
-        if (window.width != PROTOCOL_WIDTH || window.height != PROTOCOL_HEIGHT) {
+        if (display && window.width != PROTOCOL_WIDTH || window.height != PROTOCOL_HEIGHT) {
             warnings += Component.translatable(
                 "mobium.bench.resolution", snapshot.resolution, "${PROTOCOL_WIDTH}x$PROTOCOL_HEIGHT", snapshot.display
             )
