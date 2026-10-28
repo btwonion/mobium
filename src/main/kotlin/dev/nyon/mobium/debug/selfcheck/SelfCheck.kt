@@ -1137,7 +1137,7 @@ object SelfCheck {
             scenes.ready.get() || scenes.missingPack.get()
         })
         if (scenes.missingPack.get() || !scenes.ready.get()) {
-            check("benchmark datapack has $scene", false, "copy benchmark/mobium-bench into the world (scripts/self_check.py does)")
+            check("benchmark datapack has $scene", false, "copy benchmark/mobium-bench into the world (benchmark/self_check.py does)")
             return false
         }
         yield(ticks(10 * TICKS_PER_SECOND))
