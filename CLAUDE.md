@@ -105,8 +105,9 @@ overlapping mods and failures) and reports exceptions to `core/Fallback`.
   `ExpandPass` runs `assets/mobium/shaders/expand_parts.comp` (raw GL 4.3, `gpu/gl/GlCompute`), which writes exactly
   the bytes the CPU path would have, Iris's extension included: compiled as a vertex shader drawn as points without a
   shader pack (Mesa's iris puts a compute dispatch in a batch of its own, a fixed cost per frame), as a compute
-  dispatch with one (`ExpandPass.stage`). `PartValidation` (dev) compares them byte for byte; any change to the
-  shader or the records must keep `--mode parts` at 0 differing vertices in both stages.
+  dispatch with one (`ExpandPass.stage`). `PartValidation` compares them byte for byte: every part in the dev
+  validation, the first parts of each shader path in normal play (`PartCheck`, which switches Module 2 off on a
+  difference); any change to the shader or the records must keep `--mode parts` at 0 differing vertices in both stages.
 
 ## Config and translations
 
