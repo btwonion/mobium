@@ -10,8 +10,11 @@ body:
         signs or mobs, then:
 
         1. Type `/mobium bench test 30` and wait until the result shows in chat.
-        2. Press the A/B key to switch Mobium off (right of P: `]` on US, `+` on German keyboards).
-        3. Type `/mobium bench test 30` again.
+        2. Press the A/B key to switch Mobium off (right of P: `]` on US, `+` on German keyboards), then run
+           `/mobium bench test 30` twice.
+        3. Press the A/B key again to switch Mobium back on, and run `/mobium bench test 30` once more.
+
+        On, off, off, on: so the game slowing down as it warms up favours neither.
 
         Chat notes about the resolution or the power profile are fine; the file records both.
   - type: textarea

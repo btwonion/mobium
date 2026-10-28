@@ -26,13 +26,14 @@ are on screen, the more Mobium gains; an empty field gets neither faster nor slo
 ### 📊 Benchmarks wanted
 
 These numbers come from one laptop. To find out how Mobium does on other hardware, we need your results, and a run
-takes two minutes:
+takes three minutes:
 
 1. Set Max Framerate to Unlimited and turn VSync off, then stand still somewhere with lots of chests, signs or mobs.
 2. Type `/mobium bench test 30` and wait until the result shows in chat.
 3. Press the A/B key to switch Mobium off (the key right of <kbd>P</kbd>: <kbd>]</kbd> on a US keyboard,
-   <kbd>+</kbd> on a German one), then type `/mobium bench test 30` again.
-4. Send us `mobium-bench/summary.csv` from your game folder: drop it in our
+   <kbd>+</kbd> on a German one), then run `/mobium bench test 30` twice.
+4. Press the A/B key again to switch Mobium back on, and run `/mobium bench test 30` once more.
+5. Send us `mobium-bench/summary.csv` from your game folder: drop it in our
    [Discord server](https://nyon.dev/discord) or attach it to a
    [benchmark report](https://github.com/btwonion/mobium/issues/new?template=benchmark.yml) on GitHub.
 
