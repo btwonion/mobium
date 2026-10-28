@@ -64,6 +64,9 @@ Read this first when picking the work up in a new session.
   (the build ids in this file and in `docs/benchmarks.md`, every `summary.csv`'s `build`, the release runs' head
   commits) no longer exist here: `grep ^<id> ../mobium-benchmarks/commit-map.txt` gives the current one. #22 (28 Oct
   2026) moved `self_check.py` from `scripts/` to `benchmark/`.
+- **Next: `0.2.0`, the first stable release** (Anton, 28 Oct 2026; `mod.beta=0` in `gradle.properties`, so the
+  version has no `-betaN`, Modrinth and CurseForge get it as stable and the changelog loses its beta line): what
+  0.2.0-beta2 has, plus fixes for whatever testers report; checklist in §10. `changelog.md` collects its notes.
 - **Then M7.** Minecraft 26.4 is in snapshots (`26.4-snapshot-1` on 22 Sep 2026, `26.4-snapshot-6` on 27 Oct 2026);
   Vulkan is to become its default backend there (*(verify)* in the snapshots), and Mobium is off on Vulkan, so the
   snapshot-tracking branch and `VkCompute` come first in M7.
@@ -975,6 +978,18 @@ benchmark numbers if performance changed.
       `release.yml`): "a shader" instead of "a compute shader", the beta2 round's Gate C numbers, and the known limit
       down to the 0.1 ms with few animated models.
 - [x] Run `release.yml` (manual dispatch on `main`; Anton): released on 27 Oct 2026 (run 40590266354).
+
+`0.2.0` (first stable release; `mod.beta=0`, Anton's choice on 28 Oct 2026):
+
+- [ ] `changelog.md` contains only 0.2.0's notes, one line of at most 120 characters per entry.
+- [ ] `README.md` without its *Beta.* note (merge right before `release.yml`: `readme-modrinth-sync.yml` publishes
+      every README change on `main` to Modrinth at once).
+- [ ] Self-check on both loaders with Module 2 on (regular and `--mode parts`: 0 differing vertices in both stages,
+      pictures identical).
+- [ ] Benchmark round A–D (`python3 benchmark/bench_round.py`) if rendering changed since 0.2.0-beta2, committed to
+      `docs/benchmarks.md`.
+- [ ] Anton's go for the release.
+- [ ] Run `release.yml` (manual dispatch on `main`; Anton).
 
 ---
 
