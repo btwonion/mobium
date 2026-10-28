@@ -35,10 +35,10 @@ import java.nio.ByteBuffer
 import kotlin.math.abs
 
 /**
- * Module 2, the GPU part transform (PLAN.md M6): a model part's cubes are not written vertex by vertex on the CPU;
- * [compile] reserves their vertices in the staged buffer instead and writes one part record and one record per cube,
- * and after the staged buffer's upload [ExpandPass] writes the vertices on the GPU, exactly as the CPU path would have
- * (`expand_parts.comp`, docs/vanilla-notes.md §16). Posing, the part walk and EMF's and ETF's hooks run as before;
+ * Module 2, the GPU part transform (docs/architecture.md): a model part's cubes are not written vertex by vertex on the
+ * CPU; [compile] reserves their vertices in the staged buffer instead and writes one part record and one record per
+ * cube, and after the staged buffer's upload [ExpandPass] writes the vertices on the GPU, exactly as the CPU path would
+ * have (`expand_parts.comp`, docs/vanilla-notes.md §16). Posing, the part walk and EMF's and ETF's hooks run as before;
  * vanilla's draws draw the vertices.
  *
  * Taken over: parts whose cubes are vanilla cubes (as vanilla or, with Sodium, as Sodium's cube path writes them) or

@@ -25,11 +25,11 @@ import net.minecraft.world.level.block.state.BlockState
 import java.util.IdentityHashMap
 
 /**
- * An entity row of Module 1's policy table (PLAN.md M5). Entities are extracted by vanilla every frame (render states
- * have no "unchanged" signal), so a rule compares the freshly extracted state with what it kept when the entity was
- * captured; while everything matches, the entity is drawn from the cache and vanilla's submit and tessellation are
- * skipped. Position (render state x/y/z, compared exactly) and light are compared by [StaticCache] for every rule.
- * Rules are asked per entity per frame, so [isStatic] and [same] must not allocate.
+ * An entity row of Module 1's policy table (docs/architecture.md). Entities are extracted by vanilla every frame
+ * (render states have no "unchanged" signal), so a rule compares the freshly extracted state with what it kept when the
+ * entity was captured; while everything matches, the entity is drawn from the cache and vanilla's submit and
+ * tessellation are skipped. Position (render state x/y/z, compared exactly) and light are compared by [StaticCache] for
+ * every rule. Rules are asked per entity per frame, so [isStatic] and [same] must not allocate.
  */
 abstract class EntityRule(key: String) : TypeRule(key) {
     /**

@@ -1,8 +1,8 @@
 package dev.nyon.mobium.bench
 
 /**
- * Gate C's numbers (PLAN.md M6), as Anton redefined the gate on 25 Oct 2026, from `mob_pen_live` with Module 2 off and
- * on in one session:
+ * Gate C's numbers (docs/benchmarks.md, *Gates*), as Anton redefined the gate on 25 Oct 2026, from `mob_pen_live` with
+ * Module 2 off and on in one session:
  *
  * - **[cpu]**: the entity CPU work of the frame, `prepare` + `shadow_prepare` (posing, tessellation and upload of the
  *   level's and Iris's shadow pass's prepare stages), without Module 2 over with it. Target at least [CPU_TARGET] in

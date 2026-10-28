@@ -28,7 +28,7 @@ data class Config(
  * @param enabled switches the module.
  * @param memoryBudgetMb is the memory the cached vertex data may use (it is held once on the GPU and once in system
  * memory); the farthest objects are evicted first above it.
- * @param types are the per-type switches (PLAN.md M5, `CachePolicy`).
+ * @param types are the per-type switches (docs/architecture.md, `CachePolicy`).
  */
 @Serializable
 data class CacheConfig(

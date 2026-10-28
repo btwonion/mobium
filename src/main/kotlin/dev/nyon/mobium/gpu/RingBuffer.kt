@@ -6,10 +6,10 @@ import com.mojang.renderpearl.api.commands.GpuFence
 import java.nio.ByteBuffer
 
 /**
- * Per-frame GPU data (Module 2's part records, M6) in [RingAllocator.FRAMES_IN_FLIGHT] buffers used round-robin. At
- * [beginFrame] the slot of three frames ago is reused once its fence says the GPU is done with it; [upload] places
- * data in the current slot and grows it by doubling when needed (copying what this frame already uploaded); [endFrame]
- * fences the slot. Render thread only, no allocation per upload unless the slot grows.
+ * Per-frame GPU data (meant for Module 2's part records; unused in 0.2.0) in [RingAllocator.FRAMES_IN_FLIGHT] buffers
+ * used round-robin. At [beginFrame] the slot of three frames ago is reused once its fence says the GPU is done with it;
+ * [upload] places data in the current slot and grows it by doubling when needed (copying what this frame already
+ * uploaded); [endFrame] fences the slot. Render thread only, no allocation per upload unless the slot grows.
  *
  * @param usage is ORed with `USAGE_COPY_SRC | USAGE_COPY_DST` (growing copies on the GPU).
  */

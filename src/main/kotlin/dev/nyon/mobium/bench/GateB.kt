@@ -1,8 +1,8 @@
 package dev.nyon.mobium.bench
 
 /**
- * Gate B's numbers (PLAN.md M5), as Anton defined the gate on 20 Oct 2026 after the first measurement failed on the GPU
- * cost of drawing the objects, which vanilla pays as well:
+ * Gate B's numbers (docs/benchmarks.md, *Gates*), as Anton defined the gate on 20 Oct 2026 after the first measurement
+ * failed on the GPU cost of drawing the objects, which vanilla pays as well:
  *
  * - **[cost]**, the gate: what 1,000 cached chests and 300 signs cost Mobium. `storage_room` with the cache and its
  *   draw calls skipped (the objects are not drawn, so the GPU has nothing to do for them), plus the CPU time those

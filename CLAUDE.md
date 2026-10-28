@@ -10,9 +10,10 @@ from GPU buffers instead of rebuilding them on the CPU every frame. One source t
 hides the Loom/ModDevGradle differences. Targets are declared in `settings.gradle.kts` (`26.3` × fabric/neoforge).
 The structure follows `btwonion/autodrop`; check it first when unsure how something is done.
 
-**Start with `PLAN.md`.** It is the build plan: work through its milestones in order, tick its checkboxes as tasks
-land, and treat its gates as hard stops. Its *Current state* section at the top says where the work stands and what to
-do next; keep it up to date at the end of every session.
+**Start with `PLAN.md`.** It is the plan of the work ahead: work through its milestones in order, tick its checkboxes
+as tasks land, and treat its gates as hard stops. Its *Current state* section at the top says where the work stands
+and what to do next; keep it up to date at the end of every session. How Mobium works today is in
+`docs/architecture.md`; keep it true when the code changes.
 
 ## Commands
 
@@ -67,8 +68,9 @@ screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`
 - **The one rule:** Mobium may change how geometry reaches the GPU, never what ends up on screen.
 - **You cannot see the game.** Every PR that touches rendering ends with a "How to verify" section for Anton: the
   Gradle task, the benchmark scene, the keys to press, and what correct and broken look like.
-- **Never guess the 26.3 API.** 26.x is unobfuscated; read the decompiled source and record findings in
-  `docs/vanilla-notes.md`. Plan entries marked *(verify)* are expectations, not facts.
+- **Never guess the Minecraft API.** 26.x is unobfuscated; read the decompiled source and record findings in
+  `docs/vanilla-notes.md` (a new section at the end; the code references its section numbers). Plan entries marked
+  *(verify)* are expectations, not facts.
 - **Vanilla first.** Every feature has a config switch, a per-type switch and a runtime fallback to the vanilla
   path. New hooks ship disabled until their screenshot tests pass.
 - **Must-have compatibility:** Iris shader packs and EMF/ETF with Fresh Animations. Never bypass `setupAnim`.
@@ -90,15 +92,16 @@ screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`
 
 ## Architecture
 
-See `PLAN.md` §5 (hook points, package map) and §6 (runtime fallback and compat behaviour), and
-`docs/vanilla-notes.md` for every vanilla, Sodium, Iris and EMF detail the code relies on. Every module asks
+`docs/architecture.md` describes both modules step by step, the core, the GPU layer, the package map and the design
+decisions; `docs/vanilla-notes.md` holds every vanilla, Sodium, Iris and EMF detail the code relies on (§10 is the
+hook table, §18 the Vulkan backend). Every module asks
 `core/ModuleStates` whether it may run (resolved by the pure `ModuleRules` from config, backend, compute, A/B key,
 overlapping mods and failures) and reports exceptions to `core/Fallback`.
 
 - **Module 1, static cache (`cache/`):** captures unchanged block entities and entities through vanilla's own submit
   and prepare (`Capture.kt`, in Iris's formats while a pack is on), keeps them in per-section buckets on the GPU
   (`gpu/Gpu.backend`, Renderpearl) and draws them at the end of `PreparedFrame.executeSolid`; `CachePolicy` and
-  `EntityPolicy` decide per type, `Invalidation`/`LightStamps` notice changes.
+  `EntityPolicy` decide per type and compare each object's inputs every frame, `LightStamps` notices light changes.
 - **Module 2, GPU part transform (`parts/`):** wraps `ModelPart.compile` and EMF's `EMFModelPart.compile`. A part
   whose cubes it knows (vanilla cubes, written as vanilla or as Sodium would; EMF's `EMFCube`) reserves its vertices in
   the staged builder and writes records (`PartBatch`, meshes in `MeshPool`); after `StagedVertexBuffer.upload()`
@@ -108,6 +111,22 @@ overlapping mods and failures) and reports exceptions to `core/Fallback`.
   dispatch with one (`ExpandPass.stage`). `PartValidation` compares them byte for byte: every part in the dev
   validation, the first parts of each shader path in normal play (`PartCheck`, which switches Module 2 off on a
   difference); any change to the shader or the records must keep `--mode parts` at 0 differing vertices in both stages.
+- **Backends:** both modules run on OpenGL only so far (`OffReason.BACKEND` on Vulkan); Vulkan support is `PLAN.md`
+  M7.
+
+## Dev environment
+
+- **Worktrees** lack the gitignored dev run folders. Copy `versions/26.3-fabric/run/` and `run/` (`options.txt`,
+  `config`, `saves`, `shaderpacks`, `resourcepacks`), `versions/26.3-fabric/build/bench-world` and
+  `versions/26.3-fabric/build/bench-packs` from the main checkout before running the self-check or the Prism script.
+- **Test assets** (gitignored): `shaderpacks/ComplementaryReimagined_r5.9.3.zip` and
+  `resourcepacks/FreshAnimations_v1.10.3.zip` in `versions/26.3-fabric/run/` and `run/`; the self-check uses them when
+  present.
+- **Known issue outside Mobium:** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
+  `CenterDepthSampler`, also with Mobium off (`self_check.py neoforge --mode iris-without-mobium`); the self-check
+  skips the shader pack there.
+- **Benchmark data** lives in `../mobium-benchmarks` (`btwonion/mobium-benchmarks`); `bench_round.py` pulls and pushes
+  it. Rebuild the Prism instances after code changes as `docs/benchmarks.md` (*Tools*) says.
 
 ## Config and translations
 
@@ -127,4 +146,5 @@ write both for `main`'s history. A benchmark build id from a branch commit is no
 `changelog.md` holds only the notes for the upcoming release; publishing and the Discord post read it. Keep it short
 (Anton, 28 Oct 2026): one line of at most 120 characters per entry, saying what changed for players, not how or why;
 numbers, causes and details go in the PR, `docs/benchmarks.md` or `docs/compat.md`. Releases run from the manually
-dispatched `release.yml` workflow (`./gradlew releaseMod`), only after the matching gate in `PLAN.md` has passed.
+dispatched `release.yml` workflow (`./gradlew releaseMod`), only after the matching gate in `PLAN.md` has passed;
+Anton runs it, never Claude Code. The checklist is `PLAN.md`'s *Release checklist*.

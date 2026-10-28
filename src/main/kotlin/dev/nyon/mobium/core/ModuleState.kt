@@ -3,7 +3,7 @@ package dev.nyon.mobium.core
 import dev.nyon.mobium.config.Config
 import dev.nyon.mobium.config.LodPreset
 
-/** Mobium's three modules (PLAN.md §1). [key] names them in logs, commands and translation keys. */
+/** Mobium's three modules (docs/architecture.md). [key] names them in logs, commands and translation keys. */
 enum class Module(val key: String) {
     STATIC_CACHE("static_cache"),
     PART_TRANSFORM("part_transform"),
@@ -37,13 +37,13 @@ enum class OffReason(val key: String) {
     /** A mod that does the same job is installed ([Compat.overlaps]). */
     OVERLAP("overlap"),
 
-    /** The module needs the OpenGL backend (Vulkan support comes in M7). */
+    /** The module needs the OpenGL backend (Vulkan support is PLAN.md M7). */
     BACKEND("backend"),
 
     /** The module needs compute shaders (OpenGL 4.3 with double precision in shaders). */
     NO_COMPUTE("no_compute"),
 
-    /** The module's code does not exist yet (Module 3: M7). */
+    /** The module's code does not exist yet (Module 3: PLAN.md, *Later*). */
     NOT_BUILT("not_built");
 
     val translationKey: String
