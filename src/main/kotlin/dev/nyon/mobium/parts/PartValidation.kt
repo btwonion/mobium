@@ -15,13 +15,14 @@ import org.lwjgl.system.MemoryUtil
 import java.util.Locale
 
 /**
- * Dev check of Module 2 (self-check and gametests, never in normal play): while [PartTransform.validating] is set,
- * every part Module 2 takes over is also compiled the vanilla way (the same `compile`, into a builder of the same
- * format, through the same sprite; Iris extends it as it would the staged one), and after the expand pass the GPU's
- * vertices are read back and compared with those byte for byte. Left out are the bytes the CPU path never writes, so
- * that they hold whatever the memory held before: byte 35, the normal's padding, and in Iris's format bytes 42 and 43,
- * the fourth short of `iris_Entity`, which Iris's Sodium serializer leaves alone (its per-vertex path writes 0, as the
- * expand pass does). Slow (a GPU read per staged buffer); render thread only.
+ * Compares Module 2's GPU vertices with the CPU's, for the parts [PartTransform] picks: every part while the dev
+ * validation runs ([PartTransform.validating]: self-check and gametests), a few per path in normal play ([PartCheck]).
+ * Such a part is also compiled the vanilla way (the same `compile`, into a builder of the same format, through the
+ * same sprite; Iris extends it as it would the staged one), and after the expand pass the GPU's vertices are read back
+ * and compared with those byte for byte. Left out are the bytes the CPU path never writes, so that they hold whatever
+ * the memory held before: byte 35, the normal's padding, and in Iris's format bytes 42 and 43, the fourth short of
+ * `iris_Entity`, which Iris's Sodium serializer leaves alone (its per-vertex path writes 0, as the expand pass does).
+ * Slow (a GPU read per staged buffer with compared parts); render thread only.
  */
 object PartValidation {
     private const val NORMAL_PADDING = 35
@@ -36,6 +37,12 @@ object PartValidation {
 
     /** Parts whose CPU compile wrote another number of vertices or another format than reserved. */
     var unmatchedParts = 0
+        private set
+
+    /** Differing vertices [check] wrote the CPU's bytes over, and those still differing when read again (stays 0). */
+    var repaired = 0L
+        private set
+    var unrepaired = 0L
         private set
 
     /** The first differences, one line each. */
@@ -64,6 +71,8 @@ object PartValidation {
         compared = 0
         mismatched = 0
         unmatchedParts = 0
+        repaired = 0
+        unrepaired = 0
         reports.clear()
         for (entry in entries) MemoryUtil.nmemFree(entry.expected)
         entries.clear()
@@ -102,6 +111,8 @@ object PartValidation {
                 reports += "part with ${mesh?.drawState()?.vertexCount() ?: 0} CPU vertices in $format, reserved $expectedVertices in $expectedFormat"
             }
             mesh?.close()
+            // Kept without bytes, so that [check] counts it for its staged buffer.
+            entries += last
             return
         }
         val size = expectedVertices.toLong() * last.vertexSize
@@ -111,45 +122,104 @@ object PartValidation {
         entries += Entry(last.staged, last.draw, last.firstVertex, last.vertexCount, last.vertexSize, copy)
     }
 
-    /** After [staged]'s expand pass: reads its vertex buffer back and compares every validated part of it. */
-    fun check(staged: StagedVertexBuffer, vertexBuffer: Int) {
-        val gpuBuffer = (staged as PartStaged).`mobium$vertexBuffer`() ?: return
-        val size = gpuBuffer.size()
-        if (size > readbackSize) {
-            if (readback != 0L) MemoryUtil.nmemFree(readback)
-            readback = MemoryUtil.nmemAlloc(size)
-            readbackSize = size
+    /** Differing vertices and parts the CPU wrote otherwise, found by the last [check]. */
+    var lastDiffering = 0L
+        private set
+    var lastUnmatched = 0
+        private set
+
+    /** Whether parts of [staged] wait for [check]. */
+    fun pending(staged: StagedVertexBuffer): Boolean {
+        for (i in 0 until entries.size) if (entries[i].staged === staged) return true
+        return false
+    }
+
+    /**
+     * After [staged]'s expand pass: reads back the span of its vertex buffer that holds compared parts and compares
+     * each part; with [repair], writes the CPU's bytes over a part whose vertices differ and reads it again, so that
+     * this frame draws the CPU's vertices. Sets [lastDiffering] and [lastUnmatched].
+     */
+    fun check(staged: StagedVertexBuffer, vertexBuffer: Int, repair: Boolean) {
+        lastDiffering = 0
+        lastUnmatched = 0
+        var start = Long.MAX_VALUE
+        var end = 0L
+        for (i in 0 until entries.size) {
+            val entry = entries[i]
+            if (entry.staged !== staged || entry.expected == 0L) continue
+            start = minOf(start, base(entry))
+            end = maxOf(end, base(entry) + entry.vertexCount.toLong() * entry.vertexSize)
         }
-        GlCompute.read(vertexBuffer, 0, size, readback)
+        if (end > start) {
+            if (PartCheck.forcedDifference) forceDifference(vertexBuffer, start)
+            if (end - start > readbackSize) {
+                if (readback != 0L) MemoryUtil.nmemFree(readback)
+                readback = MemoryUtil.nmemAlloc(end - start)
+                readbackSize = end - start
+            }
+            GlCompute.read(vertexBuffer, start, end - start, readback)
+        }
         val iterator = entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
             if (entry.staged !== staged) continue
             iterator.remove()
-            if (entry.expected == 0L) continue
-            val base = (entry.draw as PartDraw).`mobium$vertexOffset`().toLong() + entry.firstVertex.toLong() * entry.vertexSize
-            for (v in 0 until entry.vertexCount) {
-                val expected = entry.expected + v.toLong() * entry.vertexSize
-                val actual = readback + base + v.toLong() * entry.vertexSize
-                var differs = false
-                for (b in 0 until entry.vertexSize) {
-                    if (skipped(b, entry.vertexSize)) continue
-                    if (MemoryUtil.memGetByte(expected + b) != MemoryUtil.memGetByte(actual + b)) {
-                        differs = true
-                        break
-                    }
-                }
-                compared++
-                if (differs) {
-                    mismatched++
-                    if (reports.size < MAX_REPORTED) reports += describe(v, entry.vertexSize, expected, actual)
-                }
+            if (entry.expected == 0L) {
+                lastUnmatched++
+                continue
+            }
+            val base = base(entry)
+            val actual = readback + (base - start)
+            val differing = differing(entry, actual, report = true)
+            compared += entry.vertexCount
+            mismatched += differing
+            lastDiffering += differing
+            if (differing > 0 && repair) {
+                val bytes = entry.vertexCount.toLong() * entry.vertexSize
+                GlCompute.upload(vertexBuffer, base, bytes, entry.expected)
+                GlCompute.read(vertexBuffer, base, bytes, actual)
+                repaired += differing
+                unrepaired += differing(entry, actual, report = false)
             }
             MemoryUtil.nmemFree(entry.expected)
         }
     }
 
+    /** Where [entry]'s first vertex lies in its staged buffer's vertex buffer, in bytes. */
+    private fun base(entry: Entry): Long =
+        (entry.draw as PartDraw).`mobium$vertexOffset`().toLong() + entry.firstVertex.toLong() * entry.vertexSize
+
+    /** The vertices of [entry] that differ from those at [actual] (CPU against GPU); [report] describes the first. */
+    private fun differing(entry: Entry, actual: Long, report: Boolean): Long {
+        var count = 0L
+        for (v in 0 until entry.vertexCount) {
+            val expected = entry.expected + v.toLong() * entry.vertexSize
+            val vertex = actual + v.toLong() * entry.vertexSize
+            for (b in 0 until entry.vertexSize) {
+                if (skipped(b, entry.vertexSize)) continue
+                if (MemoryUtil.memGetByte(expected + b) != MemoryUtil.memGetByte(vertex + b)) {
+                    count++
+                    if (report && reports.size < MAX_REPORTED) reports += describe(v, entry.vertexSize, expected, vertex)
+                    break
+                }
+            }
+        }
+        return count
+    }
+
+    /** `/mobium debug gpucheck`: flips the lowest bit of the x position at [offset] on the GPU, as a driver might. */
+    private fun forceDifference(vertexBuffer: Int, offset: Long) {
+        PartCheck.forcedDifference = false
+        val scratch = MemoryUtil.nmemAlloc(4)
+        GlCompute.read(vertexBuffer, offset, 4, scratch)
+        MemoryUtil.memPutInt(scratch, MemoryUtil.memGetInt(scratch) xor 1)
+        GlCompute.upload(vertexBuffer, offset, 4, scratch)
+        MemoryUtil.nmemFree(scratch)
+    }
+
+    /** Drops the parts of [staged] that were not compared; per staged buffer per frame, allocates nothing if none. */
     fun discard(staged: StagedVertexBuffer) {
+        if (entries.isEmpty()) return
         val iterator = entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()

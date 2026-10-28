@@ -23,9 +23,15 @@ public class EmfModelPartMixin {
     private void mobium$compile(PoseStack.Pose pose, VertexConsumer buffer, int light, int overlay, int color, Operation<Void> original) {
         if (!PartTransform.compile(((ModelPartAccessor) this).mobium$cubes(), pose, buffer, light, overlay, color)) {
             original.call(pose, buffer, light, overlay, color);
-        } else if (PartTransform.validating) {
-            original.call(pose, PartTransform.validationConsumer(), light, overlay, color);
-            PartTransform.endValidation();
+        } else if (PartTransform.checkPart) {
+            // The part is compared with the CPU's vertices (PartCheck, or the dev validation): compiled once more.
+            try {
+                original.call(pose, PartTransform.validationConsumer(), light, overlay, color);
+            } catch (Throwable e) {
+                PartTransform.validationFailed(e);
+            } finally {
+                PartTransform.endValidation();
+            }
         }
     }
 }

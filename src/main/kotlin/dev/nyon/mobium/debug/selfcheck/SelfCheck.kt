@@ -36,6 +36,7 @@ import dev.nyon.mobium.debug.ModuleLines
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.debug.Validation
 import dev.nyon.mobium.parts.ExpandPass
+import dev.nyon.mobium.parts.PartCheck
 import dev.nyon.mobium.parts.PartTransform
 import dev.nyon.mobium.parts.PartValidation
 import jdk.jfr.Configuration
@@ -733,7 +734,8 @@ object SelfCheck {
     /**
      * `--mode parts`: Module 2 in `mob_pen_live` and `part_gallery` with the models of the four benchmark setups
      * (vanilla, with the first shader pack, with the pack and Fresh Animations, with Fresh Animations). In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
-     * byte), then Mobium's picture against vanilla's behind a pause screen, and two vanilla frames as the floor.
+     * byte), then Mobium's picture against vanilla's behind a pause screen, and two vanilla frames as the floor. Last,
+     * the GPU check of normal play ([gpuCheck]).
      */
     private fun parts(minecraft: Minecraft) = sequence {
         snapshotOptions(minecraft)
@@ -791,6 +793,7 @@ object SelfCheck {
             yield(ticks(10))
             yield(until("resource pack $fresh removed", 120) { minecraft.gui.overlay() == null })
         }
+        gpuCheck(minecraft)
         applyConfig(saved)
         minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
         yield(until("back on the title screen", 120) { minecraft.level == null && minecraft.gui.screen() is TitleScreen })
@@ -870,6 +873,37 @@ object SelfCheck {
             ExpandPass.forcedStage = -1
             comparePaused(minecraft, "parts: $name", "parts-${file}-${setup.replace(", ", "-").replace(' ', '-')}")
         }
+    }
+
+    /**
+     * Module 2's GPU check in normal play ([PartCheck]): it compared parts in the setups before without finding a
+     * difference. Then `/mobium debug gpucheck` makes it find one in the mob pens, as on a driver that rounds
+     * otherwise: the CPU's vertices replace the GPU's in that frame, Module 2 switches off with one toast, and
+     * Mobium's picture matches vanilla's. Last in `--mode parts`, since the module stays off until restart.
+     */
+    private suspend fun SequenceScope<Wait>.gpuCheck(minecraft: Minecraft) {
+        val line = debugLines().firstOrNull { "GPU check" in it } ?: "no F3 line"
+        check(
+            "GPU check compared parts in normal play, no difference",
+            PartCheck.checkedParts > 0 && PartCheck.failures == 0 && ModuleStates.isActive(Module.PART_TRANSFORM), line
+        )
+        if (!buildScene(minecraft, MOB_SCENE)) return
+        PartValidation.reset()
+        minecraft.player?.connection?.sendUnattendedCommand("mobium debug gpucheck", null)
+        yield(ticks(10))
+        val status = ModuleStates.status(Module.PART_TRANSFORM)
+        check(
+            "a GPU difference switches the part transform off",
+            status.reason == OffReason.FAILED && "differ" in status.detail && !PartTransform.active, status.describe()
+        )
+        check(
+            "the frame with the difference got the CPU's vertices",
+            PartValidation.repaired > 0 && PartValidation.unrepaired == 0L,
+            "${PartValidation.repaired} vertices repaired, ${PartValidation.unrepaired} still differing"
+        )
+        val toasts = failureToasts(minecraft.gui.toastManager())
+        check("one failure toast for the GPU difference", toasts == 1, "$toasts toasts")
+        comparePaused(minecraft, "parts: after a GPU difference", "parts-gpu-difference")
     }
 
     /** One second of [PartValidation] over everything Module 2 takes over. */

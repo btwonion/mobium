@@ -62,6 +62,27 @@ Since 0.2.0-beta2 the expand pass runs as a compute dispatch or in the vertex st
 differing vertices, 0.26–9.5M vertices compared each), NeoForge 17/17 (8 validations, 0 differing); pictures identical
 as above.
 
+### On players' GPUs (since 0.2.0-beta3)
+
+All of the above ran on one GPU and driver: an Intel Arc 140V on Mesa's iris (Fedora), plus Mesa's software renderer
+in CI. The shader is written to round as Java does (`precise` operations, square roots and divisions corrected in
+double precision), but another driver may still round or fuse an operation differently, and the dev validation never
+runs on players' machines. So Module 2 checks itself in normal play (`parts/PartCheck.kt`): for each path through the
+shader (the part's flags: matrix kind, sprite, Iris's format and face normal, normals from the CPU or trusted; Sodium's
+cube layout or vanilla's; compute or vertex stage) the first 64 parts, at most 8 per frame, are compiled on the CPU as
+well and compared byte for byte after the expand pass, as in the dev validation. Frames with such parts wait for the
+GPU once per staged buffer, which happens only in the first frames each path appears in. On a difference the compared
+parts get the CPU's bytes in that frame (the frame's other parts keep the GPU's, for that one frame), and Module 2
+switches off until restart with one toast; the log names the GPU, its driver and the first differing vertices. F3 `mobium:modules` shows how many parts the check compared
+(`Mobium GPU check: … parts in … paths compared, no difference`). `/mobium debug gpucheck` (dev only) makes the next
+comparison find a difference; `--mode parts` uses it to check the repair and the switch-off.
+
+| GPU and driver | OS | Result |
+| --- | --- | --- |
+| Intel Arc 140V, Mesa iris | Fedora 44 | No difference (dev validation and the check, both stages; 28 Oct 2026: 980 parts in 21 paths in `--mode parts` on Fabric, 542 in 13 on NeoForge) |
+| Mesa llvmpipe | CI (Ubuntu) | No difference (gametests) |
+| Nvidia, AMD, Intel on Windows, others | | Not tested yet; F3 `mobium:modules` and the log tell |
+
 ## Known differences and limits
 
 - Minecraft's Vulkan renderer (also with Vitrail, which runs OptiFine-format shader packs on it): both modules need the
@@ -93,7 +114,8 @@ as above.
   models, which looked 1.07–1.14× slower across sessions in the beta1 round, are 1.19× faster with Module 2 in the same
   session. With a shader pack it stays a compute dispatch: faster there in the dev client, equal at 1920×1080.
   `-Dmobium.parts.stage=compute` or `vertex` in the Java arguments picks one for comparisons and bug reports; both
-  write the same bytes (`--mode parts` validates both). Other GPUs and drivers are not measured yet.
+  write the same bytes (`--mode parts` validates both). Other GPUs and drivers are not measured yet; on them the
+  GPU check above compares the vertices.
 - Iris counts vertices written one by one per quad; a Sodium push right after such vertices loses one from its count
   and extends the following quads from the wrong vertices (vanilla with Iris and Sodium, not Mobium). With Module 2
   both kinds of cube are expanded on the GPU, so that mix no longer happens; where it happened before, the picture

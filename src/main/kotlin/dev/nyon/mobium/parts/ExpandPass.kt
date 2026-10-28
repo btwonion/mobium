@@ -66,9 +66,15 @@ object ExpandPass {
         else -> "compute (vertex shaders cannot write storage buffers on this GPU)"
     }
 
+    /** The stage of the last pass, or -1 before the first ([PartCheck] samples parts per stage). */
+    @JvmField
+    var lastStage = -1
+
     /** Name of [stage], for F3 and the log. */
     val stageName: String
-        get() = if (stage == STAGE_VERTEX) "vertex stage" else "compute"
+        get() = stageName(stage)
+
+    fun stageName(stage: Int): String = if (stage == STAGE_VERTEX) "vertex stage" else "compute"
 
     private var computeProgram = 0
     private var vertexProgram = 0
@@ -99,6 +105,7 @@ object ExpandPass {
         val profiling = ExpandProfile.enabled
         var lap = if (profiling) System.nanoTime() else 0L
         val stage = stage
+        lastStage = stage
         uploadMeshes()
 
         val cubeBytes = batch.cubeCount.toLong() * PartBatch.CUBE_BYTES

@@ -86,6 +86,7 @@
     "mobium.debug.validate_identical": "Validation: identical (%s). Pictures: %s-*.png",
     "mobium.debug.validate_different": "Validation: the pictures differ (%s). Pictures: %s-*.png",
     "mobium.debug.unavailable": "Only available in a development environment, and not while a validation runs",
+    "mobium.debug.gpucheck": "GPU check: the next part compared differs by one bit on the GPU",
     "mobium.settings.type.chests": "Chests",
     "mobium.settings.type.chests.tooltip": "Chests, trapped chests, ender chests and shulker boxes, while closed",
     "mobium.settings.type.signs": "Signs",

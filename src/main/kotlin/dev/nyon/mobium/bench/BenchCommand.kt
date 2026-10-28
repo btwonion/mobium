@@ -9,6 +9,7 @@ import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.Fallback
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.debug.Validation
+import dev.nyon.mobium.parts.PartCheck
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 
@@ -129,7 +130,8 @@ object BenchCommand {
 
     /**
      * Dev environments only: `/mobium debug fail <module>` throws inside the module's fallback path, which must switch
-     * the module off with one toast (PLAN.md M4), and `/mobium debug validate` requests a validation frame.
+     * the module off with one toast (PLAN.md M4), `/mobium debug validate` requests a validation frame, and
+     * `/mobium debug gpucheck` makes Module 2's GPU check find a difference, as on a driver that rounds otherwise.
      */
     private fun <S> debug(): LiteralArgumentBuilder<S> = LiteralArgumentBuilder.literal<S>("debug")
         .then(
@@ -153,6 +155,11 @@ object BenchCommand {
         )
         .then(LiteralArgumentBuilder.literal<S>("validate").executes {
             chat(Component.translatable(if (Validation.request()) "mobium.debug.validate" else "mobium.debug.unavailable"))
+            1
+        })
+        .then(LiteralArgumentBuilder.literal<S>("gpucheck").executes {
+            PartCheck.forceDifference()
+            chat(Component.translatable("mobium.debug.gpucheck"))
             1
         })
 
