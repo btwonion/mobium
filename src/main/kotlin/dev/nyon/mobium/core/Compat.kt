@@ -35,7 +35,19 @@ enum class OverlappingMod(val modId: String, val displayName: String, val module
     )
 }
 
-/** Detects the installed compat and overlapping mods once at startup. */
+/**
+ * Mods that hook the same rendering paths as Mobium in a way not tested with it; while one is installed, the modules
+ * it may break take the vanilla path until a test shows otherwise (docs/compat.md).
+ */
+enum class UntestedMod(val modId: String, val displayName: String, val modules: Set<Module>) {
+    /**
+     * Vitrail draws OptiFine-format shader packs on the Vulkan renderer and hooks block entity and entity submission,
+     * `StagedVertexBuffer` and `BufferBuilder` with an entity vertex layout of its own (docs/vanilla-notes.md §22).
+     */
+    VITRAIL("vitrail", "Vitrail", setOf(Module.STATIC_CACHE, Module.PART_TRANSFORM))
+}
+
+/** Detects the installed compat, overlapping and untested mods once at startup. */
 object Compat {
     /** The loader this jar was built for. */
     /*? if fabric {*/
@@ -46,12 +58,15 @@ object Compat {
 
     private val versions = HashMap<CompatMod, String>()
     private val overlapping = ArrayList<OverlappingMod>()
+    private val untestedMods = ArrayList<UntestedMod>()
 
     fun detect() {
         versions.clear()
         CompatMod.entries.forEach { mod -> modVersion(mod.modId)?.let { versions[mod] = it } }
         overlapping.clear()
         OverlappingMod.entries.filterTo(overlapping) { modVersion(it.modId) != null }
+        untestedMods.clear()
+        UntestedMod.entries.filterTo(untestedMods) { modVersion(it.modId) != null }
     }
 
     fun isLoaded(mod: CompatMod): Boolean = mod in versions
@@ -63,9 +78,17 @@ object Compat {
         return result
     }
 
+    /** Per module, the first installed mod that is untested with it. */
+    fun untested(): Map<Module, String> {
+        val result = HashMap<Module, String>()
+        for (mod in untestedMods) for (module in mod.modules) result.putIfAbsent(module, mod.displayName)
+        return result
+    }
+
     fun describe(): String {
         val parts = CompatMod.entries.filter(::isLoaded).map { "${it.displayName} ${versions[it]}" } +
-            overlapping.map { "${it.displayName} (overlaps ${it.modules.joinToString { module -> module.key }})" }
+            overlapping.map { "${it.displayName} (overlaps ${it.modules.joinToString { module -> module.key }})" } +
+            untestedMods.map { "${it.displayName} (untested with ${it.modules.joinToString { module -> module.key }})" }
         return if (parts.isEmpty()) "none" else parts.joinToString()
     }
 

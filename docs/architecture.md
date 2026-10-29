@@ -14,7 +14,9 @@ switches between Mobium's path and vanilla's, never between two pictures.
 | 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written | `parts/` | On by default where the GPU has OpenGL 4.3 compute with double precision |
 | 3 · Animation LOD | Far or tiny-on-screen mobs reuse last frame's pose | — | Not built; its config and settings exist (`PLAN.md`) |
 
-Both modules need the OpenGL backend in 0.2.0; on Minecraft's Vulkan backend they stay off (`PLAN.md`, *M7*).
+The static cache runs on OpenGL and on Minecraft's Vulkan backend (since M7 step 3; 0.2.1 and older need OpenGL);
+Module 2 needs OpenGL until its Vulkan dispatch exists (`PLAN.md`, *M7*). While Vitrail is installed both stay off
+(`OffReason.UNTESTED`).
 
 - **Must-have compatibility:** Iris shader packs, and EMF/ETF including Fresh Animations. Never bypass `setupAnim`.
 - **Coexists with:** Sodium 0.9, Entity Culling, Mod Menu. Mods that do the same job (Enhanced Block Entities,
@@ -156,9 +158,10 @@ glint, outline and the breaking overlay (other formats or consumers), other cube
 ## Core
 
 - **Module states** (`core/ModuleState.kt`, `core/ModuleStates.kt`). The pure, unit-tested `ModuleRules` resolve each
-  module from the config, the A/B key, overlapping mods, failures, the backend and compute support, with one
-  `OffReason` when it is off (`failed`, `global_switch`, `ab_toggle`, `config`, `overlap`, `backend`, `no_compute`,
-  `not_built`). `ModuleStates` re-resolves on every change and logs each transition; modules ask `isActive()` per frame.
+  module from the config, the A/B key, overlapping and untested mods, failures, the backend and compute support, with
+  one `OffReason` when it is off (`failed`, `global_switch`, `ab_toggle`, `config`, `overlap`, `untested`, `backend`,
+  `no_compute`, `not_built`). `ModuleStates` re-resolves on every change and logs each transition; modules ask
+  `isActive()` per frame.
 - **Fallback ladder** (`core/Fallback.kt`). Per submit: anything unknown (a wrapped consumer, another format, a cube
   class Mobium does not know) takes vanilla's path. Per type: a type that fails 3 times stays vanilla. Per module: an
   exception or GPU error switches the module off for the session, with one log line and one toast. The pure

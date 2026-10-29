@@ -1,5 +1,6 @@
 package dev.nyon.mobium.core
 
+import dev.nyon.mobium.config.CacheConfig
 import dev.nyon.mobium.config.Config
 import dev.nyon.mobium.config.LodConfig
 import dev.nyon.mobium.config.LodPreset
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test
 
 class ModuleRulesTest {
     private val defaults = Config()
+    private val allOn = Config(lod = LodConfig(preset = LodPreset.SUBTLE))
     private val openGl = ModuleEnvironment(GraphicsBackend.OPENGL, compute = true, shaderPack = false, abOff = false)
 
     private fun reason(module: Module, config: Config = defaults, environment: ModuleEnvironment = openGl) =
@@ -63,9 +65,34 @@ class ModuleRulesTest {
     }
 
     @Test
-    fun `Vulkan and missing compute keep modules on vanilla`() {
-        assertEquals(OffReason.BACKEND, reason(Module.STATIC_CACHE, environment = openGl.copy(backend = GraphicsBackend.VULKAN)))
-        assertEquals(OffReason.BACKEND, reason(Module.STATIC_CACHE, environment = openGl.copy(backend = null)))
+    fun `an untested mod keeps its modules on vanilla, after an overlap and before the backend`() {
+        val vitrail = openGl.copy(
+            backend = GraphicsBackend.VULKAN,
+            untested = mapOf(Module.STATIC_CACHE to "Vitrail", Module.PART_TRANSFORM to "Vitrail")
+        )
+        val status = ModuleRules.resolve(Module.STATIC_CACHE, defaults, vitrail)
+        assertEquals(OffReason.UNTESTED, status.reason)
+        assertEquals("Vitrail", status.detail)
+        assertEquals(OffReason.UNTESTED, reason(Module.PART_TRANSFORM, environment = vitrail))
+        assertEquals(OffReason.OVERLAP, reason(Module.STATIC_CACHE, environment = vitrail.copy(overlaps = mapOf(Module.STATIC_CACHE to "Vanillate"))))
+        assertEquals(OffReason.CONFIG, reason(Module.STATIC_CACHE, Config(cache = CacheConfig(enabled = false)), vitrail))
+    }
+
+    @Test
+    fun `the static cache runs on OpenGL and Vulkan, Module 2 on OpenGL only so far`() {
+        val vulkan = openGl.copy(backend = GraphicsBackend.VULKAN)
+        assertNull(reason(Module.STATIC_CACHE, environment = vulkan))
+        assertEquals(OffReason.BACKEND, reason(Module.PART_TRANSFORM, environment = vulkan))
+        assertEquals("vulkan", ModuleRules.resolve(Module.PART_TRANSFORM, Config(), vulkan).detail)
+        assertEquals(OffReason.NOT_BUILT, reason(Module.ANIMATION_LOD, allOn, vulkan))
+    }
+
+    @Test
+    fun `other backends, no device yet and missing compute keep modules on vanilla`() {
+        for (module in Module.entries) {
+            assertEquals(OffReason.BACKEND, reason(module, allOn, openGl.copy(backend = GraphicsBackend.OTHER)))
+            assertEquals(OffReason.BACKEND, reason(module, allOn, openGl.copy(backend = null)))
+        }
         assertEquals(OffReason.NO_COMPUTE, reason(Module.PART_TRANSFORM, environment = openGl.copy(compute = false)))
     }
 

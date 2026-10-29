@@ -87,10 +87,13 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
 
 ## Known differences and limits
 
-- Minecraft's Vulkan renderer (also with Vitrail, which runs OptiFine-format shader packs on it): both modules need the
-  OpenGL backend and stay off (F3 `mobium:modules`: `backend`), so the game draws everything itself. The rule is
-  unit-tested (`ModuleRulesTest`); Mobium has not been started on Vulkan in game yet. What the backend lacks for
-  Module 2 is in `docs/vanilla-notes.md` §18, the plan in `PLAN.md` (M7).
+- Minecraft's Vulkan renderer: in 0.2.1 and older both modules need OpenGL and stay off (F3 `mobium:modules`:
+  `backend`). Since M7 step 3 (not released yet) the static cache runs on Vulkan too, checked in game on 29 Oct 2026
+  (both loaders, Intel Arc 140V with Mesa's ANV: pictures identical to vanilla, no validation-layer messages from
+  Mobium; `docs/vanilla-notes.md` §22); Module 2 still needs OpenGL (`PLAN.md`, M7). Iris 1.11.7 does not start on
+  Vulkan at all (§21).
+- Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): hooks the same places as Mobium and
+  is untested with it, so both modules stay off while it is installed (F3: `untested: Vitrail`).
 - Text drawn with a resource pack's antialiased (TrueType) font: vanilla draws a sign's glyphs in submission order
   among all solid-phase text; overlapping half-transparent glyph edges of the 8× glow-ink outline could blend in a
   different order. Not seen with the default font, whose glyphs are fully opaque or fully transparent.

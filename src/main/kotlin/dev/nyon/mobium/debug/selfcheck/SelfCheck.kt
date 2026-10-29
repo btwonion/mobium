@@ -197,6 +197,9 @@ object SelfCheck {
                 else -> "listening, duplicate message limit ${System.getenv("VK_LAYER_DUPLICATE_MESSAGE_LIMIT") ?: "10 (the layer's default)"}"
             }
             check("Vulkan validation layer", VulkanValidation.installed && VulkanValidation.layerPresent, detail)
+            if (VulkanValidation.installed) {
+                check("Vulkan validation check catches a message from Mobium's code (probe)", VulkanValidation.probe())
+            }
         }
     }
 

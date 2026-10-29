@@ -113,8 +113,8 @@ overlapping mods and failures) and reports exceptions to `core/Fallback`.
   dispatch with one (`ExpandPass.stage`). `PartValidation` compares them byte for byte: every part in the dev
   validation, the first parts of each shader path in normal play (`PartCheck`, which switches Module 2 off on a
   difference); any change to the shader or the records must keep `--mode parts` at 0 differing vertices in both stages.
-- **Backends:** both modules run on OpenGL only so far (`OffReason.BACKEND` on Vulkan); Vulkan support is `PLAN.md`
-  M7.
+- **Backends:** the static cache runs on OpenGL and Vulkan, Module 2 on OpenGL only so far (`OffReason.BACKEND` on
+  Vulkan, `ModuleRules.runsOn`); Module 2 on Vulkan is `PLAN.md` M7.
 
 ## Dev environment
 
