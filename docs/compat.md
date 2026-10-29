@@ -81,7 +81,9 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
 | --- | --- | --- |
 | Intel Arc 140V, Mesa iris | Fedora 44 | No difference (dev validation and the check, both stages; 28 Oct 2026: 980 parts in 21 paths in `--mode parts` on Fabric, 542 in 13 on NeoForge) |
 | Mesa llvmpipe | CI (Ubuntu) | No difference (gametests) |
-| Nvidia, AMD, Intel on Windows, others | | Not tested yet; F3 `mobium:modules` and the log tell |
+| Nvidia GeForce RTX 4070 Ti, driver not recorded | Not recorded | No difference: both runs with Mobium on in each scene of `/mobium benchmark` recorded `+parts-vertex`, so the check switched nothing off (vertex stage, vanilla cubes, no shader pack; [#32](https://github.com/btwonion/mobium/issues/32), 28 Oct 2026) |
+| Nvidia GeForce RTX 4070 Laptop GPU, driver not recorded | Linux | No difference, as above ([#31](https://github.com/btwonion/mobium/issues/31), 28 Oct 2026) |
+| AMD, Intel on Windows, others; Nvidia with Sodium or a shader pack | | Not tested yet; F3 `mobium:modules` and the log tell |
 
 ## Known differences and limits
 
