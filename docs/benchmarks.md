@@ -1,9 +1,10 @@
 # Benchmarks
 
-How Mobium is measured, and what it measured for 0.2.0. Every gate in `PLAN.md` is decided with the numbers on this
-page. Raw data (every run's CSV, the suite and gate medians) is in
-[btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks), one folder per round; *Earlier rounds*
-at the end lists them, and the round-by-round write-ups up to 0.2.0 are in `git show dd7253f:docs/benchmarks.md`.
+How Mobium is measured, and what it measured for 0.2.0, on the development laptop and on players' machines (*Players'
+results*). Every gate in `PLAN.md` is decided with the numbers on this page. Raw data (every run's CSV, the suite and
+gate medians) is in [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks), one folder per round
+and players' files in `players/`; *Earlier rounds* at the end lists the rounds, and the round-by-round write-ups up to
+0.2.0 are in `git show dd7253f:docs/benchmarks.md`.
 Build ids from before 27 Oct 2026 predate a rewrite of this repository's history: `grep ^<id>
 ../mobium-benchmarks/commit-map.txt` gives the current commit.
 
@@ -290,6 +291,33 @@ sessions follow the GPU clock more than anything else (*Findings*), so a speed-u
 
 **The README's table** comes from these numbers: `storage_room` 300 → 586 FPS (setup A, 19 and 20 Oct 2026), the
 three mob pen rows from the `/mobium gatec` table above (A, C, D).
+
+## Players' results
+
+`/mobium benchmark` files players sent (issue form, label `benchmark`; Discord), newest first. Each is one session:
+Mobium off, on, on and off, 30 s per run, the median of the two runs in each state; the gain is the frame time off
+over on (`<scene>_speedup`). Raw files:
+[`players/`](https://github.com/btwonion/mobium-benchmarks/tree/main/players/).
+
+| File | Machine | `storage_room` off → on | `mob_pen_live` off → on |
+| --- | --- | --- | --- |
+| [#32](https://github.com/btwonion/mobium/issues/32), 28 Oct 2026 | AMD Ryzen 7 7800X3D, Nvidia GeForce RTX 4070 Ti; desktop, 2560×1384 window, Fancy, Mod Menu | 248 → 2,773 FPS (4.04 → 0.36 ms), **11.2×** | 236 → 713 FPS (4.24 → 1.40 ms), **3.02×** |
+| [#31](https://github.com/btwonion/mobium/issues/31), 28 Oct 2026 | Intel Core i7-13700HX, Nvidia GeForce RTX 4070 Laptop GPU; Lenovo Legion Pro 5 16IRX8 on mains, `balanced` profile, 2560×1515 window, Custom, no other mods | 111 → 252 FPS (9.05 → 3.96 ms), **2.28×** | 99 → 240 FPS (10.07 → 4.16 ms), **2.42×** |
+
+Both ran 0.2.0 on Fabric (build `dd7253f`) without Sodium (setup `vanilla`), on OpenGL, without a shader pack or
+resource packs, seed `mobium`, both modules active and Module 2's expand pass in the vertex stage. 1% lows: #32 164 →
+685 and 169 → 370 FPS, #31 63 → 145 and 51 → 112 FPS. Without Sodium these frames do not compare with *Results for
+0.2.0*. Module 2's check found no difference on either GPU (`docs/compat.md`, *On players' GPUs*).
+
+- **On these Nvidia GPUs the frame gains what the CPU saves.** In `mob_pen_live` `prepare` fell by 2.90 ms on #32 and
+  the frame by 2.83 ms, on #31 by 5.77 and 5.91 ms; on the Arc 140V the frame follows the clock that CPU and GPU share
+  (*Gate C's redefinitions*, *Frames between sessions follow the GPU clock*).
+- **`storage_room`'s gain is the vanilla frame over what the cache leaves.** The cache takes almost all of the CPU
+  work (`prepare` 2.97 → 0.003 ms on #32, 5.84 → 0.015 ms on #31), so the gain depends on the rest of the frame: 0.36
+  ms on #32, 3.96 ms on #31. Neither file has a `control` run to split that rest.
+- **The files name neither the OS nor the driver:** they record the GPU's renderer string but not `GL_VERSION`, and
+  the power state only from Linux sysfs (`bench/MachineState.kt`). So #31 ran Linux; #32's empty power fields mean
+  Windows or a Linux desktop without a mains supply or platform profile.
 
 ## Gates
 

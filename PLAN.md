@@ -11,7 +11,7 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
 
 ---
 
-## Current state (updated 28 Oct 2026)
+## Current state (updated 29 Oct 2026)
 
 - **0.2.0, the first stable release, is out** (28 Oct 2026, `release.yml` run 40754122974 on `main` at `dd7253f`;
   GitHub releases `v0.2.0-26.3+fabric` / `+neoforge`): the static cache and the GPU part transform, Module 2's check
@@ -21,10 +21,13 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
   next version is Anton's call before the next release.
 - **Gates passed:** A 1.53× (`storage_room`, chest prototype), B 1.17× (what the cached objects cost over `control`),
   C (D's entity CPU work 1.90× lower, frames 1.18× faster in D and 1.25× in C); `docs/benchmarks.md` *Gates*.
-- **Tested on one machine only:** Anton's ThinkPad X9-14 (Intel Arc 140V, Mesa's iris, Fedora 44) plus Mesa's
-  llvmpipe in CI. Results from other GPUs come from players' `/mobium benchmark` files (README *Benchmarks wanted*,
-  issue form `.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`) and from F3 `mobium:modules` lines; add them to
-  `docs/compat.md` (*On players' GPUs*) and `docs/benchmarks.md`.
+- **Tested by us on one machine:** Anton's ThinkPad X9-14 (Intel Arc 140V, Mesa's iris, Fedora 44) plus Mesa's
+  llvmpipe in CI. **Players' results:** two Nvidia GPUs so far (RTX 4070 Ti, RTX 4070 Laptop GPU on Linux; #31 and
+  #32, 28 Oct 2026, both without Sodium): `storage_room` 2.28× and 11.2×, `mob_pen_live` 2.42× and 3.02×, and Module
+  2's check found no difference. Results from other GPUs come from players' `/mobium benchmark` files (README
+  *Benchmarks wanted*, issue form `.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`) and from F3
+  `mobium:modules` lines; add them to `docs/compat.md` (*On players' GPUs*), `docs/benchmarks.md` (*Players' results*)
+  and the file to `players/` in `../mobium-benchmarks`. The file records neither the OS nor the driver.
 - **Modrinth:** the project was not public on 28 Oct 2026 (the API answered 404 for `8i5oedw8`); Anton checks.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL on Mesa's EGL and software rendering
   (`.github/workflows/build-commit.yml`; `release.yml` does the same); llvmpipe has compute and double precision, so
