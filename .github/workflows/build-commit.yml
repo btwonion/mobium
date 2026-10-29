@@ -90,21 +90,26 @@ jobs:
       # The gametests a second time on Minecraft's Vulkan backend, on Mesa's lavapipe (software Vulkan, with
       # shaderFloat64): the static cache and Module 2 with its byte-for-byte validation (PLAN.md M7, Gate D). Dev runs on
       # Vulkan leave Iris out (it stops the game there) and run Module 2 there (-Dmobium.parts.vulkan).
+      # The loader is pointed at lavapipe's manifest alone; its file name differs between distributions.
       - name: Install Mesa's software Vulkan
         if: matrix.loader == 'fabric'
-        run: sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+        run: |
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+          ls /usr/share/vulkan/icd.d/
+          icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n 1)
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
       - name: Show lavapipe
         if: matrix.loader == 'fabric'
-        env:
-          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-        run: vulkaninfo --summary || true
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" vulkaninfo --summary || true
+      # The same SDL and Mesa settings as the OpenGL run: should Vulkan not start, Minecraft falls back to OpenGL,
+      # which then starts too, and StartupGameTest fails at once instead of the game waiting until the timeout.
       - name: Client gametests on Vulkan (lavapipe)
         if: matrix.loader == 'fabric'
         timeout-minutes: 25
         env:
-          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          SDL_VIDEO_FORCE_EGL: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: >-
           xvfb-run -a -s "-screen 0 1920x1080x24"
           ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:runClientGameTest -Pmobium.graphicsBackend=vulkan --stacktrace
