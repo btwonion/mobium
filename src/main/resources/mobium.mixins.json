@@ -23,6 +23,7 @@
         "EntityRenderDispatcherMixin",
         "EntityRenderStateMixin",
         "FeatureRenderDispatcherAccessor",
+        "FrontendGpuDeviceAccessor",
         "ItemStackRenderStateAccessor",
         "LayerRenderStateAccessor",
         "LevelExtractorMixin",

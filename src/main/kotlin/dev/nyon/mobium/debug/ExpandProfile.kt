@@ -1,16 +1,19 @@
 package dev.nyon.mobium.debug
 
-import org.lwjgl.opengl.GL15C
-import org.lwjgl.opengl.GL33C
+import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.renderpearl.api.commands.GpuQueryPool
 
 /**
  * Dev measurement for Module 2's fixed cost per frame (self-check `--mode expand-cost`): CPU time of each step of
  * `StagedVertexBuffer.upload()` and the expand pass, summed over all staged buffers until [reset]; the GPU time of
- * each frame from GL timestamps at its start (`runTick`) and right before its submit; and the GPU time of each expand
+ * each frame from timestamps at its start (`runTick`) and right before its submit; and the GPU time of each expand
  * pass from timestamps right before it and after its barrier, which for a compute dispatch on a driver that records it
- * in a batch of its own includes the hand-over between the batches. Timestamps are read [FRAMES_IN_FLIGHT] frames
- * later, so that nothing waits for the GPU. Only runs while [enabled]; otherwise the callers skip it. Render thread
- * only, OpenGL only.
+ * in a batch of its own includes the hand-over between the batches. Timestamps are Renderpearl's
+ * (`GpuDevice.createTimestampQueryPool`, `CommandEncoder.writeTimestamp`: `glQueryCounter` on OpenGL,
+ * `vkCmdWriteTimestamp2` on Vulkan, whose ticks `DeviceInfo.timestampPeriod` turns into nanoseconds; §21) and are read
+ * [FRAMES_IN_FLIGHT] frames later, so that nothing waits for the GPU. Only runs while [enabled]; otherwise the callers
+ * skip it. Reading a result allocates (Renderpearl returns `OptionalLong`s), a few objects per frame while measuring.
+ * Render thread only.
  */
 object ExpandProfile {
     /** Vanilla's `upload()` of every staged buffer, Module 2's copy without the reserved bytes included. */
@@ -62,8 +65,9 @@ object ExpandProfile {
 
     private const val FRAMES_IN_FLIGHT = 4
     private const val MAX_PASSES = 4
-    private var queries: IntArray? = null
-    private var passQueries: IntArray? = null
+    private var queries: GpuQueryPool? = null
+    private var passQueries: GpuQueryPool? = null
+    private var nanosPerTick = 1.0
     private val pending = BooleanArray(FRAMES_IN_FLIGHT)
     private val passesInFrame = IntArray(FRAMES_IN_FLIGHT)
     private var slot = 0
@@ -81,18 +85,16 @@ object ExpandProfile {
     @JvmStatic
     fun frameStart() {
         if (!enabled) return
-        val queries = queries ?: IntArray(FRAMES_IN_FLIGHT * 2).also {
-            GL15C.glGenQueries(it)
+        val device = RenderSystem.getDevice()
+        val queries = queries ?: device.createTimestampQueryPool(FRAMES_IN_FLIGHT * 2).also {
             queries = it
+            nanosPerTick = device.deviceInfo.timestampPeriod().toDouble()
         }
-        val passQueries = passQueries ?: IntArray(FRAMES_IN_FLIGHT * MAX_PASSES * 2).also {
-            GL15C.glGenQueries(it)
-            passQueries = it
-        }
+        val passQueries = passQueries ?: device.createTimestampQueryPool(FRAMES_IN_FLIGHT * MAX_PASSES * 2).also { passQueries = it }
         slot = (slot + 1) % FRAMES_IN_FLIGHT
         if (pending[slot]) read(queries, passQueries, slot)
         passesInFrame[slot] = 0
-        GL33C.glQueryCounter(queries[slot * 2], GL33C.GL_TIMESTAMP)
+        device.createCommandEncoder().writeTimestamp(queries, slot * 2)
         frameOpen = true
     }
 
@@ -101,7 +103,7 @@ object ExpandProfile {
     fun passStart() {
         val passQueries = passQueries ?: return
         if (!frameOpen || passesInFrame[slot] == MAX_PASSES) return
-        GL33C.glQueryCounter(passQueries[(slot * MAX_PASSES + passesInFrame[slot]) * 2], GL33C.GL_TIMESTAMP)
+        RenderSystem.getDevice().createCommandEncoder().writeTimestamp(passQueries, (slot * MAX_PASSES + passesInFrame[slot]) * 2)
     }
 
     /** Right after an expand pass's barrier. */
@@ -109,7 +111,7 @@ object ExpandProfile {
     fun passEnd() {
         val passQueries = passQueries ?: return
         if (!frameOpen || passesInFrame[slot] == MAX_PASSES) return
-        GL33C.glQueryCounter(passQueries[(slot * MAX_PASSES + passesInFrame[slot]) * 2 + 1], GL33C.GL_TIMESTAMP)
+        RenderSystem.getDevice().createCommandEncoder().writeTimestamp(passQueries, (slot * MAX_PASSES + passesInFrame[slot]) * 2 + 1)
         passesInFrame[slot]++
     }
 
@@ -119,25 +121,28 @@ object ExpandProfile {
         if (!frameOpen) return
         frameOpen = false
         val queries = queries ?: return
-        GL33C.glQueryCounter(queries[slot * 2 + 1], GL33C.GL_TIMESTAMP)
+        RenderSystem.getDevice().createCommandEncoder().writeTimestamp(queries, slot * 2 + 1)
         pending[slot] = true
     }
 
-    private fun read(queries: IntArray, passQueries: IntArray, slot: Int) {
+    private fun read(queries: GpuQueryPool, passQueries: GpuQueryPool, slot: Int) {
         pending[slot] = false
-        val end = queries[slot * 2 + 1]
         // The frame's end comes after its passes: once it is available, so are they.
-        if (GL15C.glGetQueryObjecti(end, GL15C.GL_QUERY_RESULT_AVAILABLE) == 0) return
-        val start = GL33C.glGetQueryObjecti64(queries[slot * 2], GL15C.GL_QUERY_RESULT)
-        gpuNanos += GL33C.glGetQueryObjecti64(end, GL15C.GL_QUERY_RESULT) - start
+        val end = queries.getValue(slot * 2 + 1)
+        val start = queries.getValue(slot * 2)
+        if (end.isEmpty || start.isEmpty) return
+        gpuNanos += toNanos(end.asLong - start.asLong)
         gpuFrames++
         for (pass in 0 until passesInFrame[slot]) {
             val index = (slot * MAX_PASSES + pass) * 2
-            passGpuNanos += GL33C.glGetQueryObjecti64(passQueries[index + 1], GL15C.GL_QUERY_RESULT) -
-                GL33C.glGetQueryObjecti64(passQueries[index], GL15C.GL_QUERY_RESULT)
+            val passStart = passQueries.getValue(index)
+            val passEnd = passQueries.getValue(index + 1)
+            if (passStart.isPresent && passEnd.isPresent) passGpuNanos += toNanos(passEnd.asLong - passStart.asLong)
         }
         passGpuFrames++
     }
+
+    private fun toNanos(ticks: Long): Long = if (nanosPerTick == 1.0) ticks else (ticks * nanosPerTick).toLong()
 
     fun reset() {
         nanos.fill(0L)

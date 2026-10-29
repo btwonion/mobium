@@ -33,6 +33,8 @@ python3 benchmark/prism_instances.py       # creates/updates the Prism instances
 python3 benchmark/bench_round.py           # unattended round A–D in those instances (about 3 h; --quick, --dry-run),
                                            # CSVs pushed to btwonion/mobium-benchmarks (checkout ../mobium-benchmarks)
 python3 benchmark/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
+python3 benchmark/self_check.py fabric --api vulkan # the same on Vulkan, with the validation layer
+./gradlew :26.3-fabric:runClient -Pmobium.graphicsBackend=vulkan  # any run task on Vulkan; -Pmobium.vulkanValidation
 ```
 
 `benchmark/self_check.py` starts each dev client with a request file; `debug/selfcheck/SelfCheck.kt` (dev environments
@@ -122,6 +124,9 @@ overlapping mods and failures) and reports exceptions to `core/Fallback`.
 - **Test assets** (gitignored): `shaderpacks/ComplementaryReimagined_r5.9.3.zip` and
   `resourcepacks/FreshAnimations_v1.10.3.zip` in `versions/26.3-fabric/run/` and `run/`; the self-check uses them when
   present.
+- **Vulkan:** `--api vulkan` needs Khronos' validation layer (Fedora `vulkan-validation-layers`; without root,
+  `VK_ADD_LAYER_PATH`, `docs/vanilla-notes.md` §21). Iris stays off the dev classpath on Vulkan, where it stops the
+  game at startup.
 - **Known issue outside Mobium:** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
   `CenterDepthSampler`, also with Mobium off (`self_check.py neoforge --mode iris-without-mobium`); the self-check
   skips the shader pack there.

@@ -26,6 +26,7 @@ import dev.nyon.mobium.config.Config
 import dev.nyon.mobium.config.applyConfig
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.config.screen.MobiumSettingsScreen
+import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
 import dev.nyon.mobium.core.Fallback
@@ -38,6 +39,7 @@ import dev.nyon.mobium.debug.ExpandProfile
 import dev.nyon.mobium.debug.ModuleLines
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.debug.Validation
+import dev.nyon.mobium.debug.VulkanValidation
 import dev.nyon.mobium.parts.ExpandPass
 import dev.nyon.mobium.parts.PartCheck
 import dev.nyon.mobium.parts.PartTransform
@@ -164,6 +166,7 @@ object SelfCheck {
         this.directory = directory
         Files.createDirectories(directory.resolve("screenshots"))
         Mobium.LOGGER.info("Mobium self-check started ({} on {}{})", Compat.LOADER, minecraft.gameDirectory, if (mode.isEmpty()) "" else ", $mode")
+        graphicsApi()
         val argument = mode.substringAfter(' ', "")
         steps = when (mode.substringBefore(' ')) {
             IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
@@ -176,6 +179,38 @@ object SelfCheck {
             BENCHMARK -> benchmark(minecraft)
             else -> scenario(minecraft)
         }.iterator()
+    }
+
+    /**
+     * The graphics API the launch asked for (`self_check.py --api`, Gradle property `mobium.graphicsBackend`), which
+     * Minecraft leaves for the other one when it fails to start, and on Vulkan whether the validation layer listens.
+     */
+    private fun graphicsApi() {
+        val running = Capabilities.current?.backendName ?: "no device"
+        results += "NOTE graphics: ${Capabilities.current?.describe() ?: running}"
+        val wanted = System.getProperty("mobium.graphicsBackend")
+        if (wanted != null && wanted != "default") check("graphics API", running.equals(wanted, ignoreCase = true), "asked for $wanted, running on $running")
+        if (VulkanValidation.requested && running == "Vulkan") {
+            val detail = when {
+                !VulkanValidation.layerPresent -> "${VulkanValidation.LAYER} is not installed (Fedora: vulkan-validation-layers)"
+                !VulkanValidation.installed -> "Mobium's messenger is not listening, see the log"
+                else -> "listening, duplicate message limit ${System.getenv("VK_LAYER_DUPLICATE_MESSAGE_LIMIT") ?: "10 (the layer's default)"}"
+            }
+            check("Vulkan validation layer", VulkanValidation.installed && VulkanValidation.layerPresent, detail)
+        }
+    }
+
+    /** Mobium's validation messages fail the check; the others are noted and listed in `validation.txt`. */
+    private fun validationMessages() {
+        if (!VulkanValidation.installed) return
+        val mobium = VulkanValidation.keptMobium
+        val count = VulkanValidation.mobiumMessages
+        check("no Vulkan validation messages from Mobium", count == 0, if (count == 0) "" else "$count: ${mobium.take(3).joinToString(" | ")}")
+        results += "NOTE ${VulkanValidation.otherMessages} other Vulkan validation messages (vanilla, Sodium, drivers)"
+        Files.write(
+            directory.resolve("validation.txt"),
+            listOf("Mobium's (${VulkanValidation.mobiumMessages}):") + mobium + listOf("", "Others (${VulkanValidation.otherMessages}):") + VulkanValidation.keptOther
+        )
     }
 
     /** Advances the scenario; called at the end of every client tick. */
@@ -1809,6 +1844,7 @@ object SelfCheck {
     private fun finish(minecraft: Minecraft) {
         restoreOptions?.invoke()
         restoreOptions = null
+        validationMessages()
         val checks = results.count { !it.startsWith("NOTE") }
         val summary = if (failures == 0) "ALL $checks CHECKS PASSED" else "$failures OF $checks CHECKS FAILED"
         results += summary
