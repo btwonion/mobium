@@ -36,6 +36,7 @@ object ModuleStates {
             shaderPack = shaderPack,
             abOff = AbToggle.mobiumOff,
             overlaps = Compat.overlaps(),
+            untested = Compat.untested(),
             failures = Fallback.failures
         )
         val next = ModuleRules.resolve(config, environment)

@@ -482,9 +482,8 @@ Open points for later milestones (not answered by reading code):
 
 - *Answered in M6 (§16):* Module 2 reserves the vertex bytes in the builder and leaves them out of the upload's copy;
   Iris's three entity ids travel per part record (they are the same for all vertices of one part).
-- `RenderType.prepare()` writes `DynamicTransforms` from the current model-view matrix. The static cache calls it in
-  the prepare stage, after the level's own prepare; that this is allowed on Vulkan is checked in game in M7
-  (`PLAN.md`, Module 1 on Vulkan).
+- *Answered in M7 (§22):* `RenderType.prepare()` writes `DynamicTransforms` from the current model-view matrix; the
+  static cache calling it in the prepare stage, after the level's own prepare, works on Vulkan too.
 
 ---
 
@@ -709,3 +708,16 @@ validation layer 1.4.341.
 | Iris on Vulkan | **Iris 1.11.7 stops the game on Vulkan** before the title screen: `Iris.duringRenderSystemInit`, injected into `RenderSystem.initRenderer`, initialises `IrisRenderSystem`, whose `SamplerLimits` calls `glGetInteger` without an OpenGL context, and LWJGL aborts the JVM ("No context is current or a function that is not available in the current context was called"). No Mobium frame in the stack. Seen on Fabric; the dev clients leave Iris out on Vulkan (`build.gradle.kts`). |
 | EMF and ETF on Vulkan | EMF 3.3.12 and ETF 7.2.6 ran the self-check's gallery with Fresh Animations on both loaders. |
 | Validation messages | Every run of the gallery (both loaders) gave 6 to 8 warnings, all vanilla's: `WARNING-Shader-OutputNotConsumed` at `vkCreateGraphicsPipelines` (a vertex shader output no fragment shader reads). None named Mobium's objects or came from its code; both modules are off on Vulkan so far. |
+
+## 22. Module 1 on Vulkan (26.3)
+
+Tried on 29 Oct 2026 for M7 step 3, with the static cache allowed on Vulkan (`ModuleRules`) and nothing else changed:
+both dev clients on Mesa 26.2.5's ANV (Intel Arc 140V) with the validation layer (§21), the self-check's whole
+scenario and `--mode gallery`.
+
+| Topic | Finding |
+| --- | --- |
+| Drawing | The cache's path works on Vulkan as it is: buckets in Renderpearl buffers (usage `VERTEX` and `COPY_DST`, filled with `writeToBuffer`), drawn inside vanilla's `main` render pass at the end of `PreparedFrame.executeSolid` with the vanilla render type's pipeline and the shared sequential quad index buffer (`RenderpearlBackend.drawQuads`). No raw OpenGL in `cache/`. |
+| Uniforms in the prepare stage | `RenderType.prepare()` from the cache's prepare, after the level's own, writes `DynamicTransforms` into the frame's uniform storage on Vulkan as on OpenGL (§10's open point): every picture matches vanilla. |
+| Results | The whole self-check passes on Vulkan: 70 checks on Fabric, 71 on NeoForge. The gallery: all checked types cached (10 chests, 10 signs, 7 skulls, 2 pots, 3 shelves, 6 item frames, 3 armor stands, 4 displays; 55 drawn from 20 buckets), all 13 picture pairs identical to vanilla, Fresh Animations included. `storage_room` (1,000 chests, 300 signs): identical from the main view, after the A/B key, from a moved camera and in the render distance fog; `/mobium debug validate` identical; `/mobium debug fail` switches to vanilla with one toast. 0 validation messages from Mobium, the probe caught (§21); 10–16 vanilla warnings. The Fabric gametests pass on Vulkan as on OpenGL (`map_wall` differs in 12–18 pixels with the cache on both on OpenGL and on Vulkan, within their 0.1 %). |
+| Vitrail | Vitrail (mod id `vitrail`, 0.13.0-beta for 26.3, Fabric and NeoForge, needs Sodium; read from its jar's metadata and mixin lists, not run) draws OptiFine-format shader packs on the Vulkan renderer and hooks the same places as Mobium: `BlockEntityRenderDispatcher`, `EntityRenderDispatcher`, `ModelSubmit`, `ModelFeatureRenderer`, `RenderTypeFeatureRenderer`, `StagedVertexBuffer`, `BufferBuilder`, its own entity vertex layout (`dev.vitrail.glsl.EntityVertex`). Untested with Mobium, so both modules stay off while it is installed (`OffReason.UNTESTED`). |

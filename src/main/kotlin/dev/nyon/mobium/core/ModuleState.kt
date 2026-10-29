@@ -37,7 +37,10 @@ enum class OffReason(val key: String) {
     /** A mod that does the same job is installed ([Compat.overlaps]). */
     OVERLAP("overlap"),
 
-    /** The module needs the OpenGL backend (Vulkan support is PLAN.md M7). */
+    /** A mod that hooks the same rendering paths and is not tested with Mobium is installed ([Compat.untested]). */
+    UNTESTED("untested"),
+
+    /** The module does not run on the active backend: Module 2 needs OpenGL until its Vulkan dispatch exists (PLAN.md M7). */
     BACKEND("backend"),
 
     /** The module needs compute shaders (OpenGL 4.3 with double precision in shaders). */
@@ -70,6 +73,7 @@ data class ModuleStatus(val module: Module, val reason: OffReason?, val detail: 
  * @param shaderPack says whether an Iris shader pack is in use; no rule depends on it (the static cache captures and
  * Module 2 expands in Iris's extended vertex format).
  * @param overlaps names, per module, an installed mod that does the same job.
+ * @param untested names, per module, an installed mod that hooks the same paths and is not tested with Mobium.
  * @param failures holds, per module, the message of the failure that switched it off.
  */
 data class ModuleEnvironment(
@@ -78,6 +82,7 @@ data class ModuleEnvironment(
     val shaderPack: Boolean,
     val abOff: Boolean,
     val overlaps: Map<Module, String> = emptyMap(),
+    val untested: Map<Module, String> = emptyMap(),
     val failures: Map<Module, String> = emptyMap()
 )
 
@@ -99,13 +104,21 @@ object ModuleRules {
         }
         if (!switchedOn) return off(OffReason.CONFIG)
         environment.overlaps[module]?.let { return off(OffReason.OVERLAP, it) }
-        if (environment.backend != GraphicsBackend.OPENGL) {
-            return off(OffReason.BACKEND, environment.backend?.name?.lowercase() ?: "")
-        }
+        environment.untested[module]?.let { return off(OffReason.UNTESTED, it) }
+        if (!runsOn(module, environment.backend)) return off(OffReason.BACKEND, environment.backend?.name?.lowercase() ?: "")
         return when (module) {
             Module.STATIC_CACHE -> ModuleStatus(module, null)
             Module.PART_TRANSFORM -> if (!environment.compute) off(OffReason.NO_COMPUTE) else ModuleStatus(module, null)
             Module.ANIMATION_LOD -> off(OffReason.NOT_BUILT)
         }
+    }
+
+    /**
+     * The static cache draws through Renderpearl only and runs on OpenGL and Vulkan (docs/vanilla-notes.md §22);
+     * Module 2's expand pass exists for OpenGL only so far (PLAN.md M7 step 4). No backend before the device exists.
+     */
+    private fun runsOn(module: Module, backend: GraphicsBackend?): Boolean = when (module) {
+        Module.STATIC_CACHE, Module.ANIMATION_LOD -> backend == GraphicsBackend.OPENGL || backend == GraphicsBackend.VULKAN
+        Module.PART_TRANSFORM -> backend == GraphicsBackend.OPENGL
     }
 }

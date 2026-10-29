@@ -1,0 +1,2 @@
+- The static cache (chests, signs, item frames and more) now also works on Minecraft's Vulkan renderer
+- With Vitrail installed, Mobium stays off until it is tested with it

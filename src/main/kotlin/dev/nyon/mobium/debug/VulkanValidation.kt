@@ -62,6 +62,10 @@ object VulkanValidation {
     private var messenger = 0L
     private var callback: VkDebugUtilsMessengerCallbackEXT? = null
 
+    /** While [probe] runs: null until the probe's message arrives, then whether it was sorted as Mobium's. */
+    private var probing = false
+    private var probeSorted: Boolean? = null
+
     /** Called once after the GPU device exists; does nothing outside dev environments, on OpenGL or unasked. */
     fun installIfRequested() {
         if (!Compat.isDevelopment || !requested || installed) return
@@ -105,6 +109,31 @@ object VulkanValidation {
         installed = false
     }
 
+    /**
+     * Sends one message through the debug utils (`vkSubmitDebugUtilsMessageEXT`) from here, without "Mobium" in its
+     * text, and returns whether the messenger got it and sorted it as Mobium's by its caller: proof that the check
+     * catches a message Mobium's code raises. The probe is not counted.
+     */
+    fun probe(): Boolean {
+        val instance = instance ?: return false
+        probing = true
+        probeSorted = null
+        try {
+            MemoryStack.stackPush().use { stack ->
+                val data = VkDebugUtilsMessengerCallbackDataEXT.calloc(stack).`sType$Default`()
+                    .pMessageIdName(stack.UTF8("probe"))
+                    .pMessage(stack.UTF8("validation check probe"))
+                EXTDebugUtils.vkSubmitDebugUtilsMessageEXT(
+                    instance, EXTDebugUtils.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
+                    EXTDebugUtils.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT, data
+                )
+            }
+        } finally {
+            probing = false
+        }
+        return probeSorted == true
+    }
+
     private fun hasLayer(): Boolean = MemoryStack.stackPush().use { stack ->
         val count = stack.callocInt(1)
         if (VK10.vkEnumerateInstanceLayerProperties(count, null) != VK10.VK_SUCCESS) return false
@@ -120,6 +149,10 @@ object VulkanValidation {
         val names = data.pObjects()?.let { objects -> (0 until data.objectCount()).mapNotNull { objects.get(it).pObjectNameString() } }.orEmpty()
         val named = mentionsMobium(text) || names.any(::mentionsMobium)
         val caller = if (named) null else mobiumCaller()
+        if (probing) {
+            probeSorted = named || caller != null
+            return VK10.VK_FALSE
+        }
         val kind = if (severity and EXTDebugUtils.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT != 0) "error" else "warning"
         val line = "$kind ${data.pMessageIdNameString() ?: "-"}: $text"
         if (named || caller != null) {
@@ -136,12 +169,14 @@ object VulkanValidation {
 
     private fun mentionsMobium(text: String?) = text != null && text.contains("mobium", ignoreCase = true)
 
-    /** The first Mobium frame among the callers of the Vulkan call, or null. */
+    /**
+     * The first Mobium frame among the callers of the Vulkan call, or null. Skips this callback's own frames and the
+     * LWJGL frames that called it; [probe] is the caller after those when it runs.
+     */
     private fun mobiumCaller(): String? = walker.walk { frames ->
-        frames.filter { frame ->
-            val name = frame.className
-            !name.startsWith(OWN_CLASS) && !name.startsWith("org.lwjgl.") && !name.startsWith("com.mojang.renderpearl.")
-        }
+        frames.dropWhile { it.className.startsWith(OWN_CLASS) }
+            .dropWhile { it.className.startsWith("org.lwjgl.") }
+            .filter { frame -> !frame.className.startsWith("org.lwjgl.") && !frame.className.startsWith("com.mojang.renderpearl.") }
             .takeWhile { frame -> DRIVERS.none { frame.className.startsWith(it) } }
             .limit(CALLER_FRAMES.toLong())
             .filter { frame -> frame.className.startsWith("dev.nyon.mobium.") || frame.methodName.startsWith("mobium$") }

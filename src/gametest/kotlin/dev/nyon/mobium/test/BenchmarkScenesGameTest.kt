@@ -14,8 +14,11 @@ import dev.nyon.mobium.cache.Signs
 import dev.nyon.mobium.cache.Skulls
 import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
+import dev.nyon.mobium.core.Capabilities
+import dev.nyon.mobium.core.GraphicsBackend
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
+import dev.nyon.mobium.core.OffReason
 import dev.nyon.mobium.debug.DebugLines
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.parts.ExpandPass
@@ -121,6 +124,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
      * against the picture with Module 2 off.
      */
     private fun checkParts(context: ClientGameTestContext, singleplayer: TestSingleplayerContext, scene: String) {
+        if (!module2Runs(context)) return
         singleplayer.server.runCommand("tick freeze")
         setParts(context, false)
         context.waitTicks(SETTLE_TICKS)
@@ -157,8 +161,21 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
     }
 
+    /**
+     * Whether Module 2 runs on this backend. On Vulkan it stays off with `backend` until its Vulkan dispatch exists
+     * (PLAN.md M7 step 4); that is checked instead, and the callers skip Module 2's checks.
+     */
+    private fun module2Runs(context: ClientGameTestContext): Boolean = context.computeOnClient<Boolean, RuntimeException> {
+        if (Capabilities.current?.backend != GraphicsBackend.VULKAN) return@computeOnClient true
+        val status = ModuleStates.status(Module.PART_TRANSFORM)
+        check(status.reason == OffReason.BACKEND) { "Module 2 on Vulkan: ${status.describe()}" }
+        LOGGER.info("Module 2 is off on Vulkan ({}), its checks are skipped", status.describe())
+        false
+    }
+
     /** A short `/mobium gatec`: `mob_pen_live` with Module 2 off and on, Gate C's numbers, Module 2 restored. */
     private fun checkGateC(context: ClientGameTestContext) {
+        if (!module2Runs(context)) return
         val gate = runPlan(context, "mobium gatec $BENCH_SECONDS 1", "gatec-")
         val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
         check(setups.size == 2 && setups.count { "+parts" in it } == 1) { "Unexpected Gate C rows: $gate" }
