@@ -38,7 +38,9 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
   --log-failed` first.
 - **Next: M7, Vulkan.** Minecraft 26.4 makes Vulkan the default backend (`26.4-snapshot-1`, 22 Sep 2026: "Default"
   now behaves like "Prefer Vulkan"), and both modules are off on Vulkan. Vulkan already exists in 26.3 as an option,
-  with every class M7 needs, so M7 is built and gated on 26.3; M8 then ports to 26.4.
+  with every class M7 needs, so M7 is built and gated on 26.3; M8 then ports to 26.4. Step 1 is done: up to
+  `26.4-snapshot-6` Renderpearl has no compute and no storage buffers, and drops push descriptors
+  (`docs/vanilla-notes.md` §20). Gate D is still a proposal; Anton decides it before step 2 (tooling) starts.
 
 ---
 
@@ -54,11 +56,11 @@ frame's submission), and three blockers: vanilla's vertex buffers are not storag
 64-bit floats, and the shader's GLSL is OpenGL's dialect.
 
 1. **Check 26.4 first.**
-   - [ ] Decompile the newest 26.4 snapshot's Renderpearl and diff it with 26.3 (`api`, `backend/vulkan`,
-         `VulkanFeatureSets`, `VulkanCommandEncoder`, `VulkanConst.bufferUsageToVk`); record the result in
-         `docs/vanilla-notes.md` §18. If Renderpearl gained compute pipelines or storage buffers, build on them and
-         drop the steps below they replace. Also look at computelib (compute for Mojang's engine on OpenGL and Vulkan,
-         experimental on 19 Oct 2026) before writing raw Vulkan.
+   - [x] Decompile the newest 26.4 snapshot's Renderpearl and diff it with 26.3; look at computelib. Done on
+         `26.4-snapshot-6` (29 Oct 2026, `docs/vanilla-notes.md` §20): still no compute pipelines and no storage
+         buffers, so every step below stays; 26.4 drops push descriptors (the pass below binds a descriptor set of
+         its own instead). computelib is NeoForge-only for 26.2 and not a dependency; it marks storage buffers with
+         an extra usage bit, as planned below. Check the newest snapshot again before M8.
 2. **Tooling.**
    - [ ] `benchmark/self_check.py --api vulkan` (and the gametests' launch) start the dev clients on Vulkan
          (`forcedGraphicsApi` launch argument or the `PreferredGraphicsApi` option, *(verify)* their exact form).
@@ -81,8 +83,10 @@ frame's submission), and three blockers: vanilla's vertex buffers are not storag
          with `vkBuffer()`.
    - [ ] Storage buffers: a mixin on `VulkanConst.bufferUsageToVk` adds `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` to the
          staged vertex pool's buffers (`COPY_DST | VERTEX`) and Mobium's own. Decide between all `VERTEX` buffers and
-         only the ones Mobium marks (a wrap of `StagedVertexBuffer.GpuBufferPool`'s `createBuffer`); fallback if
-         neither works: expand into a buffer of Mobium's own and `vkCmdCopyBuffer` the reserved ranges over.
+         only the ones Mobium marks (a usage bit of Mobium's own, 1024, unused by Renderpearl in 26.3 and 26.4 and
+         the bit computelib uses for the same, set in a wrap of `StagedVertexBuffer.GpuBufferPool`'s
+         `createBuffer`); fallback if neither works: expand into a buffer of Mobium's own and `vkCmdCopyBuffer` the
+         reserved ranges over.
    - [ ] Mobium's mesh and record buffers become Renderpearl buffers, uploaded with `writeToBuffer` and kept per frame
          in flight (`gpu/RingBuffer.kt`, unused so far: Vulkan has no orphaning); the same code can serve OpenGL.
    - [ ] 64-bit floats: a mixin on `VulkanFeatureSets.optionalFeatureSets()` adds an optional feature set with
@@ -92,8 +96,9 @@ frame's submission), and three blockers: vanilla's vertex buffers are not storag
          already; under `#ifdef VULKAN` push constants instead of `layout(location)` uniforms and `gl_VertexIndex`;
          where `VK_KHR_shader_float_controls`' properties allow, `DenormPreserve`, `SignedZeroInfNanPreserve` and
          `RoundingModeRTE` for 32-bit floats. `--mode parts` stays at 0 differing vertices on OpenGL.
-   - [ ] The pass: a compute pipeline with a push-descriptor set layout (three storage buffers) and push constants; per
-         staged buffer right after `upload()` a transient command buffer
+   - [ ] The pass: a compute pipeline with a descriptor set layout of three storage buffers and push constants, its
+         sets from a descriptor pool of Mobium's own, one per frame in flight (not push descriptors: 26.4 no longer
+         enables `VK_KHR_push_descriptor`, §20); per staged buffer right after `upload()` a transient command buffer
          (`allocateAndBeginTransientCommandBuffer`) with the dispatch (split at the device's group limit) and a
          barrier from compute writes to vertex attribute reads, handed to `VulkanCommandEncoder.execute`. Compute
          only: the vertex stage was a workaround for Mesa's OpenGL batches and would also need
@@ -136,7 +141,10 @@ with Mobium no slower than without (at most 1.03×). Then release.
 - [ ] A branch tracking the newest 26.4 snapshot: `26.4-fabric` / `26.4-neoforge` Stonecutter targets
       (`settings.gradle.kts`, `versions/26.4-*/gradle.properties`), API changes recorded in `docs/vanilla-notes.md`
       (Vineflower on the new client jar, as for 26.3). Known so far: Vulkan by default, no automatic switch of the
-      graphics API after a crash, the OIT shaders' depth bins instead of wavelets (`26.4-snapshot-1`).
+      graphics API after a crash, the OIT shaders' depth bins instead of wavelets (`26.4-snapshot-1`);
+      `VertexFormat` moved to `com.mojang.blaze3d.vertex` (imported in seven of Mobium's files), `RenderPipeline`
+      and the GLSL compiler to `com.mojang.blaze3d.pipeline`, render passes need a `RenderPassLayout`,
+      `copyTextureToBuffer` has no callback (`26.4-snapshot-6`, `docs/vanilla-notes.md` §20).
 - [ ] Compat stack for 26.4 (Sodium, Iris, EMF, ETF, Mod Menu) in the dev clients as it appears.
 - [ ] Self-check and gametests on 26.4, on Vulkan and OpenGL; a benchmark round A–D.
 - [ ] Version ranges per target (26.3.x and 26.4.x builds side by side); release once 26.4 is out.

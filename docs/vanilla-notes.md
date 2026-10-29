@@ -632,9 +632,9 @@ NeoForge's `AddPackFindersEvent`, was half right: Fabric API for 26.3 has no `fa
 ## 18. Vulkan backend (26.3)
 
 Read on 28 Oct 2026 for M7 (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`: `com.mojang.renderpearl.backend.vulkan`,
-`frontend`, `api`, and `StagedVertexBuffer`). 26.4's backend is not read yet (`PLAN.md`, M7 step 1). Vulkan is an
-option in 26.3; `26.4-snapshot-1` (22 Sep 2026) makes "Default" behave like "Prefer Vulkan" and no longer switches the
-graphics API by itself after a startup crash (snapshot changelog, not read in code).
+`frontend`, `api`, and `StagedVertexBuffer`); 26.4's backend is in §20. Vulkan is an option in 26.3; `26.4-snapshot-1`
+(22 Sep 2026) makes "Default" behave like "Prefer Vulkan" and no longer switches the graphics API by itself after a
+startup crash (snapshot changelog, not read in code).
 
 | Topic | Finding |
 | --- | --- |
@@ -664,3 +664,30 @@ Read on 29 Oct 2026 (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`: `com
 | OpenGL | `GlHeuristics.createDeviceInfo` passes `GlStateManager._getString(7938)`, i.e. `glGetString(GL_VERSION)`. What follows the context version is the driver's own text (not in the source; drivers put their version there, e.g. Mesa `4.6 (Core Profile) Mesa <version>`, Nvidia `4.6.0 NVIDIA <version>`). `name()` is `GL_RENDERER` (7937), `vendorName()` `GL_VENDOR` (7936). |
 | Vulkan | `VulkanDevice` passes `VulkanPhysicalDevice.driverInfo()`: `String.format(Locale.ROOT, "%s %s %s")` of the device's `apiVersion` (decoded as `major.minor.patch`), `VkPhysicalDeviceDriverProperties.driverNameString()` and `.driverInfoString()`. |
 | Line breaks | F3's system entry shows `backendName() + " " + firstLine(driverInfo())` (`DebugEntrySystemSpecs.display`), so the string may span lines; the CPU line there (`getCpuInfo`) collapses whitespace with `replaceAll("\\s+", " ")`. Mobium does the same with the driver string before it writes it to a CSV line (`BenchEnvironment.snapshot`). |
+
+## 20. Vulkan backend in 26.4 (`26.4-snapshot-6`)
+
+Read on 29 Oct 2026 for M7 step 1 (Vineflower 1.12 on Mojang's `26.4-snapshot-6` client jar of 27 Oct 2026 and on the
+26.3 client jar, both from Mojang's version manifest: `com.mojang.renderpearl` complete, `com.mojang.blaze3d.pipeline`,
+`StagedVertexBuffer`), diffed against §18. Also read: computelib (`github.com/nonamecrackers2/computelib`, branch
+`26.2`, last commit 3 Oct 2026).
+
+| Topic | Finding |
+| --- | --- |
+| Compute and storage buffers | Still none. `ShaderType` is `VERTEX` and `FRAGMENT`, `UniformType` gained only `INPUT_ATTACHMENT`, no compute pipeline class, no `STORAGE_BUFFER` anywhere in Renderpearl. M7's own dispatch stays necessary. |
+| Buffer usages | `GpuBuffer`'s usage bits are unchanged (`MAP_READ` 1 … `INDIRECT_PARAMETERS` 512, so 1024 and up are unused), and so is `VulkanConst.bufferUsageToVk`; the one change in `VulkanConst` is in the texture usage mapping. |
+| Device features | `REQUIRED_FEATURESET` dropped `VK_KHR_dynamic_rendering` and **`VK_KHR_push_descriptor`** (with the `dynamicRendering` feature); still required: `VK_KHR_synchronization2`, `VK_EXT_vertex_attribute_divisor`, `VK_KHR_swapchain` and the same core features; still a queue family with graphics, compute and present together. `optionalFeatureSets()` gained `DXGI_FEATURESET` (`VK_KHR_external_semaphore_win32`, `VK_KHR_external_memory_win32`: on Windows, Vulkan's images can be presented through a DXGI swapchain, `D3D12GpuSurface`, `DeviceFeatures.dxgiSurface`). `VulkanBackend` enables optional sets as in 26.3 (`isSupported`, then `checkCondition`). **Still not enabled: `shaderFloat64`, `vertexPipelineStoresAndAtomics`.** |
+| Render passes | Real `VkRenderPass`es instead of dynamic rendering: `RenderPassCache` per `RenderPassLayout` (new API type: attachment formats and subpasses), a `VkFramebuffer` per pass (destroyed when the frame completes), `vkCmdBeginRenderPass2`. `CommandEncoder.createRenderPass` takes a `RenderPassLayout`; `RenderPass` gained `layout()`, `activeSubpass()`, `nextSubpass()` and `setUniform(String, GpuTextureView)` for input attachments. Pipelines are created against a render pass layout's subpass. |
+| Descriptors | No push descriptors: before a draw whose bindings changed, `VulkanRenderPass.pushDescriptors()` allocates a descriptor set from the encoder's current `DescriptorPool` (4096 uniform buffers, 4096 combined image samplers, 128 uniform texel buffers, 1024 sets; a full pool is retired and a new one taken), writes it with `vkUpdateDescriptorSets` and binds it with `vkCmdBindDescriptorSets`. At `submit()` the frame's pool goes into the encoder's destruction queue, which resets it two submissions later; the set layouts lost the push-descriptor flag. The pool has no storage buffer descriptors. |
+| Command encoder | Unchanged for M7: `allocateAndBeginTransientCommandBuffer()`, `execute(VkCommandBuffer)`, `waitSemaphore` / `signalSemaphore`, the static `memoryBarrier`, the full barrier after `writeToBuffer` and `copyToBuffer`, `MAX_SUBMITS_IN_FLIGHT = 2`. The wait for the submission two frames back now logs after 5 s and gives up after 6 s. `copyTextureToBuffer` lost its `Runnable` callback; `clearColorAndDepthTextures` with a region and `writeToTexture(…, NativeImage …)` left `CommandEncoder`. |
+| Backend access | `FrontendGpuDevice.backend` (private `GpuDeviceBackend`) and `VulkanDevice`'s `vkDevice()`, `vma()`, `graphicsQueue()`, `computeQueue()`, `createCommandEncoder()` are unchanged. `FrontendGpuDevice` takes the `GpuDebugOptions`, which gained `shaderDebug` and `strictValidation` (replacing the constant `STRICT_VALIDATION = IS_RUNNING_IN_IDE`). |
+| Shaders | GLSL left Renderpearl: `RenderPipeline`, `ShaderSource`, `GlslCompiler` and `PipelineBuilder` are now in `com.mojang.blaze3d.pipeline`, and `VertexFormat` / `VertexFormatElement` in `com.mojang.blaze3d.vertex` (were `com.mojang.renderpearl.api.vertex`; Mobium imports `VertexFormat` in seven files). Renderpearl takes SPIR-V only: `GpuDevice.createSpvModule(name, ByteBuffer spv, ShaderType, entryPoint)` and a synchronous `compilePipeline(CompiledRenderPipeline.CreateInfo)` checked by `PipelineValidator`. `GlslCompiler` still uses LWJGL's shaderc (target environment Vulkan 1.2); OpenGL still turns the SPIR-V back into GLSL with SPIRV-Cross (`GlPipelineRecompiler`), as in 26.3. |
+| Staged vertex buffer | `StagedVertexBuffer` is unchanged (same pools and usages as §18). |
+| computelib | A NeoForge library for Minecraft 26.2 (`neo_version=26.2.0.88`, `mod_license=MIT License` in its `gradle.properties`, no licence file of its own), "highly experimental", with compute shaders and storage buffers on OpenGL 4.3 and Vulkan. It adds a usage bit `USAGE_SHADER_STORAGE_BUFFER = 1024` and maps it to `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` in a mixin on `bufferUsageToVk`, the approach M7 planned. Not a dependency for Mobium: no Fabric, no 26.3 build, and its mixins target 26.2's classes. |
+
+What it means for M7: nothing that M7 needs has been added or removed except push descriptors. Module 2's dispatch
+binds its three storage buffers through a descriptor set from a pool of Mobium's own (`STORAGE_BUFFER` descriptors,
+one pool per frame in flight, reset when that frame's fence signals), which works on 26.3 and 26.4 without an extra
+extension. The storage usage can be a usage bit of Mobium's own (1024, as computelib does) set on the buffers that need
+it. For M8: the moved packages (`VertexFormat`, `RenderPipeline`), render pass layouts and `copyTextureToBuffer` without
+callback.
