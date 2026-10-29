@@ -536,8 +536,12 @@ object SelfCheck {
                 rows.size == 4 && rows.all { it.split(',')[2] == "2" } && BenchSuite.BENCHMARK_SCENES.all { scene -> rows.count { it.startsWith("$scene,") } == 2 },
                 rows.joinToString(" | ") { it.split(',').take(4).joinToString(" ") }
             )
-            val keys = listOf("storage_room_speedup", "mob_pen_live_speedup", "cpu", "gpu", "resolution", "power", "seed_mobium", "build")
+            val keys = listOf("storage_room_speedup", "mob_pen_live_speedup", "os", "cpu", "gpu", "driver", "resolution", "power", "seed_mobium", "build")
             check("benchmark CSV: gains and environment", keys.all { it in notes } && notes["seed_mobium"] == "true", keys.filter { it !in notes }.toString())
+            check(
+                "benchmark CSV: OS and driver named",
+                !notes["os"].isNullOrBlank() && !notes["driver"].isNullOrBlank(), "os ${notes["os"]}, driver ${notes["driver"]}"
+            )
         }
 
         // /mobium stop during a run.

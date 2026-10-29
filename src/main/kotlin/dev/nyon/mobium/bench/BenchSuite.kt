@@ -556,8 +556,10 @@ object BenchSuite {
         val environment = environment
         rows.append("# order,off on on off\n")
         rows.append("# seconds,$seconds\n")
+        rows.append("# os,${FrameRecorder.csv(environment?.os ?: "")}\n")
         rows.append("# cpu,${FrameRecorder.csv(DebugEntrySystemSpecs.getCpuInfo())}\n")
         rows.append("# gpu,${FrameRecorder.csv(capabilities?.deviceName ?: "")}\n")
+        rows.append("# driver,${FrameRecorder.csv(environment?.driver ?: "")}\n")
         rows.append("# backend,${FrameRecorder.csv(capabilities?.backendName ?: "")}\n")
         rows.append("# display,${FrameRecorder.csv(environment?.display ?: "")}\n")
         rows.append("# resolution,${environment?.resolution ?: ""}\n")

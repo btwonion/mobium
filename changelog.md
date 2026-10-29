@@ -1,0 +1,1 @@
+- `/mobium benchmark` files also name the operating system and the graphics driver
