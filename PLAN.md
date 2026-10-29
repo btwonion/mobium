@@ -40,7 +40,10 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
   now behaves like "Prefer Vulkan"), and both modules are off on Vulkan. Vulkan already exists in 26.3 as an option,
   with every class M7 needs, so M7 is built and gated on 26.3; M8 then ports to 26.4. Step 1 is done: up to
   `26.4-snapshot-6` Renderpearl has no compute and no storage buffers, and drops push descriptors
-  (`docs/vanilla-notes.md` §20). Gate D is agreed as proposed (Anton, 29 Oct 2026); next is step 2, tooling.
+  (`docs/vanilla-notes.md` §20). Gate D is agreed as proposed (Anton, 29 Oct 2026). Step 2 is done: the dev clients,
+  the self-check (`--api vulkan`) and the gametests run on Vulkan with the validation layer, without Iris, which stops
+  the game on Vulkan (§21). The self-check on Vulkan needs `vulkan-validation-layers` installed (Anton, once). Next is
+  step 3, Module 1 on Vulkan.
 
 ---
 
@@ -62,11 +65,14 @@ frame's submission), and three blockers: vanilla's vertex buffers are not storag
          its own instead). computelib is NeoForge-only for 26.2 and not a dependency; it marks storage buffers with
          an extra usage bit, as planned below. Check the newest snapshot again before M8.
 2. **Tooling.**
-   - [ ] `benchmark/self_check.py --api vulkan` (and the gametests' launch) start the dev clients on Vulkan
-         (`forcedGraphicsApi` launch argument or the `PreferredGraphicsApi` option, *(verify)* their exact form).
-   - [ ] Vulkan validation layers in the dev clients (Renderpearl's `GpuDebugOptions`, *(verify)*); the self-check
-         fails on any validation message that names Mobium's objects or follows its calls.
-   - [ ] `debug/ExpandProfile.kt` on Renderpearl's timestamps (`GpuDevice.createTimestampQueryPool`,
+   - [x] `benchmark/self_check.py --api vulkan` (and the gametests' launch) start the dev clients on Vulkan: Gradle
+         property `mobium.graphicsBackend`, launch argument `--graphicsBackend`; the self-check and `StartupGameTest`
+         fail when Minecraft fell back to the other API; Iris stays off the dev classpath on Vulkan (§21).
+   - [x] Vulkan validation layers in the dev clients (`-Pmobium.vulkanValidation`, `--vulkanValidation`); Mobium's
+         own messenger (`debug/VulkanValidation.kt`), and the self-check fails on any validation message that names
+         Mobium's objects or follows its calls (`validation.txt` lists all). The gametests do not check the messages
+         yet (step 5, lavapipe).
+   - [x] `debug/ExpandProfile.kt` on Renderpearl's timestamps (`GpuDevice.createTimestampQueryPool`,
          `CommandEncoder.writeTimestamp`) instead of GL queries, so `--mode expand-cost` works on both backends.
 3. **Module 1 on Vulkan.**
    - [ ] `ModuleRules`: the backend rule per module. The static cache runs on OpenGL and Vulkan; Module 2 needs
@@ -127,8 +133,9 @@ differences and 0 differing vertices (self-check, gametests on lavapipe), no val
 with Mobium no slower than without (at most 1.03×). Then release.
 
 **Open questions for M7:**
-- Do Iris 1.11, Sodium 0.9 and EMF/ETF run on Vulkan in 26.3 and 26.4? If Iris does not, setups B and D stay on
-  OpenGL until Aperture.
+- Do Iris 1.11, Sodium 0.9 and EMF/ETF run on Vulkan in 26.3 and 26.4? In 26.3 Sodium 0.9.2, EMF 3.3.12 and ETF
+  7.2.6 do; Iris 1.11.7 stops the game at startup (`docs/vanilla-notes.md` §21), so setups B and D stay on OpenGL
+  until Aperture or an Iris that runs on Vulkan. 26.4 is still open.
 - Vitrail (OptiFine-format shader packs on the Vulkan renderer; 0.7 beta since Aug 2026, asked about on 26 Oct 2026):
   how it changes entity vertex formats and the shadow pass. Until checked, Module 2 stays off while it is installed.
 - Which GPUs lack `shaderFloat64` on Vulkan (Intel Arc A-series on Windows, Apple through MoltenVK, *(verify)*); the

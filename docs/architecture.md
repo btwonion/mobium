@@ -190,9 +190,10 @@ buffer instead.
   with its built-in data pack, and the unattended rounds (`BenchAutorun`). Protocol and results in
   `docs/benchmarks.md`.
 - **Dev only:** `debug/Validation.kt` (`/mobium debug validate`: a frame with Mobium against the next with vanilla,
-  pixel by pixel), `/mobium debug fail <module>`, `/mobium debug gpucheck`, `debug/ExpandProfile.kt` (CPU and GPU
-  timestamps of the expand pass) and `debug/selfcheck/` (the in-game self-check that `benchmark/self_check.py`
-  drives).
+  pixel by pixel), `/mobium debug fail <module>`, `/mobium debug gpucheck`, `debug/ExpandProfile.kt` (CPU time and
+  Renderpearl's GPU timestamps of the expand pass, on both backends), `debug/VulkanValidation.kt` (a debug messenger
+  of Mobium's own on Vulkan with the validation layer, which sorts out the messages Mobium's objects or calls raise)
+  and `debug/selfcheck/` (the in-game self-check that `benchmark/self_check.py` drives, `--api opengl` or `vulkan`).
 
 ## Config and settings
 
@@ -214,7 +215,7 @@ dev.nyon.mobium
 │                 #   LightStamps, MemoryBudget, CachedBlockEntity/CachedEntity, ExtendedSubmits (Fabric renderer API)
 ├── config/       # Config, ConfigHandler, settings screen, ModMenuImpl, SodiumOptions
 ├── core/         # ModuleState (rules), ModuleStates, Fallback, Capabilities, Compat, IrisCompat, EmfCompat
-├── debug/        # AbToggle, F3 entries, Sections, Validation, ExpandProfile, selfcheck/
+├── debug/        # AbToggle, F3 entries, Sections, Validation, ExpandProfile, VulkanValidation, selfcheck/
 ├── gpu/          # GpuBackend, RenderpearlBackend, RingBuffer + RingAllocator (unused), gl/GlCompute
 └── parts/        # Module 2: PartTransform, PartHooks, MeshPool, SodiumCubes, PartBatch, ReservedRanges, ExpandPass,
                   #   PartValidation, PartCheck, PathSampler

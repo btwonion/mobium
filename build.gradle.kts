@@ -27,6 +27,23 @@ val majorVersion: String = property("mod.major-version").toString()
 val mcVersion = property("vers.mcVersion").toString()
 version = "$majorVersion${if (beta != 0) "-beta$beta" else ""}-$mcVersion+$loader" // Pattern is '1.0.0-beta1-1.20.6-pre.2+fabric'
 
+// Dev clients and gametests on a chosen graphics API: -Pmobium.graphicsBackend=vulkan (or opengl), plus
+// -Pmobium.vulkanValidation for Khronos' validation layer (docs/vanilla-notes.md §21). Both also go in as system
+// properties, so that the self-check and the gametests can check what the game runs on: Minecraft falls back to the
+// other API when the chosen one fails to start.
+val graphicsBackend: String? = findProperty("mobium.graphicsBackend")?.toString()
+val vulkanValidation = findProperty("mobium.vulkanValidation")?.toString()?.let { it != "false" } ?: false
+val launchArguments = buildList {
+    if (graphicsBackend != null) addAll(listOf("--graphicsBackend", graphicsBackend))
+    if (vulkanValidation) add("--vulkanValidation")
+}
+val launchProperties = buildMap {
+    if (graphicsBackend != null) put("mobium.graphicsBackend", graphicsBackend)
+    if (vulkanValidation) put("mobium.vulkanValidation", "true")
+}
+// The layer stops reporting a message after 10 repeats by default, so vanilla's could hide Mobium's of the same kind.
+val launchEnvironment = if (vulkanValidation) mapOf("VK_LAYER_DUPLICATE_MESSAGE_LIMIT" to "1000000") else mapOf()
+
 val flk: String = "${libs.versions.fabric.language.kotlin.orNull}${libs.versions.kotlin.orNull}"
 val fabricLoader = libs.versions.fabric.loader.get()
 modstitch {
@@ -61,6 +78,9 @@ modstitch {
         configureLoom {
             runConfigs.all {
                 ideConfigGenerated(false)
+                programArgs(launchArguments)
+                launchProperties.forEach { (key, value) -> property(key, value) }
+                launchEnvironment.forEach { (key, value) -> environmentVariable(key, value) }
             }
         }
     }
@@ -76,6 +96,9 @@ modstitch {
                     gameDirectory = layout.projectDirectory.dir("../../run")
                     environment("WAYLAND_DISPLAY", "")
                     environment("XDG_SESSION_TYPE", "x11")
+                    programArguments.addAll(launchArguments)
+                    launchProperties.forEach { (key, value) -> systemProperty(key, value) }
+                    launchEnvironment.forEach { (key, value) -> environment(key, value) }
                 }
             }
 
@@ -245,10 +268,10 @@ dependencies {
     }
 
     // Mobium must load without these; they are compiled against and put on the dev runtime classpath only.
-    fun compatDependency(id: String, artifactGetter: (String) -> String) {
+    fun compatDependency(id: String, runtime: Boolean = true, artifactGetter: (String) -> String) {
         prop("vers.deps.$id") { modVersion ->
             "modstitchModCompileOnly"(artifactGetter(modVersion))
-            "modstitchModLocalRuntime"(artifactGetter(modVersion))
+            if (runtime) "modstitchModLocalRuntime"(artifactGetter(modVersion))
         }
     }
 
@@ -262,7 +285,9 @@ dependencies {
 
     prop("vers.deps.sodiumApi") { "modstitchModCompileOnly"("net.caffeinemc:sodium-$loader-api:$it") }
     compatDependency("sodium") { "maven.modrinth:sodium:$it" }
-    compatDependency("iris") { "maven.modrinth:iris:$it" }
+    // Iris 1.11.7 calls OpenGL while Minecraft starts its renderer and so stops the game on Vulkan
+    // (docs/vanilla-notes.md §21): dev runs on Vulkan go without it.
+    compatDependency("iris", runtime = graphicsBackend != "vulkan") { "maven.modrinth:iris:$it" }
     compatDependency("etf") { "maven.modrinth:entitytexturefeatures:$it" }
     compatDependency("emf") { "maven.modrinth:entity-model-features:$it" }
 
