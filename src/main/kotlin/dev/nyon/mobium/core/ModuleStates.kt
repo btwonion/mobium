@@ -5,6 +5,7 @@ import dev.nyon.mobium.bench.BenchSuite
 import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.debug.AbToggle
+import dev.nyon.mobium.gpu.vk.VulkanSupport
 import dev.nyon.mobium.parts.PartTransform
 
 /**
@@ -37,6 +38,7 @@ object ModuleStates {
             abOff = AbToggle.mobiumOff,
             overlaps = Compat.overlaps(),
             untested = Compat.untested(),
+            vulkanParts = VulkanSupport.allowed,
             failures = Fallback.failures
         )
         val next = ModuleRules.resolve(config, environment)

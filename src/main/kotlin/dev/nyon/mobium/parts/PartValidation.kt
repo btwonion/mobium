@@ -4,8 +4,11 @@ import com.mojang.blaze3d.vertex.BufferBuilder
 import com.mojang.blaze3d.vertex.ByteBufferBuilder
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import com.mojang.blaze3d.vertex.VertexConsumer
+import com.mojang.renderpearl.api.buffers.GpuBuffer
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
 import com.mojang.renderpearl.api.vertex.VertexFormat
+import com.mojang.renderpearl.backend.opengl.GlBuffer
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.gpu.gl.GlCompute
 import net.minecraft.client.renderer.SpriteCoordinateExpander
@@ -23,6 +26,11 @@ import java.util.Locale
  * the memory held before: byte 35, the normal's padding, and in Iris's format bytes 42 and 43, the fourth short of
  * `iris_Entity`, which Iris's Sodium serializer leaves alone (its per-vertex path writes 0, as the expand pass does).
  * Slow (a GPU read per staged buffer with compared parts); render thread only.
+ *
+ * On OpenGL the read waits for the GPU. Vulkan cannot wait inside a frame for commands it has not submitted, so there
+ * the span is copied into a read-back buffer and compared once the frame's fence has signalled ([poll], a few frames
+ * later); in normal play the CPU's bytes are written over every compared part in the same frame, so that no compared
+ * part is drawn from the GPU, and the verdict switches Module 2 off as on OpenGL.
  */
 object PartValidation {
     private const val NORMAL_PADDING = 35
@@ -67,6 +75,23 @@ object PartValidation {
     private var readback = 0L
     private var readbackSize = 0L
 
+    /** A Vulkan read-back waiting for its fence: the parts it holds, from [start] of their vertex buffer. */
+    private class Pending(
+        val readback: VulkanExpand.Readback,
+        val start: Long,
+        val entries: ArrayList<Entry>,
+        val unmatched: Int,
+        val repair: Boolean,
+        val forced: Boolean,
+        val stage: String
+    )
+
+    private val pendingChecks = ArrayList<Pending>()
+
+    /** No Vulkan read-back is waiting for the GPU: the counters are final. */
+    val settled: Boolean
+        get() = pendingChecks.isEmpty()
+
     fun reset() {
         compared = 0
         mismatched = 0
@@ -76,6 +101,11 @@ object PartValidation {
         reports.clear()
         for (entry in entries) MemoryUtil.nmemFree(entry.expected)
         entries.clear()
+        for (pending in pendingChecks) {
+            for (entry in pending.entries) MemoryUtil.nmemFree(entry.expected)
+            VulkanExpand.release(pending.readback)
+        }
+        pendingChecks.clear()
     }
 
     /** A part Module 2 just took over: [vertexCount] vertices from [firstVertex] of [draw]. */
@@ -135,11 +165,29 @@ object PartValidation {
     }
 
     /**
-     * After [staged]'s expand pass: reads back the span of its vertex buffer that holds compared parts and compares
-     * each part; with [repair], writes the CPU's bytes over a part whose vertices differ and reads it again, so that
-     * this frame draws the CPU's vertices. Sets [lastDiffering] and [lastUnmatched].
+     * After [staged]'s expand pass in [stage]: compares its compared parts with the GPU's vertices in [vertexBuffer];
+     * with [repair] (normal play, [PartCheck]) a difference switches Module 2 off and the frame draws the CPU's bytes.
      */
-    fun check(staged: StagedVertexBuffer, vertexBuffer: Int, repair: Boolean) {
+    fun check(staged: StagedVertexBuffer, vertexBuffer: GpuBuffer, repair: Boolean, stage: String) {
+        if (vertexBuffer is GlBuffer) {
+            checkGl(staged, vertexBuffer.handle(), repair)
+            finish(lastDiffering, lastUnmatched, repair, stage)
+        } else {
+            checkVulkan(staged, vertexBuffer as VulkanGpuBuffer, repair, stage)
+        }
+    }
+
+    /** A comparison's verdict: in normal play a difference makes Module 2 fail ([PartCheck.failed]). */
+    private fun finish(differing: Long, unmatched: Int, repair: Boolean, stage: String) {
+        if (repair && (differing > 0 || unmatched > 0)) PartCheck.failed(differing, unmatched, stage)
+    }
+
+    /**
+     * OpenGL: reads back the span of [staged]'s vertex buffer that holds compared parts and compares each part; with
+     * [repair], writes the CPU's bytes over a part whose vertices differ and reads it again, so that this frame draws
+     * the CPU's vertices. Sets [lastDiffering] and [lastUnmatched].
+     */
+    private fun checkGl(staged: StagedVertexBuffer, vertexBuffer: Int, repair: Boolean) {
         lastDiffering = 0
         lastUnmatched = 0
         var start = Long.MAX_VALUE
@@ -183,6 +231,82 @@ object PartValidation {
             }
             MemoryUtil.nmemFree(entry.expected)
         }
+    }
+
+    /**
+     * Vulkan: records a copy of the span holding [staged]'s compared parts and, with [repair], the CPU's bytes written
+     * over all of them; the comparison follows in [poll].
+     */
+    private fun checkVulkan(staged: StagedVertexBuffer, vertexBuffer: VulkanGpuBuffer, repair: Boolean, stage: String) {
+        poll()
+        val taken = ArrayList<Entry>()
+        var unmatched = 0
+        var start = Long.MAX_VALUE
+        var end = 0L
+        val iterator = entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (entry.staged !== staged) continue
+            iterator.remove()
+            if (entry.expected == 0L) {
+                unmatched++
+                continue
+            }
+            taken += entry
+            start = minOf(start, base(entry))
+            end = maxOf(end, base(entry) + entry.vertexCount.toLong() * entry.vertexSize)
+        }
+        if (taken.isEmpty()) {
+            finish(0, unmatched, repair, stage)
+            return
+        }
+        val repairs = if (repair) taken.size else 0
+        val offsets = LongArray(repairs)
+        val addresses = LongArray(repairs)
+        val sizes = LongArray(repairs)
+        for (i in 0 until repairs) {
+            offsets[i] = base(taken[i])
+            addresses[i] = taken[i].expected
+            sizes[i] = taken[i].vertexCount.toLong() * taken[i].vertexSize
+        }
+        val readback = VulkanExpand.readBack(vertexBuffer, start, end - start, offsets, addresses, sizes, repairs)
+        val forced = PartCheck.forcedDifference
+        PartCheck.forcedDifference = false
+        pendingChecks += Pending(readback, start, taken, unmatched, repair, forced, stage)
+    }
+
+    /** Compares the Vulkan read-backs the GPU has finished; called every frame and before each check. */
+    fun poll() {
+        if (pendingChecks.isEmpty()) return
+        val iterator = pendingChecks.iterator()
+        while (iterator.hasNext()) {
+            val pending = iterator.next()
+            if (!pending.readback.fence.awaitCompletion(0)) continue
+            iterator.remove()
+            compare(pending)
+        }
+    }
+
+    private fun compare(pending: Pending) {
+        pending.readback.read()
+        val before = pending.readback.address(afterRepairs = false)
+        // `/mobium debug gpucheck`: one changed bit in the x position of the first compared vertex, as a driver might.
+        if (pending.forced) MemoryUtil.memPutInt(before, MemoryUtil.memGetInt(before) xor 1)
+        var differing = 0L
+        for (entry in pending.entries) {
+            val offset = base(entry) - pending.start
+            val found = differing(entry, before + offset, report = true)
+            compared += entry.vertexCount
+            mismatched += found
+            differing += found
+            if (found > 0 && pending.repair) {
+                repaired += found
+                unrepaired += differing(entry, pending.readback.address(afterRepairs = true) + offset, report = false)
+            }
+            MemoryUtil.nmemFree(entry.expected)
+        }
+        VulkanExpand.release(pending.readback)
+        finish(differing, pending.unmatched, pending.repair, pending.stage)
     }
 
     /** Where [entry]'s first vertex lies in its staged buffer's vertex buffer, in bytes. */

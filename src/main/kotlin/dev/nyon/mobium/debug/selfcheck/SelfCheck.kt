@@ -1183,6 +1183,8 @@ object SelfCheck {
         PartTransform.validating = true
         yield(ticks(TICKS_PER_SECOND))
         PartTransform.validating = false
+        // On Vulkan the last frames' comparisons arrive once the GPU is done with them.
+        yield(upTo("validation read-backs", 5) { PartValidation.settled })
         val passed = PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0 &&
             (PartValidation.compared > 0 || !expectParts)
         check("parts, $name: GPU vertices equal the CPU's", passed, PartValidation.summary() + "; " + PartTransform.debugLine() +

@@ -39,6 +39,9 @@
         "RenderTypeFeatureRendererInvoker",
         "RenderTypeFeatureRendererMixin",
         "StagedDrawMixin",
-        "StagedVertexBufferMixin"
+        "StagedVertexBufferMixin",
+        "vulkan.VulkanConstMixin",
+        "vulkan.VulkanDeviceMixin",
+        "vulkan.VulkanFeatureSetsMixin"
     ]
 }

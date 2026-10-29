@@ -39,6 +39,8 @@ val launchArguments = buildList {
 }
 val launchProperties = buildMap {
     if (graphicsBackend != null) put("mobium.graphicsBackend", graphicsBackend)
+    // Module 2 on Vulkan is off for players until its checks there are done (PLAN.md M7 step 5); dev runs test it.
+    if (graphicsBackend == "vulkan") put("mobium.parts.vulkan", "true")
     if (vulkanValidation) put("mobium.vulkanValidation", "true")
 }
 // The layer stops reporting a message after 10 repeats by default, so vanilla's could hide Mobium's of the same kind.
@@ -300,6 +302,11 @@ dependencies {
     // Loom puts Minecraft's libraries on the unit tests' runtime classpath, ModDevGradle does not; the classes under test
     // use fastutil (LightStamps, MemoryBudget), so the NeoForge targets add it at Minecraft's version.
     prop("vers.deps.fastutil") { testRuntimeOnly("it.unimi.dsi:fastutil:$it") }
+}
+
+// The same holds for LWJGL: the test that compiles the expand shader with LWJGL's shaderc (gpu/vk) runs on Fabric only.
+if (!isFabric) {
+    kotlin.sourceSets.named("test") { kotlin.exclude("dev/nyon/mobium/gpu/vk/**") }
 }
 
 tasks {

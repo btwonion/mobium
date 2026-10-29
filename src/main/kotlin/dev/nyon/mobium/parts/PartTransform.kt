@@ -6,7 +6,9 @@ import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
 import com.mojang.renderpearl.api.vertex.VertexFormat
+import com.mojang.renderpearl.api.buffers.GpuBuffer
 import com.mojang.renderpearl.backend.opengl.GlBuffer
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
@@ -355,18 +357,18 @@ object PartTransform {
         if (ExpandProfile.enabled) ExpandProfile.lap(ExpandProfile.UPLOAD, ExpandProfile.uploadStart)
         val batch = (staged as PartStaged).`mobium$batch`() ?: return
         if (batch.isEmpty) return
-        val vertexBuffer = staged.`mobium$vertexBuffer`() as GlBuffer
+        val vertexBuffer = checkNotNull(staged.`mobium$vertexBuffer`()) { "no vertex buffer after upload()" }
         try {
             batch.resolveSlots()
             if (failedThisFrame) {
-                blank(batch, vertexBuffer.handle())
+                blank(batch, vertexBuffer)
             } else {
-                ExpandPass.dispatch(batch, vertexBuffer.handle())
-                if (PartValidation.pending(staged)) compareWithCpu(staged, vertexBuffer.handle())
+                ExpandPass.dispatch(batch, vertexBuffer)
+                if (PartValidation.pending(staged)) compareWithCpu(staged, vertexBuffer)
             }
         } catch (e: Throwable) {
             Fallback.moduleFailed(Module.PART_TRANSFORM, e)
-            runCatching { blank(batch, vertexBuffer.handle()) }
+            runCatching { blank(batch, vertexBuffer) }
         } finally {
             // Parts left uncompared (a blanked frame, an error) must not be compared against next frame's buffer.
             PartValidation.discard(staged)
@@ -379,12 +381,8 @@ object PartTransform {
      * part gets the CPU's bytes in this frame and Module 2 switches off; the dev validation ([validating]) only counts
      * differences, for the self-check's and the gametests' reports.
      */
-    private fun compareWithCpu(staged: StagedVertexBuffer, vertexBuffer: Int) {
-        PartValidation.check(staged, vertexBuffer, repair = !validating)
-        if (validating) return
-        if (PartValidation.lastDiffering > 0 || PartValidation.lastUnmatched > 0) {
-            PartCheck.failed(PartValidation.lastDiffering, PartValidation.lastUnmatched, ExpandPass.stageName(ExpandPass.lastStage))
-        }
+    private fun compareWithCpu(staged: StagedVertexBuffer, vertexBuffer: GpuBuffer) {
+        PartValidation.check(staged, vertexBuffer, repair = !validating, stage = ExpandPass.stageName(ExpandPass.lastStage))
     }
 
     /**
@@ -417,14 +415,32 @@ object PartTransform {
      * nothing for them (all at the origin, without area) instead of whatever the memory held. The parts that failed
      * were compiled by vanilla as well; from the next frame on the module is off.
      */
-    private fun blank(batch: PartBatch, vertexBuffer: Int) {
+    private fun blank(batch: PartBatch, vertexBuffer: GpuBuffer) {
+        if (vertexBuffer is GlBuffer) {
+            for (slot in 0 until batch.draws.size) {
+                val base = (batch.draws[slot] as PartDraw).`mobium$vertexOffset`().toLong()
+                val ranges = batch.reserved(slot)
+                for (i in 0 until ranges.count) {
+                    GlCompute.clear(vertexBuffer.handle(), base + ranges.start(i), (ranges.end(i) - ranges.start(i)).toLong())
+                }
+            }
+            return
+        }
+        var count = 0
+        for (slot in 0 until batch.draws.size) count += batch.reserved(slot).count
+        val starts = LongArray(count)
+        val ends = LongArray(count)
+        var next = 0
         for (slot in 0 until batch.draws.size) {
             val base = (batch.draws[slot] as PartDraw).`mobium$vertexOffset`().toLong()
             val ranges = batch.reserved(slot)
             for (i in 0 until ranges.count) {
-                GlCompute.clear(vertexBuffer, base + ranges.start(i), (ranges.end(i) - ranges.start(i)).toLong())
+                starts[next] = base + ranges.start(i)
+                ends[next] = base + ranges.end(i)
+                next++
             }
         }
+        VulkanExpand.blank(vertexBuffer as VulkanGpuBuffer, starts, ends, count)
     }
 
     /** Closes the frame's counters; called once per frame. */
@@ -432,6 +448,8 @@ object PartTransform {
     fun endFrame() {
         failedThisFrame = false
         PartCheck.endFrame()
+        PartValidation.poll()
+        VulkanExpand.endFrame()
         lastParts = parts
         lastQuads = quads
         parts = 0

@@ -144,8 +144,10 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 PartTransform.validating = true
             }
             context.waitTicks(VALIDATION_TICKS)
+            context.runOnClient<RuntimeException> { PartTransform.validating = false }
+            // On Vulkan the last frames' comparisons arrive once the GPU is done with them.
+            context.waitFor({ PartValidation.settled }, SETTLE_TICKS)
             context.runOnClient<RuntimeException> {
-                PartTransform.validating = false
                 LOGGER.info("Module 2 validation ({}): {}; {}", scene, PartValidation.summary(), PartTransform.debugLine())
                 check(PartValidation.compared > 0 && PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0) {
                     "Module 2's vertices (${ExpandPass.stageName}) differ from the CPU's in $scene: ${PartValidation.summary()} ${PartValidation.reports}"
@@ -162,12 +164,14 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
     }
 
     /**
-     * Whether Module 2 runs on this backend. On Vulkan it stays off with `backend` until its Vulkan dispatch exists
-     * (PLAN.md M7 step 4); that is checked instead, and the callers skip Module 2's checks.
+     * Whether Module 2 runs on this backend. On Vulkan it runs only with `-Dmobium.parts.vulkan` (dev runs on Vulkan
+     * set it) until its checks there are done (PLAN.md M7 step 5); without, it must be off with `backend`, and the
+     * callers skip Module 2's checks.
      */
     private fun module2Runs(context: ClientGameTestContext): Boolean = context.computeOnClient<Boolean, RuntimeException> {
         if (Capabilities.current?.backend != GraphicsBackend.VULKAN) return@computeOnClient true
         val status = ModuleStates.status(Module.PART_TRANSFORM)
+        if (status.active) return@computeOnClient true
         check(status.reason == OffReason.BACKEND) { "Module 2 on Vulkan: ${status.describe()}" }
         LOGGER.info("Module 2 is off on Vulkan ({}), its checks are skipped", status.describe())
         false
