@@ -87,6 +87,34 @@ jobs:
           name: gametest-screenshots-${{ matrix.version }}-${{ matrix.loader }}
           if-no-files-found: warn
           path: versions/${{ matrix.version }}-${{ matrix.loader }}/build/run/clientGameTest/screenshots/
+      # The gametests a second time on Minecraft's Vulkan backend, on Mesa's lavapipe (software Vulkan, with
+      # shaderFloat64): the static cache and Module 2 with its byte-for-byte validation (PLAN.md M7, Gate D). Dev runs on
+      # Vulkan leave Iris out (it stops the game there) and run Module 2 there (-Dmobium.parts.vulkan).
+      - name: Install Mesa's software Vulkan
+        if: matrix.loader == 'fabric'
+        run: sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+      - name: Show lavapipe
+        if: matrix.loader == 'fabric'
+        env:
+          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: vulkaninfo --summary || true
+      - name: Client gametests on Vulkan (lavapipe)
+        if: matrix.loader == 'fabric'
+        timeout-minutes: 25
+        env:
+          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: >-
+          xvfb-run -a -s "-screen 0 1920x1080x24"
+          ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:runClientGameTest -Pmobium.graphicsBackend=vulkan --stacktrace
+      - name: Store Vulkan gametest screenshots
+        if: always() && matrix.loader == 'fabric'
+        uses: actions/upload-artifact@v7
+        with:
+          name: gametest-screenshots-vulkan-${{ matrix.version }}-${{ matrix.loader }}
+          if-no-files-found: warn
+          path: versions/${{ matrix.version }}-${{ matrix.loader }}/build/run/clientGameTest/screenshots/
       - name: Store test reports
         if: failure()
         uses: actions/upload-artifact@v7

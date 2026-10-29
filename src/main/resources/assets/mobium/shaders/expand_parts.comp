@@ -14,7 +14,26 @@
 //   vertices the staged vertex buffer vanilla uploaded this frame; this pass fills the ranges Mobium reserved in it
 //
 // Compiled as a compute shader, or with MOBIUM_VERTEX defined as a vertex shader drawn as points with rasterisation
-// off (ExpandPass.kt): the same code, one vertex per quad.
+// off (ExpandPass.kt): the same code, one vertex per quad. On Vulkan (VulkanExpand.kt) compiled to SPIR-V by shaderc,
+// which defines VULKAN: compute only, the counts as push constants, and where the device supports them the float
+// execution modes that pin down what OpenGL's drivers do by default (MOBIUM_FLOAT_* defined by VulkanExpand.kt):
+// round to nearest even, signed zeros, infinities and NaNs kept, denormals kept.
+
+#ifdef VULKAN
+#extension GL_EXT_spirv_intrinsics : require
+// SPIR-V execution modes and capabilities (SPV_KHR_float_controls, core in SPIR-V 1.4).
+#ifdef MOBIUM_FLOAT_RTE
+spirv_execution_mode(capabilities = [4467], 4462, 32);      // RoundingModeRTE
+spirv_execution_mode(capabilities = [4467], 4462, 64);
+#endif
+#ifdef MOBIUM_FLOAT_PRESERVE
+spirv_execution_mode(capabilities = [4466], 4461, 32);      // SignedZeroInfNanPreserve
+spirv_execution_mode(capabilities = [4466], 4461, 64);
+#endif
+#ifdef MOBIUM_FLOAT_DENORM
+spirv_execution_mode(capabilities = [4464], 4459, 32);      // DenormPreserve
+#endif
+#endif
 
 #ifdef MOBIUM_VERTEX
 #define INVOCATION uint(gl_VertexID)
@@ -27,12 +46,23 @@ layout(std430, binding = 0) readonly buffer Meshes { uint meshes[]; };
 layout(std430, binding = 1) readonly buffer Frame { uint frame[]; };
 layout(std430, binding = 2) writeonly buffer Vertices { uint vertices[]; };
 
+#ifdef VULKAN
+layout(push_constant) uniform Pass {
+    uint quadCount;
+    uint cubeCount;
+    uint cubeOffset;
+    uint partOffset;
+    uint slotOffset;
+    uint quadBase;
+};
+#else
 layout(location = 0) uniform uint quadCount;
 layout(location = 1) uniform uint cubeCount;
 layout(location = 2) uniform uint cubeOffset;
 layout(location = 3) uniform uint partOffset;
 layout(location = 4) uniform uint slotOffset;
 layout(location = 5) uniform uint quadBase;     // dispatches of more than 65535 groups are split
+#endif
 
 const uint MESH_QUAD_WORDS = 21u;
 const uint CUBE_WORDS = 4u;

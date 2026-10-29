@@ -44,8 +44,10 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
   the self-check (`--api vulkan`) and the gametests run on Vulkan with the validation layer, without Iris, which stops
   the game on Vulkan (§21). The self-check on Vulkan needs `vulkan-validation-layers` installed (Anton, once). Step 3
   is done: the static cache runs on Vulkan, pixel-identical with no validation messages from Mobium (§22); with
-  Vitrail installed both modules stay off. Open: whether Module 1 on Vulkan ships before Module 2 (Anton). Next is
-  step 4, Module 2's dispatch on Vulkan.
+  Vitrail installed both modules stay off. Module 1 waits for Module 2 (Anton, 29 Oct 2026). Step 4 is done and step
+  5 nearly: Module 2 runs on Vulkan in the dev clients and the gametests (lavapipe) with 0 differing vertices (§23),
+  but stays off for players (`-Dmobium.parts.vulkan`) until the gametests on lavapipe pass in CI and Anton has looked
+  at it. Next: turn it on for players, then step 6 (measure and document).
 
 ---
 
@@ -85,45 +87,52 @@ frame's submission), and three blockers: vanilla's vertex buffers are not storag
          effect, `/mobium debug validate`; 0 changed pixels and no validation messages. Done on 29 Oct 2026 with no
          change to the cache's code: all 70 (Fabric) and 71 (NeoForge) checks pass, 0 messages from Mobium, the
          gametests pass on Vulkan too; §10's open point is answered (`docs/vanilla-notes.md` §22).
-   - [ ] If Module 2 takes longer, Module 1 on Vulkan can be released first, with Gate D's conditions for Module 1
-         alone and Module 2 still off on Vulkan (Anton's call).
-4. **Module 2's dispatch on Vulkan** (`gpu/vk/`, behind one interface with `gpu/gl/GlCompute`).
-   - [ ] Reach the backend: an accessor for `FrontendGpuDevice.backend` → `VulkanDevice` (`vkDevice()`, `vma()`,
+   - [x] If Module 2 takes longer, Module 1 on Vulkan can be released first (Anton's call): no, Vulkan support ships
+         with both modules (Anton, 29 Oct 2026).
+4. **Module 2's dispatch on Vulkan** (`gpu/vk/`, behind one interface with `gpu/gl/GlCompute`). Done on 29 Oct 2026
+   (`docs/vanilla-notes.md` §23); Module 2 on Vulkan runs only with `-Dmobium.parts.vulkan` (dev runs on Vulkan) until
+   step 5 is done.
+   - [x] Reach the backend: `FrontendGpuDeviceAccessor` → `VulkanDevice` (`vkDevice()`, `vma()`,
          `createCommandEncoder()` → the one `VulkanCommandEncoder`); vanilla's vertex buffer is a `VulkanGpuBuffer`
          with `vkBuffer()`.
-   - [ ] Storage buffers: a mixin on `VulkanConst.bufferUsageToVk` adds `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` to the
-         staged vertex pool's buffers (`COPY_DST | VERTEX`) and Mobium's own. Decide between all `VERTEX` buffers and
-         only the ones Mobium marks (a usage bit of Mobium's own, 1024, unused by Renderpearl in 26.3 and 26.4 and
-         the bit computelib uses for the same, set in a wrap of `StagedVertexBuffer.GpuBufferPool`'s
-         `createBuffer`); fallback if neither works: expand into a buffer of Mobium's own and `vkCmdCopyBuffer` the
-         reserved ranges over.
-   - [ ] Mobium's mesh and record buffers become Renderpearl buffers, uploaded with `writeToBuffer` and kept per frame
-         in flight (`gpu/RingBuffer.kt`, unused so far: Vulkan has no orphaning); the same code can serve OpenGL.
-   - [ ] 64-bit floats: a mixin on `VulkanFeatureSets.optionalFeatureSets()` adds an optional feature set with
-         `shaderFloat64`, enabled only where the GPU has it. `Capabilities.compute` is true on Vulkan when it was
-         enabled; otherwise Module 2 is off with `no_compute`.
-   - [ ] The shader for Vulkan: compiled to SPIR-V with LWJGL's shaderc, which vanilla's `GlslCompiler` uses
-         already; under `#ifdef VULKAN` push constants instead of `layout(location)` uniforms and `gl_VertexIndex`;
-         where `VK_KHR_shader_float_controls`' properties allow, `DenormPreserve`, `SignedZeroInfNanPreserve` and
-         `RoundingModeRTE` for 32-bit floats. `--mode parts` stays at 0 differing vertices on OpenGL.
-   - [ ] The pass: a compute pipeline with a descriptor set layout of three storage buffers and push constants, its
-         sets from a descriptor pool of Mobium's own, one per frame in flight (not push descriptors: 26.4 no longer
-         enables `VK_KHR_push_descriptor`, §20); per staged buffer right after `upload()` a transient command buffer
-         (`allocateAndBeginTransientCommandBuffer`) with the dispatch (split at the device's group limit) and a
-         barrier from compute writes to vertex attribute reads, handed to `VulkanCommandEncoder.execute`. Compute
-         only: the vertex stage was a workaround for Mesa's OpenGL batches and would also need
-         `vertexPipelineStoresAndAtomics`; measure before adding it.
-   - [ ] Every Vulkan mixin `require = 0` with a flag that it applied: a changed backend class leaves Module 2 off on
-         Vulkan with a reason instead of crashing the game.
+   - [x] Storage buffers: a mixin on `VulkanConst.bufferUsageToVk` adds `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` and
+         `TRANSFER_SRC` (for the check's copy) to all `VERTEX` buffers, only in sessions where Module 2 can run on
+         Vulkan: one hook, checked at startup by calling it, instead of a usage bit set in a wrap of
+         `StagedVertexBuffer.GpuBufferPool`, whose application could not be checked before the first buffer.
+   - [x] Mobium's mesh and record buffers: done without Renderpearl buffers. VMA buffers of Mobium's own, a mapped
+         upload buffer per frame in flight into which records and new meshes are copied with `memCopy` (no
+         `ByteBuffer` or slice per upload, as `writeToBuffer` would need), a device-local mesh buffer;
+         `gpu/RingBuffer.kt` stays unused.
+   - [x] 64-bit floats: a mixin on `VulkanFeatureSets.optionalFeatureSets()` adds an optional feature set with
+         `shaderFloat64`, enabled where the GPU has it; a hook on the `VulkanDevice` constructor sees whether it was.
+         `Capabilities.compute` is true on Vulkan when it was enabled and the storage hook works; otherwise Module 2
+         is off with `no_compute`.
+   - [x] The shader for Vulkan: compiled to SPIR-V with LWJGL's shaderc; under `#ifdef VULKAN` push constants
+         instead of `layout(location)` uniforms; where the device's float controls allow, `RoundingModeRTE` and
+         `SignedZeroInfNanPreserve` for 32 and 64 bit and `DenormPreserve` for 32 bit (`GL_EXT_spirv_intrinsics`);
+         a unit test compiles every variant.
+   - [x] The pass: a compute pipeline with a descriptor set layout of three storage buffers and push constants, its
+         sets from a descriptor pool of Mobium's own per frame in flight; per staged buffer right after `upload()` a
+         transient command buffer with the mesh upload, the dispatch (split at the device's group limit) and a barrier
+         from compute writes to all commands, handed to `VulkanCommandEncoder.execute`. Compute only (the vertex stage
+         would also need `vertexPipelineStoresAndAtomics`; measure before adding it).
+   - [x] Every Vulkan mixin `require = 0`, each checked (`gpu/vk/VulkanSupport.kt`): a changed backend class leaves
+         Module 2 off on Vulkan with a reason instead of crashing the game.
 5. **Checks on Vulkan.**
-   - [ ] `PartValidation`'s read-back through Renderpearl (`copyToBuffer` into a `MAP_READ` buffer, compared when its
-         fence signals): Vulkan cannot wait inside a frame for commands it has not submitted.
-   - [ ] `PartCheck` on Vulkan: the sampled parts' GPU bytes are copied out and then overwritten with the CPU's bytes
-         in the same frame, so no sampled part is ever drawn from the GPU; the verdict arrives about two frames later
-         and switches Module 2 off as on OpenGL.
-   - [ ] Self-check `--mode parts` on Vulkan, both loaders: 0 differing vertices, pictures identical, no validation
-         messages; `/mobium debug gpucheck` still repairs and switches off.
-   - [ ] CI: the Fabric gametests a second time on Mesa's lavapipe (software Vulkan, with `shaderFloat64`).
+   - [x] `PartValidation`'s read-back on Vulkan: `vkCmdCopyBuffer` into a host-visible VMA buffer behind the
+         dispatch, compared when a Renderpearl fence signals (`PartValidation.poll`, `settled`): Vulkan cannot wait
+         inside a frame for commands it has not submitted.
+   - [x] `PartCheck` on Vulkan: the sampled parts' GPU bytes are copied out and then overwritten with the CPU's bytes
+         in the same frame, so no sampled part is ever drawn from the GPU; the verdict arrives a few frames later and
+         switches Module 2 off as on OpenGL.
+   - [x] Self-check `--mode parts` on Vulkan, both loaders (29 Oct 2026): 0 differing vertices (about 31 million
+         compared per loader), pictures identical, no validation messages from Mobium; `/mobium debug gpucheck` still
+         repairs and switches off. On OpenGL `--mode parts` stays at 0 in both stages, shader pack included.
+   - [ ] CI: the Fabric gametests a second time on Mesa's lavapipe (software Vulkan, with `shaderFloat64`). The job
+         step is in `build-commit.yml` (M7 step 4's PR) and passes locally on lavapipe (Mesa 26.2.5, 4.6 min); tick
+         once it passes on GitHub's runner.
+   - [ ] Module 2 on Vulkan for players: `ModuleRules` without `-Dmobium.parts.vulkan`, the property and its build
+         wiring removed, after Anton's check on his machine (*How to verify* of M7 step 4's PR).
 6. **Measure and document.**
    - [ ] Benchmark round A–D on Vulkan in the Prism instances (the graphics API set in their options), plus
          `/mobium gatec` on Vulkan and OpenGL in one session each. Setups whose mods do not run on Vulkan are

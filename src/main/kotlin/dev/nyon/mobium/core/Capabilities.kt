@@ -1,6 +1,7 @@
 package dev.nyon.mobium.core
 
 import com.mojang.blaze3d.systems.RenderSystem
+import dev.nyon.mobium.gpu.vk.VulkanSupport
 import org.lwjgl.opengl.GL
 import org.lwjgl.opengl.GL11C
 import org.lwjgl.opengl.GL43C
@@ -23,10 +24,12 @@ enum class GraphicsBackend {
  *
  * @param glCompute is true when the OpenGL context has compute shaders and SSBOs (core 4.3 or both ARB extensions)
  * and double precision in shaders (core 4.0), which Module 2's expand pass uses for correctly rounded square roots and
- * divisions. Always false on Vulkan until Mobium has a Vulkan compute path (PLAN.md M7).
+ * divisions. False on Vulkan, see [vulkanCompute].
  * @param glVertexStores is true when, on top of [glCompute], vertex shaders may write three shader storage buffers
  * (`GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS`, which OpenGL lets be 0), so that the expand pass can run as a point draw.
  * @param multiDrawIndirect is Renderpearl's own `DeviceFeatures.multiDrawIndirect()`.
+ * @param vulkanCompute is true on Vulkan when the device has `shaderFloat64` enabled and vertex buffers can be storage
+ * buffers ([VulkanSupport.available]); compute shaders themselves are core Vulkan.
  */
 class Capabilities(
     @JvmField val backend: GraphicsBackend,
@@ -36,10 +39,11 @@ class Capabilities(
     @JvmField val driverInfo: String,
     @JvmField val glCompute: Boolean,
     @JvmField val glVertexStores: Boolean,
-    @JvmField val multiDrawIndirect: Boolean
+    @JvmField val multiDrawIndirect: Boolean,
+    @JvmField val vulkanCompute: Boolean = false
 ) {
     val compute: Boolean
-        get() = glCompute
+        get() = glCompute || vulkanCompute
 
     fun describe(): String =
         "$backendName on $deviceName ($vendor, $driverInfo); compute: ${yesNo(compute)}, vertex-stage stores: " +
@@ -65,7 +69,8 @@ class Capabilities(
                 info.driverInfo(),
                 glCompute,
                 glCompute && hasGlVertexStores(),
-                info.features().multiDrawIndirect()
+                info.features().multiDrawIndirect(),
+                backend == GraphicsBackend.VULKAN && VulkanSupport.available
             )
             current = capabilities
             return capabilities

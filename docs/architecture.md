@@ -130,13 +130,18 @@ A model part keeps every CPU step up to its own `compile`: `setupAnim`, EMF's an
    and the frame's records and runs `assets/mobium/shaders/expand_parts.comp` once per quad, writing the reserved
    vertices into the vertex buffer vanilla just filled, followed by a vertex-attribute barrier. Vanilla's own draws
    then draw them, in vanilla's order. The pass is raw OpenGL 4.3 on the buffers' GL names (`gpu/gl/GlCompute.kt`),
-   because Renderpearl has no compute or storage buffers.
+   because Renderpearl has no compute or storage buffers. On Vulkan (`parts/VulkanExpand.kt`, raw Vulkan in
+   `gpu/vk/VkCompute.kt`) the same shader, compiled to SPIR-V, runs as a compute dispatch in a command buffer of
+   Mobium's own that Renderpearl's encoder appends to the frame right after `upload()`; three `require = 0` mixins
+   (`mixins/vulkan`, `gpu/vk/VulkanSupport.kt`) enable `shaderFloat64` and give vertex buffers storage usage
+   (`docs/vanilla-notes.md` §23). Module 2 on Vulkan runs only in dev clients so far (`-Dmobium.parts.vulkan`, set by
+   `-Pmobium.graphicsBackend=vulkan`), until CI checks it (`PLAN.md` M7 step 5).
 7. **Two stages, same bytes.** Mesa's iris records a compute dispatch in a batch of its own and flushes both batches
    around it, a fixed GPU cost per frame however few parts there are. So without a shader pack the same shader runs
    compiled as a vertex shader, drawn as points with rasterisation off (the *vertex stage*, where vertex shaders may
    write three storage buffers); with a shader pack it stays a compute dispatch, whose early flushes help a GPU-heavy
    frame. `ExpandPass.stage` chooses; `-Dmobium.parts.stage=compute|vertex` overrides (`docs/benchmarks.md`,
-   *Module 2's fixed cost*).
+   *Module 2's fixed cost*). On Vulkan only the compute dispatch exists.
 
 **Exactness.** The shader repeats the Java code's float operations in their order (`precise`, JOML without fused
 multiply-adds, Sodium's and Iris's own formulas), corrects square roots and divisions to the correctly rounded float
@@ -151,6 +156,8 @@ GPU's vertices back and compares them byte for byte (bytes the CPU never writes 
 - on players' GPUs, the first 64 parts of each shader path, at most 8 per frame (`parts/PartCheck.kt`,
   `parts/PathSampler.kt`). On a difference the compared parts get the CPU's bytes in that frame and Module 2 switches
   off until restart, with one toast and the GPU named in the log. F3 `mobium:modules` shows the parts compared.
+  On Vulkan, which cannot wait for the GPU inside a frame, the compared span is copied out and compared a few frames
+  later, and the compared parts always get the CPU's bytes in their frame.
 
 **Not taken:** translucent models without improved transparency (sorted on upload, which reads the CPU's vertices),
 glint, outline and the breaking overlay (other formats or consumers), other cube classes and vertex formats.
@@ -178,9 +185,11 @@ glint, outline and the breaking overlay (other formats or consumers), other cube
 `gpu/GpuBackend.kt` is what the modules need from the GPU: buffers, uploads, fences, and drawing a buffer range with a
 vanilla render type. `gpu/RenderpearlBackend.kt` implements it on Renderpearl, which covers OpenGL and Vulkan alike,
 and counts Mobium's GPU memory for F3. Compute has no Renderpearl API: Module 2's expand pass uses raw OpenGL 4.3
-(`gpu/gl/GlCompute.kt`) on Renderpearl's `GlBuffer.handle()`. `gpu/RingBuffer.kt` (frames in flight with fences) and
-its unit-tested arithmetic `RingAllocator.kt` are not used by 0.2.0; on OpenGL the expand pass orphans its record
-buffer instead.
+(`gpu/gl/GlCompute.kt`) on Renderpearl's `GlBuffer.handle()`, and raw Vulkan (`gpu/vk/VkCompute.kt`: shaderc, VMA
+buffers, a compute pipeline, descriptor pools) on `VulkanGpuBuffer.vkBuffer()`, reaching the `VulkanDevice` through
+`FrontendGpuDeviceAccessor`. `gpu/RingBuffer.kt` (frames in flight with fences) and its unit-tested arithmetic
+`RingAllocator.kt` are not used: on OpenGL the expand pass orphans its record buffer, on Vulkan it keeps mapped
+upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`).
 
 ## Debug and measurement
 
@@ -219,12 +228,14 @@ dev.nyon.mobium
 ├── config/       # Config, ConfigHandler, settings screen, ModMenuImpl, SodiumOptions
 ├── core/         # ModuleState (rules), ModuleStates, Fallback, Capabilities, Compat, IrisCompat, EmfCompat
 ├── debug/        # AbToggle, F3 entries, Sections, Validation, ExpandProfile, VulkanValidation, selfcheck/
-├── gpu/          # GpuBackend, RenderpearlBackend, RingBuffer + RingAllocator (unused), gl/GlCompute
+├── gpu/          # GpuBackend, RenderpearlBackend, RingBuffer + RingAllocator (unused), gl/GlCompute,
+│                 #   vk/VkCompute, vk/VulkanSupport
 └── parts/        # Module 2: PartTransform, PartHooks, MeshPool, SodiumCubes, PartBatch, ReservedRanges, ExpandPass,
-                  #   PartValidation, PartCheck, PathSampler
+                  #   VulkanExpand, PartValidation, PartCheck, PathSampler
 ```
 
-Mixins live in `src/main/java/dev/nyon/mobium/mixins` (compat mixins in `compat/emf` and `compat/iris`), shaders in
+Mixins live in `src/main/java/dev/nyon/mobium/mixins` (compat mixins in `compat/emf` and `compat/iris`, Renderpearl's
+Vulkan backend in `vulkan/`), shaders in
 `src/main/resources/assets/mobium/shaders`, unit tests (pure Kotlin) in `src/test`, Fabric client gametests in
 `src/gametest`. The hook table is `docs/vanilla-notes.md` §10.
 

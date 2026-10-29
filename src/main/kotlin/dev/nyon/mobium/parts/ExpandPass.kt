@@ -1,7 +1,11 @@
 package dev.nyon.mobium.parts
 
+import com.mojang.renderpearl.api.buffers.GpuBuffer
+import com.mojang.renderpearl.backend.opengl.GlBuffer
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer
 import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
+import dev.nyon.mobium.core.GraphicsBackend
 import dev.nyon.mobium.core.CompatMod
 import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.debug.ExpandProfile
@@ -13,7 +17,7 @@ import org.lwjgl.opengl.GL42C
 import org.lwjgl.opengl.GL43C
 
 /**
- * The GPU half of Module 2 (OpenGL 4.3): uploads new meshes and one staged buffer's records, then runs
+ * The GPU half of Module 2 (OpenGL 4.3; on Vulkan [VulkanExpand]): uploads new meshes and one staged buffer's records, then runs
  * `expand_parts.comp` once per quad, writing the reserved vertices into the vertex buffer vanilla just uploaded,
  * followed by a vertex-attribute barrier so that vanilla's draws read them. Runs between `upload()` and the first draw
  * (docs/vanilla-notes.md §16). Render thread only.
@@ -60,6 +64,7 @@ object ExpandPass {
 
     /** How [stage] is chosen, for the log. */
     fun describeChoice(): String = when {
+        Capabilities.current?.backend == GraphicsBackend.VULKAN -> "compute (Vulkan has no vertex-stage variant)"
         configuredStage == STAGE_COMPUTE -> "compute (-Dmobium.parts.stage)"
         configuredStage == STAGE_VERTEX -> "vertex stage (-Dmobium.parts.stage)"
         vertexStores -> "vertex stage, compute while a shader pack is in use"
@@ -83,9 +88,11 @@ object ExpandPass {
     private var meshCapacity = 0L
     private var frameBuffer = 0
 
+    private var glBytesAllocated = 0L
+
     /** GPU memory of the pass's own buffers (meshes and the last frame's records), for F3. */
-    var bytesAllocated = 0L
-        private set
+    val bytesAllocated: Long
+        get() = glBytesAllocated + VulkanExpand.bytesAllocated
 
     /**
      * Reads what the GPU can do and `-Dmobium.parts.stage` (`compute` or `vertex`, for comparisons and bug reports;
@@ -100,8 +107,18 @@ object ExpandPass {
         }
     }
 
+    /** Expands [batch] into [vertexBuffer]; on Vulkan always as a compute dispatch. */
+    fun dispatch(batch: PartBatch, vertexBuffer: GpuBuffer) {
+        if (vertexBuffer is GlBuffer) {
+            dispatchGl(batch, vertexBuffer.handle())
+        } else {
+            lastStage = STAGE_COMPUTE
+            VulkanExpand.dispatch(batch, vertexBuffer as VulkanGpuBuffer)
+        }
+    }
+
     /** Expands [batch] into the vertex buffer with GL name [vertexBuffer]. */
-    fun dispatch(batch: PartBatch, vertexBuffer: Int) {
+    private fun dispatchGl(batch: PartBatch, vertexBuffer: Int) {
         val profiling = ExpandProfile.enabled
         var lap = if (profiling) System.nanoTime() else 0L
         val stage = stage
@@ -117,7 +134,7 @@ object ExpandPass {
         GlCompute.upload(frameBuffer, 0, cubeBytes, batch.cubesAddress)
         GlCompute.upload(frameBuffer, cubeBytes, partBytes, batch.partsAddress)
         GlCompute.upload(frameBuffer, cubeBytes + partBytes, slotBytes, batch.slotsAddress)
-        bytesAllocated = meshCapacity + frameBytes
+        glBytesAllocated = meshCapacity + frameBytes
         if (profiling) {
             lap = ExpandProfile.lap(ExpandProfile.RECORDS, lap)
             ExpandProfile.passes++

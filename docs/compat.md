@@ -90,8 +90,9 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
 - Minecraft's Vulkan renderer: in 0.2.1 and older both modules need OpenGL and stay off (F3 `mobium:modules`:
   `backend`). Since M7 step 3 (not released yet) the static cache runs on Vulkan too, checked in game on 29 Oct 2026
   (both loaders, Intel Arc 140V with Mesa's ANV: pictures identical to vanilla, no validation-layer messages from
-  Mobium; `docs/vanilla-notes.md` §22); Module 2 still needs OpenGL (`PLAN.md`, M7). Iris 1.11.7 does not start on
-  Vulkan at all (§21).
+  Mobium; `docs/vanilla-notes.md` §22). Module 2 on Vulkan works in the dev clients (0 differing vertices, §23) but
+  stays off for players until CI checks it on lavapipe (`PLAN.md`, M7 step 5); it needs `shaderFloat64`. Iris 1.11.7
+  does not start on Vulkan at all (§21).
 - Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): hooks the same places as Mobium and
   is untested with it, so both modules stay off while it is installed (F3: `untested: Vitrail`).
 - Text drawn with a resource pack's antialiased (TrueType) font: vanilla draws a sign's glyphs in submission order

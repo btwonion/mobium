@@ -62,7 +62,8 @@ forces a module failure (one toast, module on vanilla until restart) and `/mobiu
 with Mobium against the next with vanilla.
 
 On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game: locally a window opens and
-closes by itself, CI runs it under `xvfb-run`. Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);
+closes by itself, CI runs it under `xvfb-run`, and a second time on Vulkan with Mesa's lavapipe
+(`-Pmobium.graphicsBackend=vulkan`). Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);
 screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`.
 
 ## Ground rules
@@ -112,9 +113,12 @@ overlapping mods and failures) and reports exceptions to `core/Fallback`.
   shader pack (Mesa's iris puts a compute dispatch in a batch of its own, a fixed cost per frame), as a compute
   dispatch with one (`ExpandPass.stage`). `PartValidation` compares them byte for byte: every part in the dev
   validation, the first parts of each shader path in normal play (`PartCheck`, which switches Module 2 off on a
-  difference); any change to the shader or the records must keep `--mode parts` at 0 differing vertices in both stages.
-- **Backends:** the static cache runs on OpenGL and Vulkan, Module 2 on OpenGL only so far (`OffReason.BACKEND` on
-  Vulkan, `ModuleRules.runsOn`); Module 2 on Vulkan is `PLAN.md` M7.
+  difference); any change to the shader or the records must keep `--mode parts` at 0 differing vertices in both stages,
+  and on Vulkan.
+- **Backends:** the static cache runs on OpenGL and Vulkan. Module 2 on Vulkan (`parts/VulkanExpand`, `gpu/vk/`, three
+  `require = 0` mixins in `mixins/vulkan`; `docs/vanilla-notes.md` §23) is a compute dispatch in a command buffer of
+  Mobium's own, with an asynchronous `PartValidation`; it runs only with `-Dmobium.parts.vulkan` (dev runs on Vulkan
+  set it) until CI checks it on lavapipe (`PLAN.md` M7 step 5), else `OffReason.BACKEND` (`ModuleRules.runsOn`).
 
 ## Dev environment
 
