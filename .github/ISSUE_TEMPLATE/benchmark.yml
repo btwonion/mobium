@@ -20,7 +20,8 @@ body:
       label: Benchmark file
       description: >-
         Drag the file chat names (`mobium-bench/benchmark-<date>.csv` in your game folder; clicking its name in chat
-        opens the folder) into this box, or paste its content. It names your CPU, GPU, mods and screen.
+        opens the folder) into this box, or paste its content. It names your CPU, GPU and driver, operating system,
+        mods and screen.
     validations:
       required: true
   - type: textarea

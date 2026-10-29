@@ -13,12 +13,13 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
 
 ## Current state (updated 29 Oct 2026)
 
-- **0.2.0, the first stable release, is out** (28 Oct 2026, `release.yml` run 40754122974 on `main` at `dd7253f`;
-  GitHub releases `v0.2.0-26.3+fabric` / `+neoforge`): the static cache and the GPU part transform, Module 2's check
-  on the player's GPU, `/mobium benchmark` with its built-in data pack, Minecraft 26.3.x only (`~26.3` on Fabric,
-  `[26.3,26.4-alpha)` on NeoForge). Releases go to Modrinth `mobium` (`8i5oedw8`) and CurseForge `mobium-perf`
-  (`1759818`) through `release.yml`, which only Anton runs. `gradle.properties` still says 0.2.0 (`mod.beta=0`); the
-  next version is Anton's call before the next release.
+- **0.2.1 is out** (29 Oct 2026, `release.yml` run 40869850005 on `main` at `93eedb6`; GitHub releases
+  `v0.2.1-26.3+fabric` / `+neoforge`): 0.2.0 plus the OS and the GPU driver in `/mobium benchmark`'s file (#34).
+  **0.2.0**, the first stable release (28 Oct 2026, run 40754122974 at `dd7253f`), brought the static cache and the
+  GPU part transform, Module 2's check on the player's GPU, `/mobium benchmark` with its built-in data pack, Minecraft
+  26.3.x only (`~26.3` on Fabric, `[26.3,26.4-alpha)` on NeoForge). Releases go to Modrinth `mobium` (`8i5oedw8`)
+  and CurseForge `mobium-perf` (`1759818`) through `release.yml`, which only Anton runs. `gradle.properties` still
+  says 0.2.1 (`mod.beta=0`); the next version is Anton's call before the next release.
 - **Gates passed:** A 1.53× (`storage_room`, chest prototype), B 1.17× (what the cached objects cost over `control`),
   C (D's entity CPU work 1.90× lower, frames 1.18× faster in D and 1.25× in C); `docs/benchmarks.md` *Gates*.
 - **Tested by us on one machine:** Anton's ThinkPad X9-14 (Intel Arc 140V, Mesa's iris, Fedora 44) plus Mesa's
@@ -27,10 +28,10 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
   2's check found no difference. Results from other GPUs come from players' `/mobium benchmark` files (README
   *Benchmarks wanted*, issue form `.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`) and from F3
   `mobium:modules` lines; add them to `docs/compat.md` (*On players' GPUs*), `docs/benchmarks.md` (*Players' results*)
-  and the file to `players/` in `../mobium-benchmarks`. 0.2.0's file records neither the OS nor the driver; from the
-  next release on it has `# os` and `# driver`, which the release PR adds to what README (*Benchmarks wanted*) and the
-  issue form (`benchmark.yml`, *Benchmark file*) say the file names.
-- **Modrinth:** the project was not public on 28 Oct 2026 (the API answered 404 for `8i5oedw8`); Anton checks.
+  and the file to `players/` in `../mobium-benchmarks`. 0.2.0's file records neither the OS nor the driver; 0.2.1's
+  has `# os` and `# driver`.
+- **Modrinth:** the project was not public on 29 Oct 2026 either (the API answered 404 for `8i5oedw8` after 0.2.1's
+  release); Anton checks.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL on Mesa's EGL and software rendering
   (`.github/workflows/build-commit.yml`; `release.yml` does the same); llvmpipe has compute and double precision, so
   the gametests run Module 2 and its byte-for-byte validation too. If CI hangs or fails, read `gh run view
