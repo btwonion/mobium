@@ -27,7 +27,9 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
   2's check found no difference. Results from other GPUs come from players' `/mobium benchmark` files (README
   *Benchmarks wanted*, issue form `.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`) and from F3
   `mobium:modules` lines; add them to `docs/compat.md` (*On players' GPUs*), `docs/benchmarks.md` (*Players' results*)
-  and the file to `players/` in `../mobium-benchmarks`. The file records neither the OS nor the driver.
+  and the file to `players/` in `../mobium-benchmarks`. 0.2.0's file records neither the OS nor the driver; from the
+  next release on it has `# os` and `# driver`, which the release PR adds to what README (*Benchmarks wanted*) and the
+  issue form (`benchmark.yml`, *Benchmark file*) say the file names.
 - **Modrinth:** the project was not public on 28 Oct 2026 (the API answered 404 for `8i5oedw8`); Anton checks.
 - **CI:** green. The Fabric gametests run under `xvfb-run` with SDL on Mesa's EGL and software rendering
   (`.github/workflows/build-commit.yml`; `release.yml` does the same); llvmpipe has compute and double precision, so

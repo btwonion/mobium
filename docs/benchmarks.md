@@ -18,9 +18,10 @@ Build ids from before 27 Oct 2026 predate a rewrite of this repository's history
     entity counts);
   - `summary.csv`: one row per run, appended (averages, Minecraft and Mobium version, `build`, the commit the jar was
     built from (`git describe`, `-dirty` with local changes), loader, backend, GPU, the monitor and video mode, the
-    window size, `ac` or `battery`, the power profile, and `gpu_mhz`, the GPU's actual clock sampled once per second;
-    the last three come from Linux sysfs and stay empty elsewhere). A `summary.csv` with older columns is renamed to
-    `summary-before-<timestamp>.csv`. The suite and gate files end with a `# build,<commit>` line.
+    window size, `ac` or `battery`, the power profile, and `gpu_mhz`, the GPU's actual clock sampled once per second,
+    which three come from Linux sysfs and stay empty elsewhere; since 29 Oct 2026 also `os` and `driver`, as in
+    `/mobium benchmark` below). A `summary.csv` with older columns is renamed to `summary-before-<timestamp>.csv`. The
+    suite and gate files end with a `# build,<commit>` line.
   `setup` is detected when omitted: `sodium` or `vanilla`, `+iris` if a shader pack is active, `+emf` if Entity Model
   Features is installed, `+fa` if a resource pack with "fresh" in its id is enabled. Before it starts, the run warns in chat about anything that breaks the protocol: a window other than
   1920×1080, battery power, a low-power profile, or a setup other than the instance's (below). `/mobium stop` aborts a
@@ -63,8 +64,11 @@ Build ids from before 27 Oct 2026 predate a rewrite of this repository's history
   turning the graphics preset to Custom (`bench/BenchOptions.kt`), and puts them and the A/B state back at the end, on
   `/mobium stop` and when the player leaves the world. It prints each scene's FPS without and with Mobium and the gain
   in chat and writes `mobium-bench/benchmark-<timestamp>.csv`: the medians as in the suite files, then
-  `<scene>_off_ms`, `_on_ms` and `_speedup` (off over on), the CPU, GPU, backend, display, window size, power, mods,
-  shader pack, resource packs, graphics preset, whether the seed is `mobium`, each module's state and the build. It
+  `<scene>_off_ms`, `_on_ms` and `_speedup` (off over on), the OS, CPU, GPU, driver, backend, display, window size,
+  power, mods, shader pack, resource packs, graphics preset, whether the seed is `mobium`, each module's state and the
+  build. `# os` is Java's `os.name`, `os.version` and `os.arch`, on Linux after the distribution's `PRETTY_NAME` (the
+  host's under Flatpak; `bench/OperatingSystem.kt`); `# driver` is Renderpearl's driver string, `GL_VERSION` on OpenGL
+  (`docs/vanilla-notes.md` §19). Both are in files from Mobium after 0.2.0. It
   warns about battery power and low-power profiles but not about the window size. It refuses outside a classic
   superflat overworld, without the pack, and when neither module can run. In dev environments
   `/mobium benchmark <seconds>` shortens the runs (`self_check.py --mode benchmark` uses 5 s).
@@ -315,9 +319,10 @@ resource packs, seed `mobium`, both modules active and Module 2's expand pass in
 - **`storage_room`'s gain is the vanilla frame over what the cache leaves.** The cache takes almost all of the CPU
   work (`prepare` 2.97 → 0.003 ms on #32, 5.84 → 0.015 ms on #31), so the gain depends on the rest of the frame: 0.36
   ms on #32, 3.96 ms on #31. Neither file has a `control` run to split that rest.
-- **The files name neither the OS nor the driver:** they record the GPU's renderer string but not `GL_VERSION`, and
-  the power state only from Linux sysfs (`bench/MachineState.kt`). So #31 ran Linux; #32's empty power fields mean
-  Windows or a Linux desktop without a mains supply or platform profile.
+- **0.2.0's files name neither the OS nor the driver:** they record the GPU's renderer string but not `GL_VERSION`,
+  and the power state only from Linux sysfs (`bench/MachineState.kt`). So #31 ran Linux; #32's empty power fields mean
+  Windows or a Linux desktop without a mains supply or platform profile. Files from later versions have `# os` and
+  `# driver` (*Tools*).
 
 ## Gates
 

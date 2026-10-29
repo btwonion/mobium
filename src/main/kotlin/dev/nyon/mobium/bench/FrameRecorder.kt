@@ -275,7 +275,7 @@ object FrameRecorder {
             append("timestamp,scene,setup,seconds,frames,avg_fps,low1_fps,avg_ms,p95_ms")
             for (name in Sections.NAMES) append(",${name}_ms")
             append(",entities,block_entities,framerate_limit,vsync,minecraft,mobium,build,loader,backend,gpu")
-            append(",display,resolution,power,power_profile,gpu_mhz\n")
+            append(",display,resolution,power,power_profile,gpu_mhz,os,driver\n")
         }
         val capabilities = Capabilities.current
         val row = buildString {
@@ -295,7 +295,8 @@ object FrameRecorder {
             val environment = environment
             append(",${csv(environment?.display ?: "")},${environment?.resolution ?: ""}")
             append(",${environment?.power ?: ""},${csv(environment?.powerProfile ?: "")}")
-            append(",${if (clockSamples == 0) "" else (clockSumMhz / clockSamples).toString()}\n")
+            append(",${if (clockSamples == 0) "" else (clockSumMhz / clockSamples).toString()}")
+            append(",${csv(environment?.os ?: "")},${csv(environment?.driver ?: "")}\n")
         }
         if (Files.exists(file) && Files.newBufferedReader(file).use { it.readLine() } + "\n" != header) {
             // Older Mobium versions wrote fewer columns; keep their rows in a file of their own.

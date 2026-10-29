@@ -651,3 +651,16 @@ What it means for Mobium: the static cache uses only Renderpearl's API and shoul
 pass can run as a command buffer of its own, recorded with `allocateAndBeginTransientCommandBuffer` and handed to
 `execute` right after `upload()`, but needs storage usage on vanilla's vertex buffers and its own, an optional device
 feature set for `shaderFloat64`, and the shader in Vulkan's GLSL dialect (`PLAN.md`, M7).
+
+## 19. GPU driver string (`/mobium benchmark`)
+
+Read on 29 Oct 2026 (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`: `com.mojang.renderpearl.api.device.DeviceInfo`,
+`backend.opengl.GlHeuristics`, `backend.vulkan.VulkanDevice` and `VulkanPhysicalDevice`,
+`net.minecraft.client.gui.components.debug.DebugEntrySystemSpecs`), so the benchmark file can name the driver.
+
+| Topic | Finding |
+| --- | --- |
+| Where it is | `RenderSystem.getDevice().getDeviceInfo().driverInfo()` (record component of `DeviceInfo`, §5); Mobium keeps it as `Capabilities.driverInfo`. There is no separate driver version field. |
+| OpenGL | `GlHeuristics.createDeviceInfo` passes `GlStateManager._getString(7938)`, i.e. `glGetString(GL_VERSION)`. What follows the context version is the driver's own text (not in the source; drivers put their version there, e.g. Mesa `4.6 (Core Profile) Mesa <version>`, Nvidia `4.6.0 NVIDIA <version>`). `name()` is `GL_RENDERER` (7937), `vendorName()` `GL_VENDOR` (7936). |
+| Vulkan | `VulkanDevice` passes `VulkanPhysicalDevice.driverInfo()`: `String.format(Locale.ROOT, "%s %s %s")` of the device's `apiVersion` (decoded as `major.minor.patch`), `VkPhysicalDeviceDriverProperties.driverNameString()` and `.driverInfoString()`. |
+| Line breaks | F3's system entry shows `backendName() + " " + firstLine(driverInfo())` (`DebugEntrySystemSpecs.display`), so the string may span lines; the CPU line there (`getCpuInfo`) collapses whitespace with `replaceAll("\\s+", " ")`. Mobium does the same with the driver string before it writes it to a CSV line (`BenchEnvironment.snapshot`). |
