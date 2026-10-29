@@ -40,7 +40,7 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
   now behaves like "Prefer Vulkan"), and both modules are off on Vulkan. Vulkan already exists in 26.3 as an option,
   with every class M7 needs, so M7 is built and gated on 26.3; M8 then ports to 26.4. Step 1 is done: up to
   `26.4-snapshot-6` Renderpearl has no compute and no storage buffers, and drops push descriptors
-  (`docs/vanilla-notes.md` §20). Gate D is still a proposal; Anton decides it before step 2 (tooling) starts.
+  (`docs/vanilla-notes.md` §20). Gate D is agreed as proposed (Anton, 29 Oct 2026); next is step 2, tooling.
 
 ---
 
@@ -121,7 +121,7 @@ frame's submission), and three blockers: vanilla's vertex buffers are not storag
    - [ ] `docs/compat.md` (Vulkan rows, GPUs without `shaderFloat64`), README (*Does Mobium work with Vulkan?*),
          `changelog.md`.
 
-**Gate D** *(proposed; Anton decides before M7 starts)*: on Vulkan in 26.3, on both loaders, zero screenshot
+**Gate D** *(agreed with Anton on 29 Oct 2026)*: on Vulkan in 26.3, on both loaders, zero screenshot
 differences and 0 differing vertices (self-check, gametests on lavapipe), no validation-layer messages from Mobium;
 `mob_pen_live` no slower with Module 2 than without (at most 1.03×) in every setup that runs on Vulkan; `control`
 with Mobium no slower than without (at most 1.03×). Then release.
