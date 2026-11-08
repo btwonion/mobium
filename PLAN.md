@@ -13,7 +13,7 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
 
 ## Current state (updated 29 Oct 2026)
 
-- **0.2.1 is out** (29 Oct 2026, `release.yml` run 40869850005 on `main` at `93eedb6`; GitHub releases
+- **0.2.1 is out** (29 Oct 2026, `release.yml` run 40869850005 on `master` at `93eedb6`; GitHub releases
   `v0.2.1-26.3+fabric` / `+neoforge`): 0.2.0 plus the OS and the GPU driver in `/mobium benchmark`'s file (#34).
   **0.2.0**, the first stable release (28 Oct 2026, run 40754122974 at `dd7253f`), brought the static cache and the
   GPU part transform, Module 2's check on the player's GPU, `/mobium benchmark` with its built-in data pack, Minecraft
@@ -213,13 +213,13 @@ Copy this list into the release's PR and tick it there. Version scheme: a new mo
 - [ ] The milestone's gate passed, results in `docs/benchmarks.md`, raw data in `btwonion/mobium-benchmarks`.
 - [ ] `changelog.md` holds only this release's notes, one line of at most 120 characters per entry.
 - [ ] `docs/compat.md` updated; `README.md` describes the release. README changes merge right before `release.yml`:
-      `readme-modrinth-sync.yml` publishes every README change on `main` to Modrinth at once.
+      `readme-modrinth-sync.yml` publishes every README change on `master` to Modrinth at once.
 - [ ] Self-check on both loaders (regular, `--mode parts`, `--mode benchmark`) and the gametests; 0 changed pixels,
       0 differing vertices.
 - [ ] A benchmark round A–D (`python3 benchmark/bench_round.py`) if rendering changed since the last round.
 - [ ] Anton's visual checks of the release's rendering PRs (*How to verify*).
 - [ ] The bug report template's version placeholder (`.github/ISSUE_TEMPLATE/bug_report.yml`).
-- [ ] Anton's go, then `release.yml` on `main` (manual dispatch; Anton only, never `release.yml` or `releaseMod`
+- [ ] Anton's go, then `release.yml` on `master` (manual dispatch; Anton only, never `release.yml` or `releaseMod`
       from here).
 - [ ] Afterwards a post-release PR: the next version in `gradle.properties`, `changelog.md` emptied, *Current state*.
 

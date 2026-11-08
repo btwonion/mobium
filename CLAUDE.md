@@ -124,7 +124,7 @@ overlapping mods and failures) and reports exceptions to `core/Fallback`.
 
 - **Worktrees** lack the gitignored dev run folders. Copy `versions/26.3-fabric/run/` and `run/` (`options.txt`,
   `config`, `saves`, `shaderpacks`, `resourcepacks`), `versions/26.3-fabric/build/bench-world` and
-  `versions/26.3-fabric/build/bench-packs` from the main checkout before running the self-check or the Prism script.
+  `versions/26.3-fabric/build/bench-packs` from the master checkout before running the self-check or the Prism script.
 - **Test assets** (gitignored): `shaderpacks/ComplementaryReimagined_r5.9.3.zip` and
   `resourcepacks/FreshAnimations_v1.10.3.zip` in `versions/26.3-fabric/run/` and `run/`; the self-check uses them when
   present.
@@ -145,9 +145,9 @@ Config is stored with konfig at `config/mobium.json` (`{"version", "config"}`). 
 
 ## Pull requests
 
-One branch from `main` per piece of work, one PR against `main`; merging is Anton's call. PRs are squash-merged
-(Anton, 28 Oct 2026): the PR title becomes the commit title on `main` and the branch's commit messages its body, so
-write both for `main`'s history. A benchmark build id from a branch commit is not on `main` after the merge;
+One branch from `master` per piece of work, one PR against `master`; merging is Anton's call. PRs are squash-merged
+(Anton, 28 Oct 2026): the PR title becomes the commit title on `master` and the branch's commit messages its body, so
+write both for `master`'s history. A benchmark build id from a branch commit is not on `master` after the merge;
 `git fetch origin pull/<n>/head` brings it back.
 
 ## Releases

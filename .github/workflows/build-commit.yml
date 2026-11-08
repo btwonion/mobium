@@ -3,7 +3,7 @@ name: build-commit
 on:
   push:
     branches:
-      - main
+      - master
     paths-ignore:
       - "README.md"
       - "LICENSE"
@@ -12,7 +12,6 @@ on:
       - ".editorconfig"
       - "src/main/resources/assets/*/lang/**"
       - "docs/**"
-      - "media/**"
   pull_request:
     paths-ignore:
       - "README.md"
@@ -22,7 +21,6 @@ on:
       - ".editorconfig"
       - "src/main/resources/assets/*/lang/**"
       - "docs/**"
-      - "media/**"
   workflow_dispatch:
 
 concurrency:
