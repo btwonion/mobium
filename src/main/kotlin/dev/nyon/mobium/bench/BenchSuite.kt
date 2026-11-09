@@ -65,7 +65,7 @@ object BenchSuite {
     const val DEFAULT_RUNS = 3
     const val SETTLE_SECONDS = 10
     const val GATE_A_TARGET = 1.5
-    val SCENES = listOf("mob_pen_static", "mob_pen_live", "storage_room", "map_wall", "display_build", "control")
+    val SCENES = listOf("mob_pen_static", "mob_pen_live", "storage_room", "map_wall", "display_build", "item_drops", "control")
     const val BENCHMARK_SECONDS = 30
     val BENCHMARK_SCENES = listOf("storage_room", "mob_pen_live")
 

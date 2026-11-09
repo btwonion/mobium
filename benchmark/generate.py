@@ -9,6 +9,7 @@ ORIGIN was chosen so that the nearest village is about 600 blocks away (the game
 enabled because map_wall makes real maps with an exploration_map loot function, which needs a structure to point at.
 """
 
+import math
 from pathlib import Path
 
 PACK = Path(__file__).resolve().parent / "mobium-bench"
@@ -410,10 +411,35 @@ def cache_gallery() -> list[str]:
     return lines
 
 
+# Items floating in front of the part gallery's mobs, one of each path Module 2 takes or leaves for items: flat items
+# drawn from a sprite, block items, stacks drawn several times, tint layers, the standard glint, the special glint and
+# translucent items (both stay vanilla), and an item whose model is built from parts.
+GALLERY_ITEMS = [
+    'id:"minecraft:bamboo",count:1',
+    'id:"minecraft:stick",count:64',
+    'id:"minecraft:cobblestone",count:1',
+    'id:"minecraft:grass_block",count:16',
+    'id:"minecraft:potion",count:1,components:{"minecraft:potion_contents":{potion:"minecraft:swiftness"}}',
+    'id:"minecraft:leather_chestplate",count:1,components:{"minecraft:dyed_color":11546150}',
+    'id:"minecraft:diamond_sword",count:1,components:{"minecraft:enchantment_glint_override":true}',
+    'id:"minecraft:compass",count:1,components:{"minecraft:enchantment_glint_override":true}',
+    'id:"minecraft:white_stained_glass_pane",count:1',
+    'id:"minecraft:firework_star",count:1,components:{"minecraft:firework_explosion":{shape:"small_ball",colors:[I;11743532]}}',
+    'id:"minecraft:chest",count:1',
+    'id:"minecraft:redstone",count:32',
+    'id:"minecraft:oak_sapling",count:1',
+    'id:"minecraft:enchanted_book",count:1',
+]
+
+# Dropped items are never picked up, never merge and never despawn with these (ItemEntity.isMergable).
+STILL_ITEM = "PickupDelay:32767,Age:-32768"
+
+
 def part_gallery() -> list[str]:
     """Models Module 2 expands besides the mob pens, close to the camera: block entities the static cache leaves alone
     (banners, a bell, a conduit, a lectern, an enchanting table), armour with a trim, equipment layers and items whose
-    models are built from parts. Mobs have NoAI, the undead helmets (no burning)."""
+    models are built from parts, and in front of them a row of floating dropped items (GALLERY_ITEMS). Mobs have NoAI,
+    the undead helmets (no burning)."""
     lines = []
     # Row 1: block entities whose models animate or that the static cache leaves alone.
     lines.append(f"fill {X0 - 9} {GROUND} {Z0 + 8} {X0 + 9} {GROUND + 3} {Z0 + 8} minecraft:stone_bricks strict")
@@ -456,6 +482,49 @@ def part_gallery() -> list[str]:
         if extra:
             nbt.append(extra)
         lines.append(f"summon minecraft:{kind} {center(X0 + offset)} {GROUND} {center(Z0 + 4)} {{{','.join(nbt)}}}")
+    # Row 3: dropped items floating half a block apart, low enough to stay in view this close to the camera.
+    for i, item in enumerate(GALLERY_ITEMS):
+        x = X0 + 0.5 + (i - (len(GALLERY_ITEMS) - 1) / 2) * 0.5
+        lines.append(f"summon minecraft:item {x:g} {GROUND + 1.5} {Z0 + 3.5} {{Item:{{{item}}},NoGravity:1b,{STILL_ITEM},Tags:[\"{TAG}\"]}}")
+    return lines
+
+
+# Stack sizes of the dropped items in turn: drawn 1, 2, 2 and 5 times (ItemClusterRenderState.getRenderedAmount).
+DROP_COUNTS = (1, 4, 16, 64)
+
+
+def item_drops(camera: tuple[float, float, float, float, float]) -> list[str]:
+    """Dropped bamboo covering the ground in front of the camera, as after a bamboo harvest: an item every 0.6 blocks,
+    only where the camera sees it (the default field of view of 70 degrees, 16:9, with a margin) and at most 22
+    blocks from the eye (dropped items are drawn up to 24 blocks away at render distance 12). About 1,070 items keep
+    the single-player server's tick under the 25 ms the benchmark waits for."""
+    x0, y0, z0, _, pitch_degrees = camera
+    eye = (x0, y0 + 1.62, z0)
+    pitch = math.radians(pitch_degrees)
+    forward = (-math.sin(pitch), math.cos(pitch))  # y and z of the view direction (yaw 0 looks along +z)
+    up = (math.cos(pitch), math.sin(pitch))
+    tan_vertical = math.tan(math.radians(35 - 4))
+    tan_horizontal = math.tan(math.radians(51.2 - 4))
+    spacing = 0.6
+    lines = []
+    index = 0
+    steps = int((MAX_X - MIN_X) / spacing)
+    for i in range(steps):
+        x = MIN_X + spacing / 2 + i * spacing
+        for j in range(int(40 / spacing)):
+            z = Z0 + spacing / 2 + j * spacing
+            dx, dy, dz = x - eye[0], GROUND + 0.125 - eye[1], z - eye[2]
+            depth = dy * forward[0] + dz * forward[1]
+            height = dy * up[0] + dz * up[1]
+            if depth <= 1 or abs(dx) / depth >= tan_horizontal or abs(height) / depth >= tan_vertical:
+                continue
+            if math.sqrt(dx * dx + dy * dy + dz * dz) >= 22:
+                continue
+            count = DROP_COUNTS[index % len(DROP_COUNTS)]
+            index += 1
+            lines.append(
+                f'summon minecraft:item {x:.2f} {GROUND} {z:.2f} {{Item:{{id:"minecraft:bamboo",count:{count}}},{STILL_ITEM}}}'
+            )
     return lines
 
 
@@ -512,6 +581,9 @@ def main() -> None:
     scene("display_build", "A decoration built from 400 block displays and 100 item displays",
           wall_camera, display_build())
     scene("control", "Empty superflat, nothing to accelerate", wall_camera, [])
+    drops_camera = (X0 + 0.5, GROUND + 4, Z0 + 0.5, 0, 20)
+    scene("item_drops", "About 1,070 dropped bamboo items covering the ground, stacks drawn 1, 2 and 5 times",
+          drops_camera, item_drops(drops_camera))
     # Not a benchmark scene: the self-check compares vanilla and Mobium on every cached type here.
     scene("cache_gallery", "Every type the static cache handles, for pixel comparisons",
           (X0 + 0.5, GROUND + 2.6, Z0 + 0.5, 0, 12), cache_gallery())

@@ -73,6 +73,9 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 // Particles (the smoke of the mobs a scene reset removes, the ender chest's) differ between two
                 // screenshots on their own.
                 it.options.particles().set(ParticleStatus.MINIMAL)
+                // The enchantment glint scrolls with the wall clock, also with ticks frozen (the part gallery's
+                // enchanted items); at speed 0 it stands still.
+                it.options.glintSpeed().set(0.0)
             }
             // The baselines are vanilla's pictures; each static scene is then compared with the cache on.
             setCache(context, false)
@@ -462,7 +465,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
         // Must match X0 / Z0 in benchmark/generate.py.
         val ORIGIN = BlockPos(-3840, -60, -2816)
-        val SCENES = listOf("control", "storage_room", "map_wall", "display_build", "mob_pen_static", "mob_pen_live")
+        // The mob pens come last: the bench, suite and gate checks after the loop record the scene that stands, mob_pen_live.
+        val SCENES = listOf("control", "storage_room", "map_wall", "display_build", "item_drops", "mob_pen_static", "mob_pen_live")
 
         /** Not a benchmark scene: every cached type side by side (benchmark/generate.py). */
         const val GALLERY = "cache_gallery"

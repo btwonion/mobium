@@ -51,6 +51,8 @@
     "mobium.settings.enabled.tooltip": "Switches every module. Off means everything is drawn exactly as without Mobium.",
     "mobium.settings.module_enabled": "Enabled",
     "mobium.settings.module_enabled.tooltip": "Switches this module. Off means vanilla draws what it would handle.",
+    "mobium.settings.parts_items": "Items",
+    "mobium.settings.parts_items.tooltip": "Lets the GPU write items' vertices too: dropped items, items in hands, frames and displays. Off means the CPU writes them as vanilla does.",
     "mobium.settings.memory_budget": "GPU memory",
     "mobium.settings.memory_budget.tooltip": "How much GPU memory the static cache may use; above it, the farthest objects go back to the vanilla path.",
     "mobium.settings.megabytes": "%s MB",

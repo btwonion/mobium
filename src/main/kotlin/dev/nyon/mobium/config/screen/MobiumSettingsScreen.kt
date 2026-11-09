@@ -40,7 +40,10 @@ class MobiumSettingsScreen(parent: Screen) :
         list.addSmall(*switches.toTypedArray())
 
         list.addHeader(Component.translatable("mobium.module.part_transform"))
-        list.addBig(toggle("mobium.settings.module_enabled", draft.parts::enabled))
+        list.addSmall(
+            toggle("mobium.settings.module_enabled", draft.parts::enabled),
+            toggle("mobium.settings.parts_items", draft.parts::items)
+        )
 
         list.addHeader(Component.translatable("mobium.module.animation_lod"))
         list.addBig(lodPreset(draft))

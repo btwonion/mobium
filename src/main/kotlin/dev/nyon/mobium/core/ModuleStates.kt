@@ -69,7 +69,7 @@ object ModuleStates {
      * `/mobium benchmark`, which switches Mobium off and on through the A/B state.
      */
     private fun apply() {
-        PartTransform.configure(config.parts.excludedEntities)
+        PartTransform.configure(config.parts.excludedEntities, config.parts.items)
         if (BenchSuite.decidesModules) return
         StaticCache.setActive(isActive(Module.STATIC_CACHE) && StaticCache.anyTypeAllowed())
         PartTransform.setActive(isActive(Module.PART_TRANSFORM))

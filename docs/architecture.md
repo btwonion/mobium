@@ -11,7 +11,7 @@ switches between Mobium's path and vanilla's, never between two pictures.
 | Module | What it does | Package | State |
 | --- | --- | --- | --- |
 | 1 · Static cache | Block entities and entities that stand still are captured once through vanilla's own submit and prepare and drawn from per-section GPU buffers until they change | `cache/` | On by default |
-| 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written | `parts/` | On by default where the GPU has OpenGL 4.3 compute with double precision |
+| 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `parts/` | On by default where the GPU has OpenGL 4.3 compute with double precision |
 | 3 · Animation LOD | Far or tiny-on-screen mobs reuse last frame's pose | — | Not built; its config and settings exist |
 
 The static cache runs on OpenGL and on Minecraft's Vulkan backend; Module 2 on Vulkan runs only in dev clients until
@@ -161,6 +161,34 @@ GPU's vertices back and compares them byte for byte (bytes the CPU never writes 
 **Not taken:** translucent models without improved transparency (sorted on upload, which reads the CPU's vertices),
 glint, outline and the breaking overlay (other formats or consumers), other cube classes and vertex formats.
 
+### Items
+
+Items go through the same pass (`parts/ItemTransform.kt`, `docs/vanilla-notes.md` §25). Their render states, the
+copies a stack draws and their submits stay vanilla; only `ItemFeatureRenderer.prepareMainSubmit`, which writes each
+baked quad vertex by vertex, is replaced (`ItemFeatureRendererMixin`, config `parts.items`).
+
+1. **Meshes.** One mesh per list of baked quads (`ItemQuads.solid()` / `translucent()`, made once per model), written
+   the first time the list is drawn (`parts/ItemMeshes.kt`): positions and UVs as `BakedQuad` holds them, the face,
+   tint index and light emission per quad, and with Sodium the packed normal Sodium writes the quad with, read from
+   Sodium itself (on NeoForge, without Sodium's path, NeoForge's baked normal, which its `putBakedQuad` draws instead of
+   the face's).
+2. **Runs.** The submit's quads are walked in runs of one render type (the standard glint is just another render
+   type): the builder is fetched once per run (vanilla asks per quad, and Iris's and ETF's hooks on that call cost as
+   much as the vertices), the run's vertices are reserved and one part record (pose, normal matrix, light, overlay,
+   four tint colours in the sprite's words) and one record for the run are written. A run whose builder Module 2
+   cannot write for is written with vanilla's `putBakedQuad` in its place, so the draws keep vanilla's order.
+3. **Two item paths.** The shader writes a quad as vanilla's `putBakedQuad` does (also while Iris extends the format,
+   where Sodium hands item quads to vanilla's code), or, with Sodium and the entity format, as Sodium's
+   `BakedModelEncoder` does: the generic matrix product and the quad's own normal through the normal matrix. Tint
+   colour and light emission come per quad from the mesh. With Sodium, the sprites of a taken submit are marked as
+   drawn, as Sodium's `putBakedQuad` does, so their animations keep running.
+
+The checks are the parts' ones: every run in the dev validation, the first runs of each path in normal play. **Not
+taken:** the special glint (decal UVs), outlines (other render types and colours), translucent items without improved
+transparency (sorted), Fabric renderer API meshes (`ExtendedItemSubmit`), quads with NeoForge baked colours other
+than white or different baked normals per vertex, more than four tint layers, and items of entity types in `parts.excludedEntities`
+(`minecraft:item` for dropped items).
+
 ## Core
 
 - **Module states** (`core/ModuleState.kt`, `core/ModuleStates.kt`). The pure, unit-tested `ModuleRules` resolve each
@@ -229,10 +257,11 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
   - `gallery`: the `cache_gallery` scene only (every cached type, effects, shader pack, Fresh Animations); failed count
     checks name why an object was not cached.
   - `parts`: Module 2's GPU vertices against the CPU's and pictures against vanilla in `mob_pen_live` and
-    `part_gallery`, with the four setups' models and both expand stages.
+    `part_gallery` (with a row of dropped items of every item path), with the four setups' models and both expand
+    stages.
   - `benchmark`: the players' `/mobium benchmark` with 5-second runs, its refusals and the built-in pack.
-  - `profile-mobs [--scene <scene>]`: Module 2 off, on and without vertices under Java Flight Recorder; `profile` the
-    same for `storage_room` and the static cache.
+  - `profile-mobs [--scene <scene>]`: Module 2 off, on and without vertices (models' and items') under Java Flight
+    Recorder (`--scene item_drops` for items); `profile` the same for `storage_room` and the static cache.
   - `expand-cost [--scene <scene>]`: Module 2's fixed cost per frame (compute against the vertex stage, CPU time per
     step, GPU timestamps of the frame and of each pass; `ExpandProfile`).
   - `gateb`: `/mobium gateb 20 2` in the dev window (a hint, not the protocol); `iris-without-mobium`: the first shader
@@ -240,10 +269,10 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
 
 ## Config and settings
 
-`config/mobium.json` through konfig, `{"version", "config"}`, format version 4 (`config/ConfigHandler.kt`: a format
+`config/mobium.json` through konfig, `{"version", "config"}`, format version 5 (`config/ConfigHandler.kt`: a format
 change bumps `CONFIG_VERSION` and adds a migration branch; unknown keys keep failing). Contents (`config/Config.kt`):
-the global switch; Module 1's switch, memory budget and eight type switches; Module 2's switch and excluded entity
-types; Module 3's preset (Off, Subtle, Aggressive) and exclusions. One settings screen built from vanilla's option
+the global switch; Module 1's switch, memory budget and eight type switches; Module 2's switch, its item switch and
+excluded entity types; Module 3's preset (Off, Subtle, Aggressive) and exclusions. One settings screen built from vanilla's option
 widgets (`config/screen/MobiumSettingsScreen.kt`) edits a copy and applies it on Done; it opens from Mod Menu
 (Fabric), the NeoForge mod list, and Mobium's page in Sodium's video settings (`config/SodiumOptions.kt`, Sodium
 Config API). `en_us` and `de_de` keep identical keys (`LangKeysTest`).
@@ -261,8 +290,8 @@ dev.nyon.mobium
 ├── debug/        # AbToggle, F3 entries, Sections, Validation, ExpandProfile, VulkanValidation, selfcheck/
 ├── gpu/          # GpuBackend, RenderpearlBackend, RingBuffer + RingAllocator (unused), gl/GlCompute,
 │                 #   vk/VkCompute, vk/VulkanSupport
-└── parts/        # Module 2: PartTransform, PartHooks, MeshPool, SodiumCubes, PartBatch, ReservedRanges, ExpandPass,
-                  #   VulkanExpand, PartValidation, PartCheck, PathSampler
+└── parts/        # Module 2: PartTransform, ItemTransform, PartHooks, MeshPool, ItemMeshes, SodiumCubes, PartBatch,
+                  #   ReservedRanges, ExpandPass, VulkanExpand, PartValidation, PartCheck, PathSampler
 ```
 
 Mixins live in `src/main/java/dev/nyon/mobium/mixins` (compat mixins in `compat/emf` and `compat/iris`, Renderpearl's

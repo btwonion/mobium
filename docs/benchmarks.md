@@ -175,6 +175,7 @@ benchmarked.
 | `storage_room` | 1,000 closed chests and 300 signs with text, every fourth with glowing coloured text | `/function mobium-bench:storage_room` |
 | `map_wall` | 400 item frames with real filled maps (exploration maps), 120 shelves with three items each | `/function mobium-bench:map_wall` |
 | `display_build` | 400 block displays (every other one turned 45°) and 100 item displays | `/function mobium-bench:display_build` |
+| `item_drops` | About 1,070 dropped bamboo items covering the ground in view (an item every 0.6 blocks, within 22 blocks), stacks of 1, 4, 16 and 64 in turn, so each is drawn 1, 2, 2 or 5 times; they never merge, despawn or get picked up | `/function mobium-bench:item_drops` |
 | `control` | Empty superflat, nothing to accelerate | `/function mobium-bench:control` |
 
 Every function switches you to spectator mode, teleports you to the scene's camera position and rotation, and builds
@@ -205,7 +206,7 @@ because the signing key is locked), the script prints the commands to finish by 
 1. Start the setup's Prism instance on mains power, put the fullscreen window on a 1920×1080 monitor and open the
    "Mobium Bench" world.
 2. `/mobium suite`. Check chat for warnings before you step away, then leave the computer alone until chat shows the
-   medians (about 22 minutes). The HUD stays hidden until the very end: the last scene, `control`, is an empty field
+   medians (about 26 minutes). The HUD stays hidden until the very end: the last scene, `control`, is an empty field
    and looks finished, but it records for another three minutes. The result for a scene and setup is the median of
    the three runs.
 3. Setup A only: `/mobium gateb` for Gate B (about 16 minutes); `/mobium gatea` gives the cache's speed-up in
@@ -385,6 +386,29 @@ Module 2 can take off the CPU. Timer averages in ms:
   of the entity CPU time: at most 3.1× lower.
 - JFR could not split this: two recordings of the same scene charged the same third of `renderToBuffer` once to vertex
   writes and once to an EMF lambda (inlined frames). The skip switch measures it directly.
+
+### Dropped items
+
+`self_check.py <loader> --mode profile-mobs --scene item_drops` in the dev client (854×480; Sodium, Iris without a
+shader pack, EMF and ETF): about 1,070 dropped bamboo items, about 2,700 drawn copies, with Module 2 off, on, and with
+every item's vertex writes skipped (the items vanish; the bound for what the CPU can lose). Timer averages in ms:
+
+| Loader | Module 2 | Frame | `extract_entities` | `submit_entities` | `prepare` |
+| --- | --- | --- | --- | --- | --- |
+| Fabric | off | 16.40 | 0.63 | 1.05 | 12.95 |
+| Fabric | on | 4.20 | 0.83 | 1.50 | 0.72 |
+| Fabric | no vertices | 2.36 | 0.56 | 1.16 | 0.18 |
+| NeoForge | off | 15.98 | 0.77 | 1.23 | 12.24 |
+| NeoForge | on | 4.38 | 1.00 | 1.65 | 0.68 |
+| NeoForge | no vertices | 2.76 | 0.73 | 1.34 | 0.18 |
+
+- Frames 3.9× (Fabric) and 3.6× (NeoForge) faster; `prepare` 18× lower. Besides the vertex writes Module 2 also
+  removes most of their upload and the per-quad builder lookups: vanilla asks for the builder once per quad, and Iris's
+  and ETF's hooks on that call cost about as much as the vertices (`docs/vanilla-notes.md` §25).
+- What stays on the CPU: the render states (rebuilt each frame, with each item model's bounding box), one submit per
+  drawn copy, and the client's own tick of the items, which runs between frames and is outside Mobium's scope.
+- Extract and submit, whose code Module 2 does not change, read 0.2–0.45 ms higher with it on (each condition the
+  average of two rounds); not explained yet. The frame time includes it.
 
 ### Module 2's fixed cost: a compute batch of its own
 

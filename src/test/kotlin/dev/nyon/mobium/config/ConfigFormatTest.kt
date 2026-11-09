@@ -22,7 +22,7 @@ class ConfigFormatTest {
         val config = Config(
             enabled = false,
             cache = CacheConfig(memoryBudgetMb = 256, types = CacheTypes(signs = false)),
-            parts = PartsConfig(enabled = false, excludedEntities = mutableListOf("minecraft:zombie")),
+            parts = PartsConfig(enabled = false, items = false, excludedEntities = mutableListOf("minecraft:zombie")),
             lod = LodConfig(preset = LodPreset.SUBTLE)
         )
         assertEquals(config, json.decodeFromString<Config>(json.encodeToString(config)))
@@ -50,6 +50,15 @@ class ConfigFormatTest {
     }
 
     @Test
+    fun `a version 4 file without the item switch decodes with items on`() {
+        val decoded = json.decodeFromString<Config>(
+            """{"enabled": true, "parts": {"enabled": false, "excludedEntities": ["minecraft:cow"]}}"""
+        )
+        assertEquals(PartsConfig(enabled = false, items = true, excludedEntities = mutableListOf("minecraft:cow")), decoded.parts)
+        assertEquals(decoded, migrate(json, json.parseToJsonElement("""{"parts": {"enabled": false, "excludedEntities": ["minecraft:cow"]}}"""), 4))
+    }
+
+    @Test
     fun `the old prototype key no longer decodes, which routes version 3 files to the migration`() {
         assertThrows<SerializationException> {
             json.decodeFromString<Config>("""{"enabled": false, "cache": {"prototype": true}}""")
@@ -71,7 +80,7 @@ class ConfigFormatTest {
     @Test
     fun `defaults follow the plan`() {
         val config = Config()
-        assertTrue(config.enabled && config.cache.enabled && config.parts.enabled)
+        assertTrue(config.enabled && config.cache.enabled && config.parts.enabled && config.parts.items)
         assertEquals(LodPreset.OFF, config.lod.preset)
         assertEquals(128, config.cache.memoryBudgetMb)
         assertTrue(config.cache.types.switches().all { it.second.get() })

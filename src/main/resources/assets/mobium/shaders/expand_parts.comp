@@ -7,10 +7,14 @@
 // (`(float) Math.sqrt(double)`, float division), which GPUs do not do on their own: see sqrtFloat.
 //
 // Buffers, all arrays of 32-bit words:
-//   meshes   per quad 21 words (MeshPool.kt): 4 x (x/16, y/16, z/16, u, v), then the face's Direction ordinal; or in
-//            Sodium's layout corner origin xyz, sizes xyz, 4 x (corner, u, v), 2 unused, Direction | 0x100
-//   frame    cubes at cubeOffset (4 words: first quad, mesh quad, part, first vertex in its draw),
-//            parts at partOffset (32 words, PartBatch.kt), draw slots at slotOffset (1 word: the draw's first vertex)
+//   meshes   per quad 22 words (MeshPool.kt): 4 x (x/16, y/16, z/16, u, v), then the face's Direction ordinal, then 0;
+//            or in Sodium's layout corner origin xyz, sizes xyz, 4 x (corner, u, v), 2 unused, Direction | 0x100, 0;
+//            or for an item's baked quad 4 x (x, y, z, u, v), then Direction | 0x200 if NeoForge uses its baked normal
+//            | tint index << 12 | emission << 16 (tint 15: untinted), then the quad's packed normal (Sodium's, or
+//            NeoForge's baked one; ItemMeshes.kt)
+//   frame    cubes at cubeOffset (4 words: first quad, mesh quad, part, first vertex in its draw; for an item, a run of
+//            quads in one draw), parts at partOffset (32 words, PartBatch.kt), draw slots at slotOffset (1 word: the
+//            draw's first vertex)
 //   vertices the staged vertex buffer vanilla uploaded this frame; this pass fills the ranges Mobium reserved in it
 //
 // Compiled as a compute shader, or with MOBIUM_VERTEX defined as a vertex shader drawn as points with rasterisation
@@ -64,7 +68,7 @@ layout(location = 4) uniform uint slotOffset;
 layout(location = 5) uniform uint quadBase;     // dispatches of more than 65535 groups are split
 #endif
 
-const uint MESH_QUAD_WORDS = 21u;
+const uint MESH_QUAD_WORDS = 22u;
 const uint CUBE_WORDS = 4u;
 const uint PART_WORDS = 32u;
 
@@ -77,6 +81,7 @@ const uint P_LIGHT = 23u;
 const uint P_FLAGS = 24u;
 const uint P_SLOT = 25u;
 const uint P_SPRITE = 26u;     // u0, u1 - u0, v0, v1 - v0
+const uint P_TINTS = 26u;      // items (no sprite): the colours of tint layers 0 to 3, ABGR
 const uint P_IDS = 30u;        // entity | block entity << 16, item
 
 const uint FLAG_KIND_MASK = 3u;          // JOML matrix properties: 0 generic, 1 translation only, 2 identity
@@ -85,6 +90,8 @@ const uint FLAG_IRIS = 8u;               // Iris's 56-byte entity format
 const uint FLAG_IRIS_FACE_NORMAL = 16u;  // Iris replaces the normal with the face normal (rendering the level)
 const uint FLAG_PACKED_NORMALS = 32u;    // P_NORMALS holds the six packed normals (the CPU computed them)
 const uint FLAG_TRUSTED_NORMALS = 64u;   // PoseStack.Pose.trustedNormals: no normalisation
+const uint FLAG_ITEM = 128u;             // an item's baked quads: tint colour and light emission per quad
+const uint FLAG_ITEM_SODIUM = 256u;      // written by Sodium's BakedModelEncoder: no matrix shortcuts, its own normal
 
 float partFloat(uint p, uint word) {
     return uintBitsToFloat(frame[p + word]);
@@ -334,6 +341,54 @@ float unpackNormal(uint word, uint shift) {
     return value;
 }
 
+// Sodium's BakedModelEncoder: MatrixHelper.transformNormal(normal matrix, trusted normals, the quad's packed normal):
+// unpacked by NormI8, m0j * x + (m1j * y + m2j * z), JOML's normalisation unless trusted (Math.invsqrt of
+// Math.fma(x, x, Math.fma(y, y, z * z)), without fused multiply-adds), packed by NormI8 as BufferBuilder packs.
+uint sodiumItemNormal(uint p, uint flags, uint quadNormal) {
+    precise float ux = unpackNormal(quadNormal, 0u);
+    precise float uy = unpackNormal(quadNormal, 8u);
+    precise float uz = unpackNormal(quadNormal, 16u);
+    precise float x = partFloat(p, P_NORMALS) * ux + (partFloat(p, P_NORMALS + 3u) * uy + partFloat(p, P_NORMALS + 6u) * uz);
+    precise float y = partFloat(p, P_NORMALS + 1u) * ux + (partFloat(p, P_NORMALS + 4u) * uy + partFloat(p, P_NORMALS + 7u) * uz);
+    precise float z = partFloat(p, P_NORMALS + 2u) * ux + (partFloat(p, P_NORMALS + 5u) * uy + partFloat(p, P_NORMALS + 8u) * uz);
+    if ((flags & FLAG_TRUSTED_NORMALS) == 0u) {
+        precise float length2 = x * x + (y * y + z * z);
+        if (length2 == 0.0) {
+            // Times 1 / sqrt(0): NaN for 0 (packs to 0), +-Infinity, which the clamp makes +-1.
+            uint bx = x == 0.0 ? 0u : (x > 0.0 ? 0x7Fu : 0x81u);
+            uint by = y == 0.0 ? 0u : (y > 0.0 ? 0x7Fu : 0x81u);
+            uint bz = z == 0.0 ? 0u : (z > 0.0 ? 0x7Fu : 0x81u);
+            return bx | by << 8 | bz << 16;
+        }
+        precise float scalar = divideFloat(1.0, sqrtFloat(length2));
+        x = x * scalar;
+        y = y * scalar;
+        z = z * scalar;
+    }
+    return vanillaByte(x) | vanillaByte(y) << 8 | vanillaByte(z) << 16;
+}
+
+// NeoForge's VertexConsumer.putBakedQuad with a baked normal (applyBakedNormals): BakedNormals.unpack (byte / 127),
+// times the normal matrix by JOML's Vector3f.mul(Matrix3fc) (m0j * x + (m1j * y + m2j * z), no fused multiply-adds),
+// not normalised, packed by BufferBuilder.
+uint bakedItemNormal(uint p, uint quadNormal) {
+    precise float ux = divideFloat(float(int(quadNormal << 24u) >> 24), 127.0);
+    precise float uy = divideFloat(float(int(quadNormal << 16u) >> 24), 127.0);
+    precise float uz = divideFloat(float(int(quadNormal << 8u) >> 24), 127.0);
+    precise float x = partFloat(p, P_NORMALS) * ux + (partFloat(p, P_NORMALS + 3u) * uy + partFloat(p, P_NORMALS + 6u) * uz);
+    precise float y = partFloat(p, P_NORMALS + 1u) * ux + (partFloat(p, P_NORMALS + 4u) * uy + partFloat(p, P_NORMALS + 7u) * uz);
+    precise float z = partFloat(p, P_NORMALS + 2u) * ux + (partFloat(p, P_NORMALS + 5u) * uy + partFloat(p, P_NORMALS + 8u) * uz);
+    return vanillaByte(x) | vanillaByte(y) << 8 | vanillaByte(z) << 16;
+}
+
+// LightCoordsUtil.lightCoordsWithEmission: the light unchanged without emission, else block and sky light raised to it.
+uint lightWithEmission(uint light, uint emission) {
+    if (emission == 0u) return light;
+    uint sky = max((light >> 20u) & 15u, emission);
+    uint block = max((light >> 4u) & 15u, emission);
+    return block << 4u | sky << 20u;
+}
+
 void main() {
     uint quad = quadBase + INVOCATION;
     if (quad >= quadCount) return;
@@ -357,6 +412,11 @@ void main() {
     uint last = meshes[m + 20u];
     bool sodiumLayout = (last & 0x100u) != 0u;
     uint direction = last & 0xFFu;
+    bool itemQuads = (flags & FLAG_ITEM) != 0u;
+    bool itemSodium = (flags & FLAG_ITEM_SODIUM) != 0u;
+    // VertexConsumer.putBakedQuad transforms with JOML (shortcuts by the matrix's properties), BakedModelEncoder with
+    // MatrixHelper.transformPosition*, the generic product.
+    uint positionKind = itemSodium ? 0u : kind;
 
     vec3 position[4];
     vec2 uv[4];
@@ -370,7 +430,7 @@ void main() {
             w = uintBitsToFloat(meshes[v + 2u]);
         } else {
             uint v = m + i * 5u;
-            position[i] = transformPosition(p, kind, uintBitsToFloat(meshes[v]), uintBitsToFloat(meshes[v + 1u]), uintBitsToFloat(meshes[v + 2u]));
+            position[i] = transformPosition(p, positionKind, uintBitsToFloat(meshes[v]), uintBitsToFloat(meshes[v + 1u]), uintBitsToFloat(meshes[v + 2u]));
             u = uintBitsToFloat(meshes[v + 3u]);
             w = uintBitsToFloat(meshes[v + 4u]);
         }
@@ -383,7 +443,13 @@ void main() {
     }
     // Iris replaces the normals of vertices written one by one; Sodium's pushed cubes keep theirs.
     bool faceNormal = iris && !sodiumLayout && (flags & FLAG_IRIS_FACE_NORMAL) != 0u;
-    uint normal = faceNormal ? 0u : vanillaNormal(p, flags, direction);
+    bool bakedNormal = itemQuads && !itemSodium && (last & 0x200u) != 0u;
+    uint normal = 0u;
+    if (!faceNormal) {
+        if (itemSodium) normal = sodiumItemNormal(p, flags, meshes[m + 21u]);
+        else if (bakedNormal) normal = bakedItemNormal(p, meshes[m + 21u]);
+        else normal = vanillaNormal(p, flags, direction);
+    }
 
     uint ids = 0u;
     uint item = 0u;
@@ -452,6 +518,13 @@ void main() {
     uint color = frame[p + P_COLOR];
     uint overlay = frame[p + P_OVERLAY];
     uint light = frame[p + P_LIGHT];
+    if (itemQuads) {
+        // ItemFeatureRenderer: the quad's tint layer colour (getLayerColorSafe), the submit's light with the quad's
+        // emission (QuadInstance.getLightCoordsWithEmission).
+        uint tint = (last >> 12u) & 0xFu;
+        if (tint != 0xFu) color = frame[p + P_TINTS + tint];
+        light = lightWithEmission(light, (last >> 16u) & 0xFu);
+    }
     for (uint i = 0u; i < 4u; i++) {
         uint o = (firstVertex + i) * stride;
         vertices[o] = floatBitsToUint(position[i].x);

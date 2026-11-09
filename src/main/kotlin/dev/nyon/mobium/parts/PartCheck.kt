@@ -16,12 +16,12 @@ import java.util.Locale
  * vanilla until restart, the log names the GPU and the first differing vertices. Render thread only.
  */
 object PartCheck {
-    private const val PATHS = 512
+    private const val PATHS = 2048
     private const val PER_PATH = 64
     private const val PER_FRAME = 8
-    private const val FLAG_BITS = 0x7F
-    private const val SODIUM_LAYOUT = 1 shl 7
-    private const val STAGE_SHIFT = 8
+    private const val FLAG_BITS = 0x1FF
+    private const val SODIUM_LAYOUT = 1 shl 9
+    private const val STAGE_SHIFT = 10
 
     private val sampler = PathSampler(PATHS, PER_PATH, PER_FRAME)
 
@@ -40,7 +40,7 @@ object PartCheck {
     var forcedDifference = false
 
     /**
-     * The path of a part with [flags] (`PartBatch` part flags, 7 bits), cubes in Sodium's layout or not, expanded in
+     * The path of a part or an item run with [flags] (`PartBatch` part flags, 9 bits), cubes in Sodium's layout or not, expanded in
      * [stage]; -1 (never sampled) before the first expand pass has picked a stage.
      */
     fun path(flags: Int, sodiumLayout: Boolean, stage: Int): Int {

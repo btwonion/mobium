@@ -14,6 +14,8 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 - Module 2 runs on Vulkan with 0 differing vertices (self-check on both loaders, gametests on lavapipe in CI), but only
   with `-Dmobium.parts.vulkan`, which dev runs on Vulkan set.
 - CI is green on `master`.
+- Module 2 for items (dropped items, items in hands, frames and displays) is built on the branch `module2-items`;
+  see *Module 2 for items* below for what is left before it merges.
 - Next: the last box of step 5 (Module 2 on Vulkan for players), then step 6.
 
 ---
@@ -57,3 +59,20 @@ release. If the gate fails, stop, write up why in the PR and agree on the next s
 - Which GPUs lack `shaderFloat64` on Vulkan (Intel Arc A-series on Windows, Apple through MoltenVK, *(verify)*). If
   many do, Module 2 needs a shader without double precision: exact integer arithmetic (`umulExtended`) instead of the
   double residuals in `expand_parts.comp`, still 0 differing vertices in every setup.
+
+---
+
+## Module 2 for items
+
+Dropped items cost frames because every visible item writes all of its baked quads on the CPU every frame (a bamboo
+item has 56 to 66 quads, drawn up to five times per stack; `docs/vanilla-notes.md` §25). Module 2 now writes them on the
+GPU like model parts (`docs/architecture.md`, *Items*).
+
+- [x] Hook, item meshes and the shader's two item paths (vanilla's `putBakedQuad`, Sodium's `BakedModelEncoder`), config
+      switch `parts.items`, exclusion by entity type.
+- [x] `part_gallery` with a row of dropped items of every item path; the benchmark scene `item_drops`.
+- [x] Self-check `--mode parts` on both loaders and on Vulkan, gametests: 0 differing vertices, pictures identical.
+- [x] `item_drops` in the dev client, Module 2 off and on: frames 3.9× (Fabric) and 3.6× (NeoForge) faster
+      (`docs/benchmarks.md`, *Dropped items*).
+- [ ] `item_drops` in a benchmark round (setups A–D, 1920×1080), Module 2 off and on.
+- [ ] The maintainer's visual check (*How to verify* of the PR).

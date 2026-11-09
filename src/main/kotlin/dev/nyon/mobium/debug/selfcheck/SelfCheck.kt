@@ -275,6 +275,7 @@ object SelfCheck {
         val clouds = options.cloudStatus().get()
         val preset = options.graphicsPreset().get()
         val language = options.languageCode
+        val glintSpeed = options.glintSpeed().get()
         renderDistanceBefore = options.renderDistance().get()
         // A window that loses focus would otherwise open the pause menu in the middle of the world checks.
         options.pauseOnLostFocus = false
@@ -286,6 +287,7 @@ object SelfCheck {
             options.framerateLimit().set(framerateLimit)
             options.enableVsync().set(vsync)
             options.fov().set(fov)
+            options.glintSpeed().set(glintSpeed)
             options.renderDistance().set(renderDistanceBefore)
             // Changing the clouds or the render distance turns the preset to "custom"; setting the old preset again
             // restores it.
@@ -1015,6 +1017,9 @@ object SelfCheck {
         applyConfig(Config())
         minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
         minecraft.options.enableVsync().set(false)
+        // The enchantment glint scrolls with the wall clock (TextureTransform.setupGlintTexturing), also while paused,
+        // so two frames differ on the gallery's enchanted items whoever draws them; at speed 0 it stands still.
+        minecraft.options.glintSpeed().set(0.0)
         minecraft.createWorldOpenFlows().openWorld(WORLD) { }
         yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
         yield(ticks(40))

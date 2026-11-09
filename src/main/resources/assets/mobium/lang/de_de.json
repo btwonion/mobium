@@ -51,6 +51,8 @@
     "mobium.settings.enabled.tooltip": "Schaltet alle Module. Aus heißt: alles wird genau so gezeichnet wie ohne Mobium.",
     "mobium.settings.module_enabled": "Aktiviert",
     "mobium.settings.module_enabled.tooltip": "Schaltet dieses Modul. Aus heißt: Vanilla zeichnet, was es übernehmen würde.",
+    "mobium.settings.parts_items": "Gegenstände",
+    "mobium.settings.parts_items.tooltip": "Lässt die GPU auch die Vertices von Gegenständen schreiben: fallengelassene Gegenstände, Gegenstände in Händen, Rahmen und Displays. Aus heißt: die CPU schreibt sie wie Vanilla.",
     "mobium.settings.memory_budget": "Grafikspeicher",
     "mobium.settings.memory_budget.tooltip": "Wie viel Grafikspeicher der statische Cache belegen darf; darüber kehren die entferntesten Objekte zum Vanilla-Weg zurück.",
     "mobium.settings.megabytes": "%s MB",
