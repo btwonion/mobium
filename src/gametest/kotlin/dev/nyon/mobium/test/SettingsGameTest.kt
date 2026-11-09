@@ -13,7 +13,7 @@ import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.screens.TitleScreen
 
 /**
- * M4: the settings screen opens with every module's state, a saved change re-resolves the modules at once, and a
+ * The settings screen opens with every module's state, a saved change re-resolves the modules at once, and a
  * failure switches its module to vanilla with one toast. Screenshots: `settings-screen`, `fallback-toast`.
  */
 @Suppress("unused")

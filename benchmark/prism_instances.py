@@ -37,7 +37,7 @@ SETUPS = {
     "D-all": ("mobium-bench-d", "Mobium Bench D (all)", "Sodium + Iris + EMF/ETF, shader pack and Fresh Animations", "sodium+iris+emf+fa", True, True),
 }
 
-# The packs of the protocol (docs/benchmarks.md; the light pack is an open question in PLAN.md), pinned so every round
+# The packs of the setups (docs/benchmarks.md; the light pack is in none of them yet), pinned so every round
 # measures the same thing.
 SHADER_PACK = ("complementary-reimagined", "r5.9.3")
 FRESH_ANIMATIONS = ("fresh-animations", "1.11.1")

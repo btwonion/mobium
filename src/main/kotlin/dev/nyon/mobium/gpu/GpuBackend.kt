@@ -9,8 +9,8 @@ import java.nio.ByteBuffer
 
 /**
  * What the modules need from the GPU: buffers, uploads, fences and drawing a buffer range with a vanilla render type
- * (so vanilla's pipeline, shaders and Iris's replacements stay in charge of what is drawn). Compute dispatch joins in
- * M6 (`gpu/gl/GlCompute`, raw GL 4.3 on the buffers' handles) and M7 (Vulkan). Render thread only.
+ * (so vanilla's pipeline, shaders and Iris's replacements stay in charge of what is drawn). Compute dispatch is
+ * separate (`gpu/gl/GlCompute`, raw GL 4.3 on the buffers' handles; `gpu/vk/VkCompute` on Vulkan). Render thread only.
  *
  * Every buffer a module keeps is created and released here, so [bytesAllocated] is Mobium's GPU memory (F3).
  */

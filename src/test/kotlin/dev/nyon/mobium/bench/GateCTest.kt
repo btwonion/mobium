@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
 class GateCTest {
     @Test
     fun `the CPU ratio counts the shadow pass's prepare stage`() {
-        // The dev client's D numbers of 26 Oct 2026.
+        // Numbers measured in setup D in the dev client.
         val gate = GateC.of(GateC.Run(31.76, 11.015, 3.015), GateC.Run(28.70, 5.539, 1.093))!!
         assertEquals(14.03 / 6.632, gate.cpu, 1e-3)
         assertTrue(gate.cpuPasses)

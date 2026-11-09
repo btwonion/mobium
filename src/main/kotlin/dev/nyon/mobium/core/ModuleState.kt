@@ -46,7 +46,7 @@ enum class OffReason(val key: String) {
     /** The module needs compute shaders (OpenGL 4.3 with double precision in shaders). */
     NO_COMPUTE("no_compute"),
 
-    /** The module's code does not exist yet (Module 3: PLAN.md, *Later*). */
+    /** The module's code does not exist yet (Module 3, animation LOD). */
     NOT_BUILT("not_built");
 
     val translationKey: String

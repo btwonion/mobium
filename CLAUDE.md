@@ -10,10 +10,9 @@ from GPU buffers instead of rebuilding them on the CPU every frame. One source t
 hides the Loom/ModDevGradle differences. Targets are declared in `settings.gradle.kts` (`26.3` × fabric/neoforge).
 The structure follows `btwonion/autodrop`; check it first when unsure how something is done.
 
-**Start with `PLAN.md`.** It is the plan of the work ahead: work through its milestones in order, tick its checkboxes
-as tasks land, and treat its gates as hard stops. Its *Current state* section at the top says where the work stands
-and what to do next; keep it up to date at the end of every session. How Mobium works today is in
-`docs/architecture.md`; keep it true when the code changes.
+**Start with `PLAN.md`.** It holds the current target (Vulkan): tick its checkboxes as tasks land and treat its gate as
+a hard stop. Its *Current state* section at the top says where the work stands and what to do next; keep it up to
+date at the end of every session. How Mobium works is in `docs/architecture.md`; keep it true when the code changes.
 
 ## Commands
 
@@ -37,43 +36,25 @@ python3 benchmark/self_check.py fabric --api vulkan # the same on Vulkan, with t
 ./gradlew :26.3-fabric:runClient -Pmobium.graphicsBackend=vulkan  # any run task on Vulkan; -Pmobium.vulkanValidation
 ```
 
-`benchmark/self_check.py` starts each dev client with a request file; `debug/selfcheck/SelfCheck.kt` (dev environments
-only) then walks through the checks inside the game: screens opened the loader's way, both languages, the Sodium page,
-and in the benchmark world key presses, commands and pixel comparisons against vanilla. It writes
-`<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched, and closes the game.
-Extend the scenario for every rendering PR, run it on both loaders, and read the screenshots before asking Anton.
-`--mode gallery` runs only the `cache_gallery` part (every cached type, effects, shader pack, Fresh Animations) and is
-the quick loop while working on the static cache; failed count checks name why an object was not cached. `--mode
-parts` is the same for Module 2 (GPU vertices against the CPU's, pictures, in `mob_pen_live` and `part_gallery` with
-the four setups' models, both expand stages), `--mode profile-mobs [--scene <scene>]` measures Module 2 off, on and
-without vertices, `--mode expand-cost [--scene <scene>]` its fixed cost per frame (compute against the vertex stage,
-CPU time per step, GPU timestamps of the frame and of each pass; `ExpandProfile`).
-
-In game: `/mobium bench <scene> <seconds> [setup]` records a benchmark, `/mobium suite` runs every scene of a setup
-and `/mobium gatea` / `gateb` / `gatec` run Gates A–C unattended (`/mobium stages` compares Module 2's two expand
-stages; `/mobium stop` aborts), scenes come from the
-`benchmark/mobium-bench` datapack (`python3 benchmark/generate.py` regenerates it), and the F3 entry `mobium:timings`
-shows the stage timers. Protocol and results: `docs/benchmarks.md`. Settings: Mod Menu (Fabric), the mod list
-(NeoForge) or Mobium's page in Sodium's video settings. The A/B key switches all of Mobium off and on live; key
-bindings are physical key positions (SDL scancodes), and its default is the key right of P: `]` on a US keyboard,
-`+` on a German one (the action bar names the bound key; rebind under Controls → Key Binds → Mobium). The F3 entry
-`mobium:modules` shows each module's state and why it is off, and in dev environments `/mobium debug fail <module>`
-forces a module failure (one toast, module on vanilla until restart) and `/mobium debug validate` compares a frame
-with Mobium against the next with vanilla.
-
-On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game: locally a window opens and
-closes by itself, CI runs it under `xvfb-run`, and a second time on Vulkan with Mesa's lavapipe
-(`-Pmobium.graphicsBackend=vulkan`). Gametests live in `src/gametest` (Fabric only, mod id `mobium-test`);
-screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`.
+Extend the self-check's scenario (`debug/selfcheck/SelfCheck.kt`) for every rendering PR, run it on both loaders, and
+read its screenshots (`<game dir>/mobium-selfcheck/`) before asking the maintainer to look; `--mode gallery` and
+`--mode parts` are the quick loops for the static cache and Module 2. On the Fabric target `build` runs the client
+gametests, so a game window opens and closes by itself. The self-check's modes, the gametests and the unit tests:
+`docs/architecture.md` (*Tests*); in-game commands, F3 entries and the A/B key: *Debug and measurement* there;
+benchmark commands, protocol and results: `docs/benchmarks.md`.
 
 ## Ground rules
 
 - **The one rule:** Mobium may change how geometry reaches the GPU, never what ends up on screen.
-- **You cannot see the game.** Every PR that touches rendering ends with a "How to verify" section for Anton: the
-  Gradle task, the benchmark scene, the keys to press, and what correct and broken look like.
+- **You cannot see the game.** Every PR that touches rendering ends with a "How to verify" section for the maintainer:
+  the Gradle task, the benchmark scene, the keys to press, and what correct and broken look like; plus the benchmark
+  numbers if performance changed.
 - **Never guess the Minecraft API.** 26.x is unobfuscated; read the decompiled source and record findings in
   `docs/vanilla-notes.md` (a new section at the end; the code references its section numbers). Plan entries marked
   *(verify)* are expectations, not facts.
+- **Current state only.** Docs, `PLAN.md` and comments say how things are now: no names, no who decided what or when,
+  no dates, no history, and no Mobium version numbers (when a release is due, look up the latest with
+  `gh release list`).
 - **Vanilla first.** Every feature has a config switch, a per-type switch and a runtime fallback to the vanilla
   path. New hooks ship disabled until their screenshot tests pass.
 - **Must-have compatibility:** Iris shader packs and EMF/ETF with Fresh Animations. Never bypass `setupAnim`.
@@ -97,34 +78,17 @@ screenshots land in `versions/26.3-fabric/build/run/clientGameTest/screenshots/`
 
 `docs/architecture.md` describes both modules step by step, the core, the GPU layer, the package map and the design
 decisions; `docs/vanilla-notes.md` holds every vanilla, Sodium, Iris and EMF detail the code relies on (§10 is the
-hook table, §18 the Vulkan backend). Every module asks
-`core/ModuleStates` whether it may run (resolved by the pure `ModuleRules` from config, backend, compute, A/B key,
-overlapping mods and failures) and reports exceptions to `core/Fallback`.
-
-- **Module 1, static cache (`cache/`):** captures unchanged block entities and entities through vanilla's own submit
-  and prepare (`Capture.kt`, in Iris's formats while a pack is on), keeps them in per-section buckets on the GPU
-  (`gpu/Gpu.backend`, Renderpearl) and draws them at the end of `PreparedFrame.executeSolid`; `CachePolicy` and
-  `EntityPolicy` decide per type and compare each object's inputs every frame, `LightStamps` notices light changes.
-- **Module 2, GPU part transform (`parts/`):** wraps `ModelPart.compile` and EMF's `EMFModelPart.compile`. A part
-  whose cubes it knows (vanilla cubes, written as vanilla or as Sodium would; EMF's `EMFCube`) reserves its vertices in
-  the staged builder and writes records (`PartBatch`, meshes in `MeshPool`); after `StagedVertexBuffer.upload()`
-  `ExpandPass` runs `assets/mobium/shaders/expand_parts.comp` (raw GL 4.3, `gpu/gl/GlCompute`), which writes exactly
-  the bytes the CPU path would have, Iris's extension included: compiled as a vertex shader drawn as points without a
-  shader pack (Mesa's iris puts a compute dispatch in a batch of its own, a fixed cost per frame), as a compute
-  dispatch with one (`ExpandPass.stage`). `PartValidation` compares them byte for byte: every part in the dev
-  validation, the first parts of each shader path in normal play (`PartCheck`, which switches Module 2 off on a
-  difference); any change to the shader or the records must keep `--mode parts` at 0 differing vertices in both stages,
-  and on Vulkan.
-- **Backends:** the static cache runs on OpenGL and Vulkan. Module 2 on Vulkan (`parts/VulkanExpand`, `gpu/vk/`, three
-  `require = 0` mixins in `mixins/vulkan`; `docs/vanilla-notes.md` §23) is a compute dispatch in a command buffer of
-  Mobium's own, with an asynchronous `PartValidation`; it runs only with `-Dmobium.parts.vulkan` (dev runs on Vulkan
-  set it) until CI checks it on lavapipe (`PLAN.md` M7 step 5), else `OffReason.BACKEND` (`ModuleRules.runsOn`).
+hook table, §18 the Vulkan backend). Every module asks `core/ModuleStates` whether it may run (resolved by the pure
+`ModuleRules` from config, backend, compute, A/B key, overlapping mods and failures) and reports exceptions to
+`core/Fallback`. Module 2's expand pass must write exactly the bytes the CPU path would: any change to
+`expand_parts.comp` or the part records keeps `--mode parts` at 0 differing vertices in both expand stages and on
+Vulkan.
 
 ## Dev environment
 
 - **Worktrees** lack the gitignored dev run folders. Copy `versions/26.3-fabric/run/` and `run/` (`options.txt`,
   `config`, `saves`, `shaderpacks`, `resourcepacks`), `versions/26.3-fabric/build/bench-world` and
-  `versions/26.3-fabric/build/bench-packs` from the master checkout before running the self-check or the Prism script.
+  `versions/26.3-fabric/build/bench-packs` from the main checkout before running the self-check or the Prism script.
 - **Test assets** (gitignored): `shaderpacks/ComplementaryReimagined_r5.9.3.zip` and
   `resourcepacks/FreshAnimations_v1.10.3.zip` in `versions/26.3-fabric/run/` and `run/`; the self-check uses them when
   present.
@@ -145,15 +109,31 @@ Config is stored with konfig at `config/mobium.json` (`{"version", "config"}`). 
 
 ## Pull requests
 
-One branch from `master` per piece of work, one PR against `master`; merging is Anton's call. PRs are squash-merged
-(Anton, 28 Oct 2026): the PR title becomes the commit title on `master` and the branch's commit messages its body, so
-write both for `master`'s history. A benchmark build id from a branch commit is not on `master` after the merge;
+One branch from `master` per piece of work, one PR against `master`; merging is the maintainer's call. PRs are
+squash-merged: the PR title becomes the commit title on `master` and the branch's commit messages its body, so write
+both for `master`'s history. A benchmark build id from a branch commit is not on `master` after the merge;
 `git fetch origin pull/<n>/head` brings it back.
 
 ## Releases
 
-`changelog.md` holds only the notes for the upcoming release; publishing and the Discord post read it. Keep it short
-(Anton, 28 Oct 2026): one line of at most 120 characters per entry, saying what changed for players, not how or why;
+`changelog.md` holds only the notes for the upcoming release; publishing and the Discord post read it. Keep it short:
+one line of at most 120 characters per entry, saying what changed for players, not how or why;
 numbers, causes and details go in the PR, `docs/benchmarks.md` or `docs/compat.md`. Releases run from the manually
 dispatched `release.yml` workflow (`./gradlew releaseMod`), only after the matching gate in `PLAN.md` has passed;
-Anton runs it, never Claude Code. The checklist is `PLAN.md`'s *Release checklist*.
+the maintainer runs it, never Claude Code. Releases go to Modrinth `mobium` (`8i5oedw8`) and CurseForge `mobium-perf`
+(`1759818`). The next version follows the latest release (`gh release list`): a new module is a new minor version,
+betas count up `mod.beta`, `mod.beta=0` publishes as stable.
+
+Release checklist (copy it into the release's PR and tick it there):
+
+- [ ] The version in `gradle.properties` (`mod.major-version`, `mod.beta`): the next after the latest release.
+- [ ] The gate passed, results in `docs/benchmarks.md`, raw data in `btwonion/mobium-benchmarks`.
+- [ ] `changelog.md` holds only this release's notes.
+- [ ] `docs/compat.md` updated; `README.md` describes the release. README changes merge right before `release.yml`:
+      `readme-modrinth-sync.yml` publishes every README change on `master` to Modrinth at once.
+- [ ] Self-check on both loaders (regular, `--mode parts`, `--mode benchmark`) and the gametests; 0 changed pixels,
+      0 differing vertices.
+- [ ] A benchmark round A–D (`python3 benchmark/bench_round.py`) if rendering changed since the last round.
+- [ ] The maintainer's visual checks of the release's rendering PRs (*How to verify*).
+- [ ] The maintainer's go, then `release.yml` on `master`.
+- [ ] Afterwards a PR that empties `changelog.md` and updates `PLAN.md`'s *Current state*.

@@ -1,12 +1,10 @@
 # Benchmarks
 
-How Mobium is measured, and what it measured for 0.2.0, on the development laptop and on players' machines (*Players'
+How Mobium is measured, and what it measured, on the development laptop and on players' machines (*Players'
 results*). Every gate in `PLAN.md` is decided with the numbers on this page. Raw data (every run's CSV, the suite and
 gate medians) is in [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks), one folder per round
-and players' files in `players/`; *Earlier rounds* at the end lists the rounds, and the round-by-round write-ups up to
-0.2.0 are in `git show dd7253f:docs/benchmarks.md`.
-Build ids from before 27 Oct 2026 predate a rewrite of this repository's history: `grep ^<id>
-../mobium-benchmarks/commit-map.txt` gives the current commit.
+and players' files in `players/`. A build id in an older round may predate a rewrite of this repository's history:
+`grep ^<id> ../mobium-benchmarks/commit-map.txt` gives the current commit.
 
 ## Tools
 
@@ -19,7 +17,7 @@ Build ids from before 27 Oct 2026 predate a rewrite of this repository's history
   - `summary.csv`: one row per run, appended (averages, Minecraft and Mobium version, `build`, the commit the jar was
     built from (`git describe`, `-dirty` with local changes), loader, backend, GPU, the monitor and video mode, the
     window size, `ac` or `battery`, the power profile, and `gpu_mhz`, the GPU's actual clock sampled once per second,
-    which three come from Linux sysfs and stay empty elsewhere; since 29 Oct 2026 also `os` and `driver`, as in
+    which three come from Linux sysfs and stay empty elsewhere; also `os` and `driver`, as in
     `/mobium benchmark` below). A `summary.csv` with older columns is renamed to `summary-before-<timestamp>.csv`. The
     suite and gate files end with a `# build,<commit>` line.
   `setup` is detected when omitted: `sodium` or `vanilla`, `+iris` if a shader pack is active, `+emf` if Entity Model
@@ -34,8 +32,8 @@ Build ids from before 27 Oct 2026 predate a rewrite of this repository's history
   another setup than the active one (see *Prism instances*).
 - **`/mobium gatea [seconds] [runs]`** — Gate A: builds `storage_room` and records it with the static cache off and
   on, alternating (defaults: 60 s, 3 runs each), then prints the speed-up against the 1.5× target and writes
-  `mobium-bench/gatea-<timestamp>.csv`. Gate A was decided with the chest prototype of the time; the command now
-  compares the whole static cache and stays useful as a before/after number.
+  `mobium-bench/gatea-<timestamp>.csv`. It compares the whole static cache and stays useful as a before/after
+  number.
 - **`/mobium gateb [seconds] [runs]`** — Gate B: records `storage_room` with the static cache, the same with the
   cache's draw calls skipped (setup `…+cache+nodraw`; the chests and signs vanish for that run), `control` with the
   cache and `control` without it, in turn (defaults: 60 s, 3 rounds; about 16 minutes). Then it prints Gate B's
@@ -68,10 +66,9 @@ Build ids from before 27 Oct 2026 predate a rewrite of this repository's history
   power, mods, shader pack, resource packs, graphics preset, whether the seed is `mobium`, each module's state and the
   build. `# os` is Java's `os.name`, `os.version` and `os.arch`, on Linux after the distribution's `PRETTY_NAME` (the
   host's under Flatpak; `bench/OperatingSystem.kt`); `# driver` is Renderpearl's driver string, `GL_VERSION` on OpenGL
-  (`docs/vanilla-notes.md` §19). Both are in files from Mobium after 0.2.0. It
-  warns about battery power and low-power profiles but not about the window size. It refuses outside a classic
-  superflat overworld, without the pack, and when neither module can run. In dev environments
-  `/mobium benchmark <seconds>` shortens the runs (`self_check.py --mode benchmark` uses 5 s).
+  (`docs/vanilla-notes.md` §19). It warns about battery power and low-power profiles but not about the window size.
+  It refuses outside a classic superflat overworld, without the pack, and when neither module can run. In dev
+  environments `/mobium benchmark <seconds>` shortens the runs (`self_check.py --mode benchmark` uses 5 s).
 - **Setup names** get `+cache` while the static cache is active and `+parts` while Module 2 is (`+parts-vertex` when
   its expand pass runs in the vertex stage: without a shader pack where the GPU has it). Both modules are on by
   default, so a plain `/mobium suite` measures with them; switch Mobium off in the settings (or with the A/B key, the
@@ -115,13 +112,12 @@ instance it is the instance's `minecraft/` folder.
 
 All timers are CPU wall-clock time on the render thread. The level timers count only the main level pass (not the hand,
 the GUI or Iris's shadow pass); the `shadow_*` timers count Iris's shadow pass, and their stages are part of `shadow`.
-Rounds before 23 Oct 2026 had no `shadow_*` timers, and their `draw` included the shadow pass's feature draws. See
-`docs/vanilla-notes.md` §0 for the stages.
+See `docs/vanilla-notes.md` §0 for the stages.
 
 What the shadow pass draws is up to the shader pack. Complementary Reimagined r5.9.3 at its defaults, as B and D run it
 (`ENTITY_SHADOW` 1, also in its HIGH to ULTRA profiles), sets `shadowBlockEntities = false` in `shaders.properties`:
 entities cast shadows, block entities do not, so `shadow_tessellate_block_entities` reads 0 there (0.000 ms in the
-self-check's gallery on 23 Oct, with the whole shadow pass at 2.0–2.8 ms). Its POTATO to MEDIUM profiles
+self-check's gallery, with the whole shadow pass at 2.0–2.8 ms). Its POTATO to MEDIUM profiles
 (`ENTITY_SHADOW` -1) leave entities out as well; `ENTITY_SHADOW` 2 shadows both.
 
 ## Protocol
@@ -163,7 +159,9 @@ The Prism instances start with these settings (`options.txt` is only written whe
 | D · All | Mobium Bench D (all) | A + B + C | `sodium+iris+emf+fa` |
 
 `benchmark/prism_instances.py` installs and selects both packs. Complementary Reimagined is the heavy pack of the test
-set; the light one is still open (`PLAN.md`, *Open questions*).
+set. The light one is MakeUp - Ultra Fast 9.6 (Modrinth `makeup-ultra-fast-shaders`) at its defaults: shadows on,
+and unlike Complementary its shadow pass draws block entities too, so it covers cached objects in Iris's shadow pass
+(`docs/vanilla-notes.md` §24). It is in no setup and no self-check yet.
 
 The mod versions are the ones in `versions/26.3-fabric/gradle.properties`. NeoForge is checked for parity, not
 benchmarked.
@@ -219,14 +217,13 @@ because the signing key is locked), the script prints the commands to finish by 
 By hand instead: `/function mobium-bench:<scene>`, wait for "Scene <scene> is ready" plus 10 seconds, then
 `/mobium bench <scene> 60` three times without touching anything.
 
-## Results for 0.2.0
+## Latest results
 
-The latest round: 27 Oct 2026, build **8d26a26** (0.2.0-beta2), unattended (`bench_round.py`), fullscreen 1920×1080
-on the AOC monitor, mains power, uncapped, VSync off; the static cache and Module 2 on, Module 2's expand pass in the
-vertex stage in A and C and as a compute dispatch in B and D (shader pack), as `ExpandPass.stage` chooses. 0.2.0
-draws the same vertices: 0.2.0-beta3 added the GPU check (comparisons only in the first frames of each shader path)
-and 0.2.0 `/mobium benchmark`, so no new round was run. Machine: Lenovo ThinkPad X9-14 Gen 1, Intel Core Ultra 7
-258V, Intel Arc 140V iGPU (`xe`, Mesa 26.2, OpenGL 4.6), 32 GB, Fedora 44. Raw data:
+Build **8d26a26**, unattended (`bench_round.py`), fullscreen 1920×1080 on the AOC monitor, mains power, uncapped,
+VSync off; the static cache and Module 2 on, Module 2's expand pass in the vertex stage in A and C and as a compute
+dispatch in B and D (shader pack), as `ExpandPass.stage` chooses. Later builds draw the same vertices on OpenGL (the GPU
+check compares only in the first frames of each shader path), so no newer round was run. Machine: Lenovo ThinkPad
+X9-14 Gen 1, Intel Core Ultra 7 258V, Intel Arc 140V iGPU (`xe`, Mesa 26.2, OpenGL 4.6), 32 GB, Fedora 44. Raw data:
 [`2026-10-27-thinkpad-x9-8d26a26/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-27-thinkpad-x9-8d26a26/).
 
 ### Module 2 off and on, same session
@@ -289,11 +286,11 @@ tessellate add entities and block entities, *Shadow* is Iris's whole shadow pass
 | display_build | D | 37 | 21 | 27.38 | 41.53 | 0.97 | 0.39 | 0.00 | 0.01 | 0.26 | 0.09 | 3.25 | 1.45 | 1294–1438 |
 | control | D | 36 | 31 | 27.57 | 30.71 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.00 | 0.43 | 0.00 | 1013–1015 |
 
-Without Mobium these scenes were (earlier rounds, other sessions): `storage_room` in A 3.33 ms (300 FPS; with the
-cache 1.71 ms, 586 FPS, on 20 Oct), the mob pens as in the first column of the gate table above. Frames from different
+Without Mobium these scenes were (other sessions): `storage_room` in A 3.33 ms (300 FPS; with the
+cache 1.71 ms, 586 FPS), the mob pens as in the first column of the gate table above. Frames from different
 sessions follow the GPU clock more than anything else (*Findings*), so a speed-up is only quoted from one session.
 
-**The README's table** comes from these numbers: `storage_room` 300 → 586 FPS (setup A, 19 and 20 Oct 2026), the
+**The README's table** comes from these numbers: `storage_room` 300 → 586 FPS (setup A, two earlier sessions), the
 three mob pen rows from the `/mobium gatec` table above (A, C, D).
 
 ## Players' results
@@ -305,58 +302,52 @@ over on (`<scene>_speedup`). Raw files:
 
 | File | Machine | `storage_room` off → on | `mob_pen_live` off → on |
 | --- | --- | --- | --- |
-| [#32](https://github.com/btwonion/mobium/issues/32), 28 Oct 2026 | AMD Ryzen 7 7800X3D, Nvidia GeForce RTX 4070 Ti; desktop, 2560×1384 window, Fancy, Mod Menu | 248 → 2,773 FPS (4.04 → 0.36 ms), **11.2×** | 236 → 713 FPS (4.24 → 1.40 ms), **3.02×** |
-| [#31](https://github.com/btwonion/mobium/issues/31), 28 Oct 2026 | Intel Core i7-13700HX, Nvidia GeForce RTX 4070 Laptop GPU; Lenovo Legion Pro 5 16IRX8 on mains, `balanced` profile, 2560×1515 window, Custom, no other mods | 111 → 252 FPS (9.05 → 3.96 ms), **2.28×** | 99 → 240 FPS (10.07 → 4.16 ms), **2.42×** |
+| [#32](https://github.com/btwonion/mobium/issues/32) | AMD Ryzen 7 7800X3D, Nvidia GeForce RTX 4070 Ti; desktop, 2560×1384 window, Fancy, Mod Menu | 248 → 2,773 FPS (4.04 → 0.36 ms), **11.2×** | 236 → 713 FPS (4.24 → 1.40 ms), **3.02×** |
+| [#31](https://github.com/btwonion/mobium/issues/31) | Intel Core i7-13700HX, Nvidia GeForce RTX 4070 Laptop GPU; Lenovo Legion Pro 5 16IRX8 on mains, `balanced` profile, 2560×1515 window, Custom, no other mods | 111 → 252 FPS (9.05 → 3.96 ms), **2.28×** | 99 → 240 FPS (10.07 → 4.16 ms), **2.42×** |
 
-Both ran 0.2.0 on Fabric (build `dd7253f`) without Sodium (setup `vanilla`), on OpenGL, without a shader pack or
+Both ran a release build on Fabric (`dd7253f`) without Sodium (setup `vanilla`), on OpenGL, without a shader pack or
 resource packs, seed `mobium`, both modules active and Module 2's expand pass in the vertex stage. 1% lows: #32 164 →
-685 and 169 → 370 FPS, #31 63 → 145 and 51 → 112 FPS. Without Sodium these frames do not compare with *Results for
-0.2.0*. Module 2's check found no difference on either GPU (`docs/compat.md`, *On players' GPUs*).
+685 and 169 → 370 FPS, #31 63 → 145 and 51 → 112 FPS. Without Sodium these frames do not compare with *Latest
+results*. Module 2's check found no difference on either GPU (`docs/compat.md`, *On players' GPUs*).
 
 - **On these Nvidia GPUs the frame gains what the CPU saves.** In `mob_pen_live` `prepare` fell by 2.90 ms on #32 and
   the frame by 2.83 ms, on #31 by 5.77 and 5.91 ms; on the Arc 140V the frame follows the clock that CPU and GPU share
-  (*Gate C's redefinitions*, *Frames between sessions follow the GPU clock*).
+  (*Frames between sessions follow the GPU clock*).
 - **`storage_room`'s gain is the vanilla frame over what the cache leaves.** The cache takes almost all of the CPU
   work (`prepare` 2.97 → 0.003 ms on #32, 5.84 → 0.015 ms on #31), so the gain depends on the rest of the frame: 0.36
   ms on #32, 3.96 ms on #31. Neither file has a `control` run to split that rest.
-- **0.2.0's files name neither the OS nor the driver:** they record the GPU's renderer string but not `GL_VERSION`,
+- **These two files name neither the OS nor the driver:** they record the GPU's renderer string but not `GL_VERSION`,
   and the power state only from Linux sysfs (`bench/MachineState.kt`). So #31 ran Linux; #32's empty power fields mean
-  Windows or a Linux desktop without a mains supply or platform profile. Files from later versions have `# os` and
-  `# driver` (*Tools*).
+  Windows or a Linux desktop without a mains supply or platform profile. Current files have `# os` and `# driver`
+  (*Tools*).
 
 ## Gates
 
-Every gate also required zero screenshot differences (self-check and gametests, both loaders). Gates B and C were
-redefined with Anton when their first targets turned out to depend on GPU work that vanilla pays as well.
+Every gate also requires zero screenshot differences (self-check and gametests, both loaders). Gates B and C measure
+what Mobium can change, without the GPU work that vanilla pays as well.
 
-| Gate | Decided | Definition | Result |
+| Gate | Measured | Definition | Result |
 | --- | --- | --- | --- |
-| A | 19 Oct 2026, setup A, `/mobium gatea` | `storage_room` at least 1.5× faster with the chest prototype than without | **1.53×** (3.33 → 2.18 ms) |
-| B | 21 Oct 2026, setup A, `/mobium gateb`, build 6fb45dc | What the cached objects cost: `storage_room` with the cache's draw calls skipped, plus those draw calls' CPU time, at most 1.2× `control`; `control` with the cache at most 1.03× without | **1.170×** ((1.247 + 0.041) / 1.101 ms); `control` 1.003× |
-| C | 26 Oct 2026, setups C and D, `/mobium gatec`, build b41d342 | In D `mob_pen_live`'s `prepare` + `shadow_prepare` at least 1.5× lower with Module 2; in C and D its frame at most 1.03× the frame without | **D: 1.90× lower** (13.70 → 7.22 ms), frame 0.84× (65.57 → 55.37 ms); **C: frame 0.80×** (9.05 → 7.23 ms) |
+| A | Setup A, `/mobium gatea`, chest prototype | `storage_room` at least 1.5× faster with Mobium than without | **1.53×** (3.33 → 2.18 ms) |
+| B | Setup A, `/mobium gateb`, build 6fb45dc | What the cached objects cost: `storage_room` with the cache's draw calls skipped, plus those draw calls' CPU time, at most 1.2× `control`; `control` with the cache at most 1.03× without | **1.170×** ((1.247 + 0.041) / 1.101 ms); `control` 1.003× |
+| C | Setups C and D, `/mobium gatec`, build b41d342 | In D `mob_pen_live`'s `prepare` + `shadow_prepare` at least 1.5× lower with Module 2; in C and D its frame at most 1.03× the frame without | **D: 1.90× lower** (13.70 → 7.22 ms), frame 0.84× (65.57 → 55.37 ms); **C: frame 0.80×** (9.05 → 7.23 ms) |
 
-**Gate B's redefinition** (Anton, 20 Oct 2026). The first definition, the whole `storage_room` frame at most 1.2×
-`control`, failed at 1.39× (1.695 against 1.218 ms). About 0.18 ms of the gap was Mobium's CPU work and about 0.30 ms
-the GPU drawing the 1,000 chests and 300 signs, which vanilla pays as well; with no CPU work left at all the ratio would
-still have been about 1.24×. Of the options (more CPU work first, gate against vanilla, waive the gate, gate Mobium's
-own cost) Anton chose the last. The whole frame (1.395×) and the cost of drawing the cached objects (0.29 ms per
-frame) are still reported, without a target. `/mobium gateb` records the extra run without the cache's draw calls
-(setup `…+cache+nodraw`; the chests and signs vanish during it).
+**Gate B** leaves out the GPU drawing the 1,000 chests and 300 signs, about 0.30 ms per frame that vanilla pays as
+well. The whole `storage_room` frame (1.395× `control`) and the cost of drawing the cached objects (0.29 ms per frame)
+are reported without a target; `/mobium gateb` records the extra run without the cache's draw calls for that.
 
-**Gate C's redefinitions** (with Anton, 25 Oct 2026). The first target, `mob_pen_live` 1.5× faster in D, was out of
-reach: in D the frame is mostly GPU work, and removing all CPU tessellation would have made it at most 1.20× faster.
-The second, 1.5× faster in C, was out of reach too: Fresh Animations' animations run inside `ModelPart.render`, so
-3.2 of 5.3 ms of tessellation stay on the CPU without a single vertex written (*What Module 2 can take* below), at
-most about 1.35×. Mobium can only take CPU work away; how much of it shows in the frame depends on the GPU. With Module
-2 the iGPU clocked higher (CPU and GPU share one power budget), so the frames gained more than the CPU time saved. Gate
-C held on 0.2.0-beta2's build (D 2.18× lower CPU work and 1.20× faster, C 1.36× faster; *Results for 0.2.0*).
+**Gate C** counts the entity CPU work: in D the frame is mostly GPU work, and in C Fresh Animations' animations run
+inside `ModelPart.render`, so 3.2 of 5.3 ms of tessellation stay on the CPU without a single vertex written (*What
+Module 2 can take* below). Mobium can only take CPU work away; how much of it shows in the frame depends on the GPU.
+With Module 2 the iGPU clocked higher (CPU and GPU share one power budget), so the frames gained more than the CPU time
+saved. Gate C holds on build 8d26a26 too (D 2.18× lower CPU work and 1.20× faster, C 1.36× faster; *Latest results*).
 
 ## Findings
 
 ### Cost split per scene
 
-19 Oct 2026, vanilla (no Mobium), setups without Fresh Animations or shader packs. What each module can win is bounded
-by the stages it removes:
+Vanilla (no Mobium), setups without Fresh Animations or shader packs. What each module can win is bounded by the stages
+it removes:
 
 | Scene | Frame | Where the time goes | Bound for Mobium |
 | --- | --- | --- | --- |
@@ -375,7 +366,7 @@ by the stages it removes:
 
 ### What Module 2 can take
 
-25 Oct 2026, `self_check.py fabric --mode profile-mobs` in the dev client (854×480): `mob_pen_live` as drawn, and with
+`self_check.py fabric --mode profile-mobs` in the dev client (854×480): `mob_pen_live` as drawn, and with
 every model part's vertex writes skipped (`Sections.skipModelVertices`; the mobs vanish). The difference is the most
 Module 2 can take off the CPU. Timer averages in ms:
 
@@ -397,8 +388,8 @@ Module 2 can take off the CPU. Timer averages in ms:
 
 ### Module 2's fixed cost: a compute batch of its own
 
-27 Oct 2026. In the 0.2.0-beta1 round `display_build`, where Module 2 expands only 17 shields, got 0.15–0.3 ms
-per frame slower. Measured in the Fabric dev client (1423×800 window, mains power, Mesa
+In a full round `display_build`, where Module 2 expands only 17 shields, was 0.15–0.3 ms per frame slower with
+Module 2. Measured in the Fabric dev client (1423×800 window, mains power, Mesa
 26.2.5, uncapped), with `python3 benchmark/self_check.py fabric --mode expand-cost` (`--scene mob_pen_live`, `--scene
 "mob_pen_live stages"`): each condition 8 s, in 4 rounds whose order rotates, static cache on. A fixed order did not
 work: the laptop's CPU clocks drift within a round, and even `extract_entities`, which Module 2 does not touch, came
@@ -434,7 +425,7 @@ What it shows:
 - **Without a shader pack the vertex stage removes most of the fixed cost.** In `display_build` Module 2 costs the GPU
   0.03 ms per frame instead of 0.24, the frame 0.10 ms instead of 0.19; the passes cost the GPU 2.6–2.8× less in A
   and C. With the dev window CPU-bound, A's and C's frames are within noise of compute's; at 1920×1080, where A is
-  closer to GPU-bound, the 0.2 ms should show (Anton's `/mobium stages`).
+  closer to GPU-bound, it shows (`/mobium stages` in *Latest results*).
 - **With a shader pack compute's frames are faster**, by 3–14 ms in B and D in every run, although its passes cost the
   GPU 1–2.8 ms more. The batch flushes a dispatch causes submit the frame's first part (shadow pass, terrain) early,
   so the GPU starts on it while the CPU still records; with the pack's 25–35 ms of GPU work per frame that matters more
@@ -443,12 +434,12 @@ What it shows:
   The dispatch's flushes happen on the driver thread.
 - So the expand pass runs in the vertex stage without a shader pack and as a compute dispatch with one
   (`ExpandPass.stage`); `-Dmobium.parts.stage=compute|vertex` overrides that. At 1920×1080 the vertex stage is faster
-  without a shader pack and both are equal with one (*Results for 0.2.0*). Single frames in B and D vary by ±5 ms
+  without a shader pack and both are equal with one (*Latest results*). Single frames in B and D vary by ±5 ms
   between runs of the same condition in the dev window.
 
 ### Iris's shadow pass
 
-From the 23–25 Oct 2026 round (Complementary Reimagined r5.9.3 at its defaults, as setups B and D run it):
+With Complementary Reimagined r5.9.3 at its defaults, as setups B and D run it:
 
 - The shadow pass costs 0.43–0.47 ms in `control` (shadow terrain only) and up to 5.3 ms with entities; in D's mob
   pens without Module 2, 5.0–5.3 ms, of which entity tessellation 2.2 ms. Fresh Animations makes the shadow pass's
@@ -456,56 +447,37 @@ From the 23–25 Oct 2026 round (Complementary Reimagined r5.9.3 at its defaults
 - **Cached block entities cost it nothing:** Complementary sets `shadowBlockEntities = false`, so
   `shadow_tessellate_block_entities` is 0.000 ms in every scene and `storage_room`'s shadow pass equals `control`'s.
 - **Cached entities do cost it:** in `display_build` the shadow pass prepares the 500 displays again (prepare
-  1.9–2.0 ms of a 4.2–4.6 ms pass), which the main pass takes from the cache (`PLAN.md`, *Later*).
+  1.9–2.0 ms of a 4.2–4.6 ms pass), which the main pass takes from the cache.
 
 ### Frames between sessions follow the GPU clock
 
 The iGPU picks its clock per workload, and CPU and GPU share one power budget. Between sessions, scenes where Mobium
 does nothing moved by up to ±18 % with the clock: `control` 1.18× slower in D at 668–766 against 900–942 MHz, 0.85× in C
-at 1160–1195 against 904–958 MHz (26–27 Oct against 23–25 Oct). A's mob pens looked 1.07–1.14× slower with Module 2
+at 1160–1195 against 904–958 MHz. A's mob pens looked 1.07–1.14× slower with Module 2
 across sessions and are 1.19× faster with it in one session. So speed-ups are measured within one session, alternating
 (the gate commands, `/mobium stages`, `/mobium benchmark`), and `summary.csv` records `gpu_mhz`.
 
 ### Slow vanilla `storage_room`
 
-On 19 Oct 2026, in three of five sessions, vanilla `storage_room` ran at 15–18 ms per frame for the whole session
+In three of five early sessions, vanilla `storage_room` ran at 15–18 ms per frame for the whole session
 instead of 3.3–4.2 ms, while other scenes in the same sessions ran normally. The CPU stages grew only from about 2.3 to
 3.4 ms, so about 13 ms per frame were spent waiting; the factor of 5 matches the iGPU's clock range (400–1950 MHz).
 The likely cause is the clock dropping when vanilla's per-frame upload of every chest and sign vertex makes CPU and
-GPU wait for each other; not confirmed, and not seen since `gpu_mhz` is recorded (no round since had a vanilla
-`storage_room` run). A baseline in this state does not count (Gate A's second session measured 8.05× and was not
-counted).
+GPU wait for each other; not confirmed, as no round that records `gpu_mhz` has had a vanilla `storage_room` run. A
+baseline in this state does not count.
 
 ### Measurement pitfalls
 
-- Instance settings Prism ignores: until 23 Oct 2026 `benchmark/prism_instances.py` appended `-Dmobium.bench.expect`
-  to the end of `instance.cfg`, where it landed in Prism's `[UI]` section, so the rounds of 21–22 Oct ran without the
-  setup check (their `setup` column shows the right setups). A run on 22 Oct also refreshed new duplicate folders
-  instead of the renamed A and D. The script now writes `[General]` and uses the folder Prism launched last.
+- Instance settings Prism ignores: Java arguments at the end of `instance.cfg` land in its `[UI]` section, and a
+  renamed instance folder leaves a duplicate; `benchmark/prism_instances.py` writes `[General]` and uses the folder
+  Prism launched last.
 - Vanilla's default 120 FPS cap, and its idle frame limit after 60 s without input (the bench handles the second).
-- Battery power: vanilla `storage_room` 9 → 42 ms on the dev laptop (19 Oct 2026, gametest window); the bench now
+- Battery power: vanilla `storage_room` 9 → 42 ms on the dev laptop (gametest window); the bench
   warns in chat.
 - The first run after a scene is built (the suite waits until the world has settled).
 - The slow state of vanilla `storage_room` above.
 - Zombies in the sun (fixed in the datapack), packs that are installed but not selected, and quitting during
   `control` (all caught by the instances and the suite now).
-- A bench kit built from an outdated checkout (21 Oct 2026: four commits behind, so the round measured the previous
-  build and `/mobium gateb` the old gate). The jar now names its commit (`build` in `summary.csv`), and
-  `benchmark/prism_instances.py` refuses a stale kit or a checkout behind its upstream.
+- A bench kit built from an outdated checkout measures the previous build. The jar names its commit (`build` in
+  `summary.csv`), and `benchmark/prism_instances.py` refuses a stale kit or a checkout behind its upstream.
 - Day-to-day speed of the laptop (`control` 1.02–1.11 ms in A over three sessions): compare within one session.
-
-## Earlier rounds
-
-All on the machine above, fullscreen 1920×1080 on the AOC monitor from 20 Oct on. Write-ups in `git show
-dd7253f:docs/benchmarks.md`, raw data in [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks).
-
-| Date | Build | What | Folder |
-| --- | --- | --- | --- |
-| 27 Oct 2026 | 8d26a26 | 0.2.0-beta2, unattended; *Results for 0.2.0* | `2026-10-27-thinkpad-x9-8d26a26` |
-| 26–27 Oct 2026 | b41d342 | 0.2.0-beta1 release round, Module 2 on | `2026-10-27-thinkpad-x9` |
-| 26 Oct 2026 | b41d342 | Gate C | `2026-10-26-thinkpad-x9` |
-| 23–25 Oct 2026 | a6997e5 | 0.1.0-beta2, shadow-pass timers | `2026-10-23-thinkpad-x9` |
-| 21–22 Oct 2026 | 6fb45dc | Entities cached; Gate B | `2026-10-21-thinkpad-x9` |
-| 21 Oct 2026 | df4080d | Repeat of 20 Oct on an outdated kit (does not count for Gate B) | `2026-10-21-thinkpad-x9-df4080d` |
-| 20 Oct 2026 | m5-static-cache | Static cache, block entities; Gate B's first definition | `2026-10-20-thinkpad-x9` |
-| 19 Oct 2026 | M3 branch | Vanilla baselines (partial), Gate A | `2026-10-19-thinkpad-x9` |

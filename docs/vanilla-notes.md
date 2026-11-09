@@ -1,11 +1,11 @@
 # Vanilla notes (Minecraft 26.3)
 
 How Minecraft 26.3 draws entities and block entities, where Sodium, Iris, EMF and ETF change that, and where Mobium
-hooks in. Started in M1 from the decompiled sources and extended with every milestone (each section says when it was
-read); every claim below names the class and method it comes from. How Mobium uses all this: `docs/architecture.md`.
-Section numbers are referenced from the code; new findings get a new section at the end.
+hooks in, read from the decompiled sources; every claim below names the class and method it comes from. How Mobium
+uses all this: `docs/architecture.md`. Section numbers are referenced from the code; new findings get a new section at
+the end.
 
-Sources read (19 Oct 2026):
+Sources read:
 
 | What | Version | How |
 | --- | --- | --- |
@@ -37,7 +37,7 @@ the vertices are written.
 `featureFrame.close()`.
 
 Graphics layer: `com.mojang.renderpearl` with `api`, `backend` (`opengl`, `vulkan`, `common`, `api`) and `frontend`
-exists as the plan says, but `com.mojang.blaze3d` is still there too (`RenderSystem`, `vertex`, `platform`,
+exists, and `com.mojang.blaze3d` is still there too (`RenderSystem`, `vertex`, `platform`,
 `pipeline`, …). Windowing moved from GLFW to SDL (`SDLVideo` in `GlDevice`).
 
 ---
@@ -155,7 +155,7 @@ frame.
 ### Submit record
 
 `SubmitNodeCollection.submitModel(Model<? super S>, S state, PoseStack, RenderType, int light, int overlay, int tint,
-@Nullable UvMapping, int outlineColor)` — the plan's "`submitModel` takes a `UvMapping`" is confirmed:
+@Nullable UvMapping, int outlineColor)` — it takes a `UvMapping`:
 
 ```java
 PoseStack.Pose pose = poseStack.last().copy();
@@ -387,7 +387,7 @@ Item, block model, text and custom geometry submits have equivalent mixins.
   `SodiumWorldRenderer.extractBlockEntities`, submits them through the vanilla `EntityRenderDispatcher.submit` and
   `BlockEntityRenderDispatcher.submit`, runs `prepareFrame` and draws with `FeatureRenderDispatcher.renderAllFeatures`.
   So every Mobium hook on submit/prepare also fires in the shadow pass, with a different staged buffer and model-view.
-- Read again for the beta2 shadow timers (23 Oct 2026; `ShadowRenderer`, identical signatures in the Fabric and
+- For the shadow-pass timers (`ShadowRenderer`, identical signatures in the Fabric and
   NeoForge jars): the pass is `renderShadows(LevelRendererAccessor, Camera, CameraRenderState)`, called by Iris's
   `MixinLevelRenderer.iris$renderTerrainShadows` right before `LevelRenderer.addMainPass`, i.e. inside
   `LevelRenderer.render` after the level's own `prepareFrame` (`RenderSystem.isRenderingLevel` is true, so a timer on
@@ -471,19 +471,19 @@ staged draw) and light/overlay/colour are all final. EMF's `renderLikeVanilla` r
 | Invalidation: light | `ClientChunkCache.onLightUpdate(LightLayer, SectionPos)` | `@Inject` HEAD | 1 |
 | Invalidation: level / distance | `LevelExtractor.setLevel(ClientLevel)`, `LevelExtractor.allChanged()` | `@Inject` RETURN | 1 |
 | Invalidation: reload | loader reload listener (Fabric resource loader / NeoForge `AddClientReloadListenersEvent`) | event | 1, 2 |
-| Part records (shipped, M6) | `ModelPart.compile(PoseStack.Pose, VertexConsumer, int, int, int)` (private; vanilla parts) and EMF's `EMFModelPart.compile` override (`compat.emf.EmfModelPartMixin`, `@Pseudo`, optional) | `@WrapMethod`: reserve the vertices and write records when the consumer is a staged builder (directly or through an atlas sprite) of an unsorted entity-format draw and every cube is a vanilla cube or an `EMFCube`; else original | 2 |
-| Staged builders and upload (shipped, M6) | `StagedVertexBuffer.getVertexBuilder` (`NEW BufferBuilder`: tag it with its draw), `uploadDrawsToBuffers` (`ByteBuffer.put`: leave the reserved ranges out), `upload` RETURN (expand pass), `endDraw` HEAD (drop leftovers); `BufferBuilder` (reservation), `StagedVertexBuffer.Draw` (layout, slot) | `@ModifyExpressionValue`, `@WrapOperation`, `@Inject`, fields and accessors | 2 |
-| Entity exclusions (shipped, M6) | `EntityRenderDispatcher.submit` around `EntityRenderer.submit` (mark), `ModelFeatureRenderer.Submit.<init>` (carry), `prepareModel`'s `renderToBuffer` (read) | the existing `@WrapOperation`s and `@Inject` | 2 |
+| Part records (shipped) | `ModelPart.compile(PoseStack.Pose, VertexConsumer, int, int, int)` (private; vanilla parts) and EMF's `EMFModelPart.compile` override (`compat.emf.EmfModelPartMixin`, `@Pseudo`, optional) | `@WrapMethod`: reserve the vertices and write records when the consumer is a staged builder (directly or through an atlas sprite) of an unsorted entity-format draw and every cube is a vanilla cube or an `EMFCube`; else original | 2 |
+| Staged builders and upload (shipped) | `StagedVertexBuffer.getVertexBuilder` (`NEW BufferBuilder`: tag it with its draw), `uploadDrawsToBuffers` (`ByteBuffer.put`: leave the reserved ranges out), `upload` RETURN (expand pass), `endDraw` HEAD (drop leftovers); `BufferBuilder` (reservation), `StagedVertexBuffer.Draw` (layout, slot) | `@ModifyExpressionValue`, `@WrapOperation`, `@Inject`, fields and accessors | 2 |
+| Entity exclusions (shipped) | `EntityRenderDispatcher.submit` around `EntityRenderer.submit` (mark), `ModelFeatureRenderer.Submit.<init>` (carry), `prepareModel`'s `renderToBuffer` (read) | the existing `@WrapOperation`s and `@Inject` | 2 |
 | Animation LOD | `ModelFeatureRenderer.prepareModel` around `Model.setupAnim`; `LivingEntityRenderer.submit` around its layer `setupAnim` | `@WrapOperation` | 3 |
-| Debug timers (M2, shipped) | `LevelExtractor.extractVisibleEntities` / `extractVisibleBlockEntities`, `LevelRenderer.submitEntities` / `submitBlockEntities`, the `prepareFrame` call in `LevelRenderer.render`, `Model.setupAnim` / `Model.renderToBuffer` in `ModelFeatureRenderer.prepareModel`, `FeatureRenderDispatcher.PreparedFrame.executePhase(…, OitStage, RenderPass)`, `Minecraft.runTick` HEAD; `ModelFeatureRenderer.Submit` gets a field marking block entity submits | `@WrapMethod`, `@WrapOperation`, `@Inject` | M2 instrumentation |
-| Shadow pass timers (beta2) | Iris `ShadowRenderer.renderShadows`, `extractVisibleEntities` / `extractVisibleBlockEntities`, `renderEntities` / `renderBlockEntities`, the `prepareFrame` call in `renderShadows` (`compat.iris.ShadowRendererMixin`, `@Pseudo`) | `@Inject` HEAD/RETURN, `@WrapOperation`, all `require = 0` | M6 measurement basis |
+| Debug timers (shipped) | `LevelExtractor.extractVisibleEntities` / `extractVisibleBlockEntities`, `LevelRenderer.submitEntities` / `submitBlockEntities`, the `prepareFrame` call in `LevelRenderer.render`, `Model.setupAnim` / `Model.renderToBuffer` in `ModelFeatureRenderer.prepareModel`, `FeatureRenderDispatcher.PreparedFrame.executePhase(…, OitStage, RenderPass)`, `Minecraft.runTick` HEAD; `ModelFeatureRenderer.Submit` gets a field marking block entity submits | `@WrapMethod`, `@WrapOperation`, `@Inject` | Instrumentation |
+| Shadow pass timers (shipped) | Iris `ShadowRenderer.renderShadows`, `extractVisibleEntities` / `extractVisibleBlockEntities`, `renderEntities` / `renderBlockEntities`, the `prepareFrame` call in `renderShadows` (`compat.iris.ShadowRendererMixin`, `@Pseudo`) | `@Inject` HEAD/RETURN, `@WrapOperation`, all `require = 0` | Measurement basis |
 
-Open points for later milestones (not answered by reading code):
+Points that reading code could not answer, answered by trying:
 
-- *Answered in M6 (§16):* Module 2 reserves the vertex bytes in the builder and leaves them out of the upload's copy;
-  Iris's three entity ids travel per part record (they are the same for all vertices of one part).
-- *Answered in M7 (§22):* `RenderType.prepare()` writes `DynamicTransforms` from the current model-view matrix; the
-  static cache calling it in the prepare stage, after the level's own prepare, works on Vulkan too.
+- Module 2 reserves the vertex bytes in the builder and leaves them out of the upload's copy; Iris's three entity ids
+  travel per part record (they are the same for all vertices of one part) (§16).
+- `RenderType.prepare()` writes `DynamicTransforms` from the current model-view matrix; the static cache calling it in
+  the prepare stage, after the level's own prepare, works on Vulkan too (§22).
 
 ---
 
@@ -511,7 +511,7 @@ Open points for later milestones (not answered by reading code):
   60 s without input and to 10 FPS after 10 min (`onInputReceived()` resets it); an iconified window, or an unfocused
   exclusive-fullscreen one, runs at 10 FPS. `/mobium bench` resets the idle timer every frame while it records.
 
-## 13. Capturing an object through vanilla (M3)
+## 13. Capturing an object through vanilla
 
 - `SubmitNodeStorage` can be instantiated and used as a private collector; `drainPhases` hands over each non-empty
   phase and `FeatureRenderPhase.sortInto(Output)` empties it into any `FeatureRenderPhase.Output`.
@@ -525,9 +525,9 @@ Open points for later milestones (not answered by reading code):
   (`LayerLightSectionStorage.swapSectionMap`), not for section data the server sends (`queueSectionData`); those
   only mark sections dirty for a rebuild, and only when the packet asks for it.
 
-## 14. Settings, toasts and loader hooks (M4)
+## 14. Settings, toasts and loader hooks
 
-Looked up on 20 Oct 2026 for the settings screens, the fallback toast and the benchmark's environment columns.
+Looked up for the settings screens, the fallback toast and the benchmark's environment columns.
 
 | Topic | Finding |
 | --- | --- |
@@ -543,9 +543,9 @@ Looked up on 20 Oct 2026 for the settings screens, the fallback toast and the be
 | NeoForge mod list (26.3.0.94) | `net.neoforged.neoforge.client.gui.modlist.ModListScreen.create(lastScreen)`; its Config button's message is `neoforge.screen.mods.button.config`, active when `IConfigScreenFactory.getForMod` finds a factory. Startup warnings show `LoadingErrorScreen` ("Proceed" runs its `nextScreenTask`); `logoFile` in `neoforge.mods.toml` is deprecated (`iconFile` for square icons, `bannerFile`). |
 | Sodium internals (both loaders) | `ConfigManager.CONFIG` (`client.config.structure.Config`): `getModOptions()` (records with `configId()`, `pages()`), `getOption(Identifier)`, `applyAllOptions()`; `StatefulOption.modifyValue(v)` is what a control does; `VideoSettingsScreen.createScreen(parent, OptionPage)` opens on a page. The NeoForge jar nests these classes, so Mobium reaches them by reflection (dev self-check only). |
 
-## 15. Static cache findings (M5)
+## 15. Static cache findings
 
-Looked up on 20 Oct 2026 for Module 1; the self-check compares every finding below against vanilla pixel by pixel.
+Looked up for Module 1; the self-check compares every finding below against vanilla pixel by pixel.
 
 | Topic | Finding |
 | --- | --- |
@@ -555,7 +555,7 @@ Looked up on 20 Oct 2026 for Module 1; the self-check compares every finding bel
 | Text input | `SignText` is immutable (every `with…` returns a new object) except `getRenderMessages`, which **caches the first caller's line splitting**; read styles through `getMessages(filtered)` and `Component.visit` instead. Obfuscated styles pick a random glyph on every `Font.getGlyph`; `ObjectContents` (sprites, player heads) switch the style's font to `FontDescription.AtlasSprite` / `PlayerSprite` (`ObjectContents.visit`). |
 | Beds | No block entity any more: `BlockEntityTypes` has no `BED` and there is no `BedRenderer`; beds are terrain like sign boards. |
 | Chests | `ChestRenderer` handles chests, trapped, copper and ender chests (`LidBlockEntity.getOpenNess`); a double chest is two block entities, each drawing its half (`DOUBLE_CHEST_LEFT/RIGHT`), with the lid openness and `BrightnessCombiner` light of both. Shulker boxes: `ShulkerBoxBlockEntity.getProgress(partialTicks)`. |
-| **Fog uses the raw position** | `entity.vsh` and `text.vsh` compute `fog_spherical_distance(Position)` and `fog_cylindrical_distance(Position)` from the vertex attribute, not from `ModelViewMat * Position` (`block.vsh` adds `ModelOffset` first; the entity and text shaders ignore it). Vertices drawn in section-local space with the offset in the model-view matrix (the M3 prototype) therefore get the fog of a closer object. Overworld environmental fog runs from 0 to 1024 blocks (`EnvironmentAttributes.FOG_START_DISTANCE` default 0, `FOG_END_DISTANCE` 1024), so the error is everywhere; render-distance fog (`FogRenderer.setupFog`: last `clamp(renderDistance·16/10, 4, 64)` blocks) and rain (`-160` on the start) make it large. Module 1 therefore uploads camera-relative positions. |
+| **Fog uses the raw position** | `entity.vsh` and `text.vsh` compute `fog_spherical_distance(Position)` and `fog_cylindrical_distance(Position)` from the vertex attribute, not from `ModelViewMat * Position` (`block.vsh` adds `ModelOffset` first; the entity and text shaders ignore it). Vertices drawn in section-local space with the offset in the model-view matrix (the chest prototype) therefore get the fog of a closer object. Overworld environmental fog runs from 0 to 1024 blocks (`EnvironmentAttributes.FOG_START_DISTANCE` default 0, `FOG_END_DISTANCE` 1024), so the error is everywhere; render-distance fog (`FogRenderer.setupFog`: last `clamp(renderDistance·16/10, 4, 64)` blocks) and rain (`-160` on the start) make it large. Module 1 therefore uploads camera-relative positions. |
 | Capturing inside the level render | `LevelExtractor.extract` runs from `GameRenderer` **before** `LevelRenderer.render`, which sets `RenderSystem.isRenderingLevel` (and Iris's `ImmediateState.isRenderingLevel`) for its whole body. Captures run in Module 1's prepare step, after `prepareFrame` and before the frame graph executes; `CommandEncoder.writeToBuffer` refuses to run inside an open render pass, which is not the case there. |
 | GPU writes | `FrontendCommandEncoder.writeToBuffer` needs `USAGE_COPY_DST`; on GL it is `bufferSubData` on the buffer's handle. |
 | Removed block entities | `LevelChunk.removeBlockEntity` / `clearAllBlockEntities` call `BlockEntity.setRemoved` on the client too, but a removed block entity can still reach `tryExtractRenderState` for a while (seen with Sodium: a section's block entity list is replaced only with its mesh). |
@@ -563,7 +563,7 @@ Looked up on 20 Oct 2026 for Module 1; the self-check compares every finding bel
 | Item states | `ItemStackRenderState.isAnimated` only means glint or animated textures (it exists for the GUI item atlas). Items whose model is chosen per frame (compass, clock: `RangeSelectItemModel` / `SelectItemModel`) are not flagged; `appendModelIdentityElement` is a no-op except in the GUI atlas's tracking subclass. `ItemFeatureRenderer` derives the `SPECIAL` glint's UVs from the submit's (camera-relative) pose (`computeFoilDecalPose`). |
 | Key bindings | `KeyMapping` stores SDL **scancodes** (`InputConstants.KEY_W = 26`, `KEY_RBRACKET = 48`), i.e. physical key positions; `InputConstants.Key.getDisplayName` names them through the current layout (`SDL_GetKeyFromScancode` → `SDL_GetKeyName`). A default of `KEY_RBRACKET` is the key right of P: `]` on US, `+` on German keyboards, where `]` itself (AltGr+9) never matches. Show `KeyMapping.getTranslatedKeyMessage()` instead of naming the key in texts. |
 | Entity submit | `EntityRenderDispatcher.submit` translates by the camera-relative position plus `getRenderOffset`, calls `renderer.submit`, then submits the flame and the shadow itself; name tags and leashes come from `EntityRenderer.submit`. Entities are always extracted (`LevelExtractor.extractVisibleEntities` adds every state). |
-| Entity render states | `EntityRenderer.createRenderState(entity, partialTicks)` makes a **new** state object every frame and the state has no reference to its entity, so Module 1 adds one (`EntityRenderStateMixin`, set after `EntityRenderDispatcher.extractEntity`). Shadows go into `SubmitNodeCollection.shadows`, flames into the solid phase. Who keeps states past the frame: `LevelRenderer.submitFeatures` clears the level's list right after `submitEntities`; `PlayerRenderState.avatarRenderState` lives until the next extraction (`GameRenderer` resets it when no level is drawn); `ItemPickupParticle` keeps the picked-up item's state for its few ticks (`ClientPacketListener`); Iris's shadow renderer keeps its pass's states until the next pass. Since beta2 only the cached types' states outside the shadow pass get the reference. |
+| Entity render states | `EntityRenderer.createRenderState(entity, partialTicks)` makes a **new** state object every frame and the state has no reference to its entity, so Module 1 adds one (`EntityRenderStateMixin`, set after `EntityRenderDispatcher.extractEntity`). Shadows go into `SubmitNodeCollection.shadows`, flames into the solid phase. Who keeps states past the frame: `LevelRenderer.submitFeatures` clears the level's list right after `submitEntities`; `PlayerRenderState.avatarRenderState` lives until the next extraction (`GameRenderer` resets it when no level is drawn); `ItemPickupParticle` keeps the picked-up item's state for its few ticks (`ClientPacketListener`); Iris's shadow renderer keeps its pass's states until the next pass. Only the cached types' states outside the shadow pass get the reference. |
 | Iris entity ids | Iris's `entity_render_context.MixinEntityRenderDispatcher` sets `CapturedRenderingState`'s current entity right after `pushPose` in `EntityRenderDispatcher.submit` and clears it before `popPose`; model, block-model and item submits copy the id when they are created (`iris$capture`) and restore it in `buildGroup`. Entity captures therefore submit through `EntityRenderDispatcher.submit` (at 0, 0, 0), not `renderer.submit`. |
 | Item frames | `ItemFrameRenderer.getRenderOffset` is (`direction` × 0.3, −0.25, …), and `submit` translates it back first, so the picture is relative to the state's x/y/z. Frame: `BlockModelRenderState.submitWithZOffset` → `submitBlockModel` with `entitySolidZOffsetForward` (solid phase; `BlockModelFeatureRenderer.buildGroup` does not read the frame context). A map: `MapRenderer.render` → custom geometry with `RenderTypes.text(…)`, which blends (translucent phase). NeoForge posts `RenderItemInFrameEvent` around the item and map. Glow frames: block light at least 5 for the frame, full bright for the item. |
 | Armor stands | `ArmorStandRenderState` declares `leftArmPose`/`rightArmPose` (`Rotations`), hiding `ArmedEntityRenderState`'s `ArmPose` fields of the same names. `setupRotations` wobbles while `wiggle` (game time since the last hit + partial tick) is below 5. `HumanoidModel.setupAnim` bobs the arms with `ageInTicks`, but `ArmorStandArmorModel.setupAnim` then sets every head, body, arm and leg rotation from the poses, so a still stand's picture does not depend on time. Armor is drawn from copies of the equipment stacks (`HumanoidMobRenderer.getEquipmentIfRenderable`); a skull on the head becomes `wornHeadType`/`wornHeadProfile`. |
@@ -582,9 +582,9 @@ Looked up on 20 Oct 2026 for Module 1; the self-check compares every finding bel
   in `OuterWrappedRenderType("iris:block_entity", …, BlockEntityRenderStateShard)`. A capture through
   `BlockEntityRenderDispatcher.submit` inside the level render gets the same wrapped render types and ids.
 
-## 16. Module 2 findings (M6)
+## 16. Module 2 findings
 
-Read on 25 Oct 2026 for Module 2 (Vineflower 1.12 on the 26.3 client jar, Sodium `mc26.3-0.9.2-fabric`, Iris
+Read for Module 2 (Vineflower 1.12 on the 26.3 client jar, Sodium `mc26.3-0.9.2-fabric`, Iris
 `1.11.7+26.3-fabric`, EMF `3.3.12-fabric-26.3`). Module 2 has to write exactly the vertices the path it replaces would
 have written, so this section names, per path, the order of the float operations as well.
 
@@ -602,15 +602,15 @@ have written, so this section names, per path, the order of the float operations
 | GPU rounding | Mesa on the Intel Arc 140V does not round `sqrt(double)` and double division correctly: Iris's face normal of an axis-aligned face came out as 0.99999994 instead of 1.0 (packed 126 instead of 127) in 24k of 3.3M vertices. The expand pass therefore corrects its square roots and divisions to the neighbouring float with exact double residuals (`expand_parts.comp`); double multiplication and addition are correctly rounded. |
 | Iris's per-vertex counter | Iris counts each vertex written one by one at the next `endLastVertex`, except right after a Sodium push (`skipEndVertexOnce`). Module 2 ends the vertex in progress (`endLastVertex`), reserves, and then pushes zero vertices through Sodium's `VertexBufferWriter`, which leaves Iris's state as after Sodium's own cube push. A Sodium push right after vertices written one by one loses the last of them in Iris's count (an Iris quirk); with Module 2 taking both kinds of cube there are no vertices written one by one left to mix in. |
 | Upload of reserved bytes | `StagedVertexBuffer.uploadDrawsToBuffers` copies every builder slice with `ByteBuffer.put(slice.byteBuffer())` into the mapped staging buffer; Module 2 wraps that call and leaves out its reserved ranges (8 % of the render thread's samples in setup D went to that copy). The GPU copy from staging to the vertex buffer still copies the whole range; the expand pass overwrites the reserved part after it. |
-| Compute on Mesa's iris | Measured on 27 Oct 2026 (Mesa 26.2.5, Arc 140V, `INTEL_DEBUG=submit` in the dev client): iris records `glDispatchCompute` in a compute batch of its own, apart from the render batch that holds the draws and vanilla's `copyToBuffer` from the staging buffer. The expand pass writes the vertex buffer the render batch just copied into, and the render batch's draws read it, so every pass flushes both batches in the middle of the frame (`iris_batch.c:361`, a cross-batch dependency) and the GPU waits for each: three submissions per frame instead of the frame's own one (`iris_fence.c:247`), 0.22 ms more GPU time per frame (timestamps from frame start to submit) in `display_build` with 17 shields as in `mob_pen_live` with 500 mobs. The same shader compiled as a vertex shader and drawn as `GL_POINTS` with `GL_RASTERIZER_DISCARD`, writing the storage buffers from the vertex stage (`GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS` is 16 there; OpenGL allows 0), stays in the render batch: one submission per frame, as with Module 2 off. iris runs Gallium's threaded context (a driver thread `gdrv0`), not glthread, so `glGetInteger` does not wait for the driver thread. |
+| Compute on Mesa's iris | Measured (Mesa 26.2.5, Arc 140V, `INTEL_DEBUG=submit` in the dev client): iris records `glDispatchCompute` in a compute batch of its own, apart from the render batch that holds the draws and vanilla's `copyToBuffer` from the staging buffer. The expand pass writes the vertex buffer the render batch just copied into, and the render batch's draws read it, so every pass flushes both batches in the middle of the frame (`iris_batch.c:361`, a cross-batch dependency) and the GPU waits for each: three submissions per frame instead of the frame's own one (`iris_fence.c:247`), 0.22 ms more GPU time per frame (timestamps from frame start to submit) in `display_build` with 17 shields as in `mob_pen_live` with 500 mobs. The same shader compiled as a vertex shader and drawn as `GL_POINTS` with `GL_RASTERIZER_DISCARD`, writing the storage buffers from the vertex stage (`GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS` is 16 there; OpenGL allows 0), stays in the render batch: one submission per frame, as with Module 2 off. iris runs Gallium's threaded context (a driver thread `gdrv0`), not glthread, so `glGetInteger` does not wait for the driver thread. |
 | Sodium on NeoForge | Sodium 0.9.3-beta.1 for NeoForge is a jar in a jar (`META-INF/jarjar/…-mod.jar`), so only its API is on Mobium's compile classpath; its cube path (`CubeMixin`, `EntityRenderer`, `ModelCuboid`, `MatrixHelper`, `BufferBuilderMixin`, `SpriteCoordinateExpanderMixin`, `NormI8`) is line for line the same as 0.9.2's for Fabric. Module 2 reads `ModelCuboid` by reflection (`parts/SodiumCubes.kt`), finding Sodium's field on `ModelPart.Cube` by its type. Sodium caches the six packed normals per normal matrix (`prevNormalMatrix`) without the trusted-normals flag; two consecutive poses with the same normal matrix but different flags would reuse normals computed with the other flag. Module 2 computes them per part and so differs from Sodium only in that case. |
 
 ## 17. Built-in data packs and world checks (`/mobium benchmark`)
 
-Read on 28 Oct 2026 for the players' benchmark (Vineflower 1.12 on Loom's 26.3 `minecraft-merged.jar`, Fabric API
+Read for the players' benchmark (Vineflower 1.12 on Loom's 26.3 `minecraft-merged.jar`, Fabric API
 `0.164.0+26.3` with `fabric-resource-loader-v1` `3.1.0+5af7744b5d`, NeoForge `26.3.0.94` and MDG's
-`minecraft-patched-26.3.0.94-sources.jar`). The expectation in the task, Fabric's `ResourceManagerHelper` and
-NeoForge's `AddPackFindersEvent`, was half right: Fabric API for 26.3 has no `fabric-resource-loader-v0` any more.
+`minecraft-patched-26.3.0.94-sources.jar`). NeoForge has `AddPackFindersEvent`; Fabric API for 26.3 has no
+`fabric-resource-loader-v0`, so no `ResourceManagerHelper`.
 
 | Topic | Finding |
 | --- | --- |
@@ -630,10 +630,10 @@ NeoForge's `AddPackFindersEvent`, was half right: Fabric API for 26.3 has no `fa
 
 ## 18. Vulkan backend (26.3)
 
-Read on 28 Oct 2026 for M7 (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`: `com.mojang.renderpearl.backend.vulkan`,
-`frontend`, `api`, and `StagedVertexBuffer`); 26.4's backend is in §20. Vulkan is an option in 26.3; `26.4-snapshot-1`
-(22 Sep 2026) makes "Default" behave like "Prefer Vulkan" and no longer switches the graphics API by itself after a
-startup crash (snapshot changelog, not read in code).
+Read for Mobium on Vulkan (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`:
+`com.mojang.renderpearl.backend.vulkan`, `frontend`, `api`, and `StagedVertexBuffer`); 26.4's backend is in §20. Vulkan
+is an option in 26.3; `26.4-snapshot-1` makes "Default" behave like "Prefer Vulkan" and no longer switches the graphics
+API by itself after a startup crash (snapshot changelog, not read in code).
 
 | Topic | Finding |
 | --- | --- |
@@ -646,14 +646,14 @@ startup crash (snapshot changelog, not read in code).
 | Shaders and pipelines | GLSL is compiled to SPIR-V with LWJGL's shaderc (`frontend.shaders.GlslCompiler`, `SpvModule` with SPIR-V reflection). `VulkanRenderPipeline` builds graphics pipelines whose descriptors are uniform buffers, combined image samplers and texel buffers; push descriptors (required extension) bind them. No compute pipelines. |
 | Timestamps | `GpuDevice.createTimestampQueryPool(int)` and `CommandEncoder.writeTimestamp(GpuQueryPool, int)`, on both backends. |
 
-What it means for Mobium: the static cache uses only Renderpearl's API and should work unchanged. Module 2's expand
-pass can run as a command buffer of its own, recorded with `allocateAndBeginTransientCommandBuffer` and handed to
-`execute` right after `upload()`, but needs storage usage on vanilla's vertex buffers and its own, an optional device
-feature set for `shaderFloat64`, and the shader in Vulkan's GLSL dialect (`PLAN.md`, M7).
+What it means for Mobium: the static cache uses only Renderpearl's API and works unchanged (§22). Module 2's expand
+pass runs as a command buffer of its own, recorded with `allocateAndBeginTransientCommandBuffer` and handed to
+`execute` right after `upload()`, and needs storage usage on vanilla's vertex buffers and its own, an optional device
+feature set for `shaderFloat64`, and the shader in Vulkan's GLSL dialect (§23).
 
 ## 19. GPU driver string (`/mobium benchmark`)
 
-Read on 29 Oct 2026 (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`: `com.mojang.renderpearl.api.device.DeviceInfo`,
+Read (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`: `com.mojang.renderpearl.api.device.DeviceInfo`,
 `backend.opengl.GlHeuristics`, `backend.vulkan.VulkanDevice` and `VulkanPhysicalDevice`,
 `net.minecraft.client.gui.components.debug.DebugEntrySystemSpecs`), so the benchmark file can name the driver.
 
@@ -666,34 +666,34 @@ Read on 29 Oct 2026 (Vineflower 1.12 on Loom's 26.3 `minecraft-client.jar`: `com
 
 ## 20. Vulkan backend in 26.4 (`26.4-snapshot-6`)
 
-Read on 29 Oct 2026 for M7 step 1 (Vineflower 1.12 on Mojang's `26.4-snapshot-6` client jar of 27 Oct 2026 and on the
+Read (Vineflower 1.12 on Mojang's `26.4-snapshot-6` client jar and on the
 26.3 client jar, both from Mojang's version manifest: `com.mojang.renderpearl` complete, `com.mojang.blaze3d.pipeline`,
 `StagedVertexBuffer`), diffed against §18. Also read: computelib (`github.com/nonamecrackers2/computelib`, branch
-`26.2`, last commit 3 Oct 2026).
+`26.2`).
 
 | Topic | Finding |
 | --- | --- |
-| Compute and storage buffers | Still none. `ShaderType` is `VERTEX` and `FRAGMENT`, `UniformType` gained only `INPUT_ATTACHMENT`, no compute pipeline class, no `STORAGE_BUFFER` anywhere in Renderpearl. M7's own dispatch stays necessary. |
+| Compute and storage buffers | Still none. `ShaderType` is `VERTEX` and `FRAGMENT`, `UniformType` gained only `INPUT_ATTACHMENT`, no compute pipeline class, no `STORAGE_BUFFER` anywhere in Renderpearl. Module 2's own Vulkan dispatch stays necessary. |
 | Buffer usages | `GpuBuffer`'s usage bits are unchanged (`MAP_READ` 1 … `INDIRECT_PARAMETERS` 512, so 1024 and up are unused), and so is `VulkanConst.bufferUsageToVk`; the one change in `VulkanConst` is in the texture usage mapping. |
 | Device features | `REQUIRED_FEATURESET` dropped `VK_KHR_dynamic_rendering` and **`VK_KHR_push_descriptor`** (with the `dynamicRendering` feature); still required: `VK_KHR_synchronization2`, `VK_EXT_vertex_attribute_divisor`, `VK_KHR_swapchain` and the same core features; still a queue family with graphics, compute and present together. `optionalFeatureSets()` gained `DXGI_FEATURESET` (`VK_KHR_external_semaphore_win32`, `VK_KHR_external_memory_win32`: on Windows, Vulkan's images can be presented through a DXGI swapchain, `D3D12GpuSurface`, `DeviceFeatures.dxgiSurface`). `VulkanBackend` enables optional sets as in 26.3 (`isSupported`, then `checkCondition`). **Still not enabled: `shaderFloat64`, `vertexPipelineStoresAndAtomics`.** |
 | Render passes | Real `VkRenderPass`es instead of dynamic rendering: `RenderPassCache` per `RenderPassLayout` (new API type: attachment formats and subpasses), a `VkFramebuffer` per pass (destroyed when the frame completes), `vkCmdBeginRenderPass2`. `CommandEncoder.createRenderPass` takes a `RenderPassLayout`; `RenderPass` gained `layout()`, `activeSubpass()`, `nextSubpass()` and `setUniform(String, GpuTextureView)` for input attachments. Pipelines are created against a render pass layout's subpass. |
 | Descriptors | No push descriptors: before a draw whose bindings changed, `VulkanRenderPass.pushDescriptors()` allocates a descriptor set from the encoder's current `DescriptorPool` (4096 uniform buffers, 4096 combined image samplers, 128 uniform texel buffers, 1024 sets; a full pool is retired and a new one taken), writes it with `vkUpdateDescriptorSets` and binds it with `vkCmdBindDescriptorSets`. At `submit()` the frame's pool goes into the encoder's destruction queue, which resets it two submissions later; the set layouts lost the push-descriptor flag. The pool has no storage buffer descriptors. |
-| Command encoder | Unchanged for M7: `allocateAndBeginTransientCommandBuffer()`, `execute(VkCommandBuffer)`, `waitSemaphore` / `signalSemaphore`, the static `memoryBarrier`, the full barrier after `writeToBuffer` and `copyToBuffer`, `MAX_SUBMITS_IN_FLIGHT = 2`. The wait for the submission two frames back now logs after 5 s and gives up after 6 s. `copyTextureToBuffer` lost its `Runnable` callback; `clearColorAndDepthTextures` with a region and `writeToTexture(…, NativeImage …)` left `CommandEncoder`. |
+| Command encoder | Unchanged for Module 2's dispatch: `allocateAndBeginTransientCommandBuffer()`, `execute(VkCommandBuffer)`, `waitSemaphore` / `signalSemaphore`, the static `memoryBarrier`, the full barrier after `writeToBuffer` and `copyToBuffer`, `MAX_SUBMITS_IN_FLIGHT = 2`. The wait for the submission two frames back now logs after 5 s and gives up after 6 s. `copyTextureToBuffer` lost its `Runnable` callback; `clearColorAndDepthTextures` with a region and `writeToTexture(…, NativeImage …)` left `CommandEncoder`. |
 | Backend access | `FrontendGpuDevice.backend` (private `GpuDeviceBackend`) and `VulkanDevice`'s `vkDevice()`, `vma()`, `graphicsQueue()`, `computeQueue()`, `createCommandEncoder()` are unchanged. `FrontendGpuDevice` takes the `GpuDebugOptions`, which gained `shaderDebug` and `strictValidation` (replacing the constant `STRICT_VALIDATION = IS_RUNNING_IN_IDE`). |
 | Shaders | GLSL left Renderpearl: `RenderPipeline`, `ShaderSource`, `GlslCompiler` and `PipelineBuilder` are now in `com.mojang.blaze3d.pipeline`, and `VertexFormat` / `VertexFormatElement` in `com.mojang.blaze3d.vertex` (were `com.mojang.renderpearl.api.vertex`; Mobium imports `VertexFormat` in seven files). Renderpearl takes SPIR-V only: `GpuDevice.createSpvModule(name, ByteBuffer spv, ShaderType, entryPoint)` and a synchronous `compilePipeline(CompiledRenderPipeline.CreateInfo)` checked by `PipelineValidator`. `GlslCompiler` still uses LWJGL's shaderc (target environment Vulkan 1.2); OpenGL still turns the SPIR-V back into GLSL with SPIRV-Cross (`GlPipelineRecompiler`), as in 26.3. |
 | Staged vertex buffer | `StagedVertexBuffer` is unchanged (same pools and usages as §18). |
-| computelib | A NeoForge library for Minecraft 26.2 (`neo_version=26.2.0.88`, `mod_license=MIT License` in its `gradle.properties`, no licence file of its own), "highly experimental", with compute shaders and storage buffers on OpenGL 4.3 and Vulkan. It adds a usage bit `USAGE_SHADER_STORAGE_BUFFER = 1024` and maps it to `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` in a mixin on `bufferUsageToVk`, the approach M7 planned. Not a dependency for Mobium: no Fabric, no 26.3 build, and its mixins target 26.2's classes. |
+| computelib | A NeoForge library for Minecraft 26.2 (`neo_version=26.2.0.88`, `mod_license=MIT License` in its `gradle.properties`, no licence file of its own), "highly experimental", with compute shaders and storage buffers on OpenGL 4.3 and Vulkan. It adds a usage bit `USAGE_SHADER_STORAGE_BUFFER = 1024` and maps it to `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` in a mixin on `bufferUsageToVk`, where Mobium's own hook sits too (§23). Not a dependency for Mobium: no Fabric, no 26.3 build, and its mixins target 26.2's classes. |
 
-What it means for M7: nothing that M7 needs has been added or removed except push descriptors. Module 2's dispatch
-binds its three storage buffers through a descriptor set from a pool of Mobium's own (`STORAGE_BUFFER` descriptors,
-one pool per frame in flight, reset when that frame's fence signals), which works on 26.3 and 26.4 without an extra
-extension. The storage usage can be a usage bit of Mobium's own (1024, as computelib does) set on the buffers that need
-it. For M8: the moved packages (`VertexFormat`, `RenderPipeline`), render pass layouts and `copyTextureToBuffer` without
-callback.
+What it means for Mobium on 26.4: nothing Module 2's Vulkan dispatch needs has been added or removed except push
+descriptors. Module 2's dispatch binds its three storage buffers through a descriptor set from a pool of Mobium's own
+(`STORAGE_BUFFER` descriptors, one pool per frame in flight, reset when that frame's fence signals), which works on 26.3
+and 26.4 without an extra extension. The storage usage can be a usage bit of Mobium's own (1024, as computelib does) set
+on the buffers that need it. For a 26.4 port: the moved packages (`VertexFormat`, `RenderPipeline`), render pass layouts
+and `copyTextureToBuffer` without callback.
 
 ## 21. Graphics API at launch, validation layer and timestamps (26.3)
 
-Read on 29 Oct 2026 for M7 step 2 (Vineflower 1.12 on Mojang's 26.3 client jar: `net.minecraft.client.main.Main`,
+Read (Vineflower 1.12 on Mojang's 26.3 client jar: `net.minecraft.client.main.Main`,
 the `Minecraft` constructor, `PreferredGraphicsApi`, `Options`, and in `com.mojang.renderpearl` `VulkanInstance`,
 `VulkanDebug`, `VulkanQueryPool`, `VulkanCommandEncoder.writeTimestamp`, `GlQueryPool`; Sodium `mc26.3-0.9.2-fabric`
 `DrawBackend`; Iris 1.11.7 from its crash), then tried in both dev clients on Mesa 26.2.5's ANV (Intel Arc 140V) with
@@ -711,7 +711,7 @@ validation layer 1.4.341.
 
 ## 22. Module 1 on Vulkan (26.3)
 
-Tried on 29 Oct 2026 for M7 step 3, with the static cache allowed on Vulkan (`ModuleRules`) and nothing else changed:
+Tried with the static cache allowed on Vulkan (`ModuleRules`) and nothing else changed:
 both dev clients on Mesa 26.2.5's ANV (Intel Arc 140V) with the validation layer (§21), the self-check's whole
 scenario and `--mode gallery`.
 
@@ -724,7 +724,7 @@ scenario and `--mode gallery`.
 
 ## 23. Module 2 on Vulkan (26.3)
 
-Built and tried on 29 Oct 2026 for M7 steps 4 and 5 (Renderpearl as in §18; LWJGL 3.4.3's shaderc and VMA; both dev
+Built and tried (Renderpearl as in §18; LWJGL 3.4.3's shaderc and VMA; both dev
 clients on Mesa 26.2.5's ANV, Intel Arc 140V, with the validation layer of §21; `vulkaninfo` from Fedora's
 `vulkan-tools` 1.4.341 for the device properties).
 
@@ -738,3 +738,15 @@ clients on Mesa 26.2.5's ANV, Intel Arc 140V, with the validation layer of §21;
 | Memory | Buffers from Renderpearl's VMA allocator (`VulkanDevice.vma()`): per frame in flight a persistently mapped upload buffer for the records and new mesh quads (copied in with `memCopy`: no `ByteBuffer` or buffer slice per upload, only LWJGL's struct wrappers per dispatch) and a descriptor pool, reused once a Renderpearl fence (`VulkanCommandEncoder.createFence()`, which waits for the current submission) has signalled; the meshes in a device-local buffer. Everything is freed before `RenderSystem.shutdownRenderer()` after `vkDeviceWaitIdle`. |
 | Check | The compared span is copied into a host-visible buffer behind the dispatch; in normal play the CPU's bytes are then copied over every compared part and the span copied again, so that no compared part is drawn from the GPU. The comparison runs when the copy's fence has signalled (a few frames later); a difference switches Module 2 off as on OpenGL. `/mobium debug gpucheck` flips the bit in the read-back copy. |
 | Results | Fabric, `--mode parts` on Vulkan with the validation layer: 17,896,320 + 2,371,680 vertices (vanilla models) and 8,706,432 + 2,258,508 (Fresh Animations) compared in `mob_pen_live` and `part_gallery`, 0 differ; every picture identical to vanilla; in normal play 448 parts in 7 paths compared without a difference; the forced difference switches Module 2 off with the CPU's bytes in its frame; no validation messages from Mobium. NeoForge the same: 15,143,040 + 1,896,480 and 9,651,688 + 1,929,424 vertices, 0 differ, all 23 checks pass. The Fabric gametests on lavapipe (round to nearest even and signed zero/Inf/NaN preserve, no denormal preserve; at most 65,535 groups per dispatch): 203,040 + 2,409,120 vertices, 0 differ, Module 2's pictures identical; the static cache's pictures within the gametests' tolerance (`display_build` 2 pixels, `map_wall` 10, as on OpenGL). On OpenGL `--mode parts` stays at 0 differing vertices in both stages, shader pack included, on both loaders. |
+
+## 24. The light shader pack (MakeUp - Ultra Fast 9.6)
+
+Read from the pack's `shaders/shaders.properties` and `shaders/lib/config.glsl` (Modrinth
+`makeup-ultra-fast-shaders` 9.6, for Iris and OptiFine, 26.3 listed) and from Iris 1.11.7's
+`PackShadowDirectives` (`javap -c` on the Fabric jar).
+
+| Topic | Finding |
+| --- | --- |
+| Shadows | `SHADOW_CASTING` is on by default (`config.glsl`) and enables `program.shadow` (and the per-dimension shadow programs); the defaults match the `medium` profile (`SHADOW_QTY_SLIDER` 2, `SHADOW_DISTANCE_SLIDER` 1). The `no_effects` and `shadowless_*` profiles turn it off. `shadow.culling = true` |
+| Entities in the shadow pass | `shaders.properties` sets neither `shadowEntities` nor `shadowBlockEntities` nor `shadowPlayer`, so Iris's defaults apply: `PackShadowDirectives` sets `shouldRenderEntities` and `shouldRenderBlockEntities` from `OptionalBoolean.orElse(true)` and `shouldRenderPlayer` from `orElse(false)`. Block entities therefore cast shadows, unlike with Complementary Reimagined (`shadowBlockEntities = false`, `docs/benchmarks.md`) |
+| Distant Horizons | `dhShadow.enabled = false` |

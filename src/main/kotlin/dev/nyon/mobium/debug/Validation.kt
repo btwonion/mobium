@@ -138,7 +138,7 @@ object Validation {
 
     /**
      * Result of one comparison: how many pixels differ by more than [CHANNEL_THRESHOLD], how many differ at all
-     * ([changed]) and by how much at most (0–255 per channel). The threshold hides small systematic errors (the M3
+     * ([changed]) and by how much at most (0–255 per channel). The threshold hides small systematic errors (the chest
      * prototype's fog was off by up to 6 levels and passed), so [identical] is the stricter test.
      */
     data class FrameDiff(val pixels: Int, val differing: Int, val maxChannelDifference: Int, val changed: Int = differing) {
