@@ -5,7 +5,7 @@ What Mobium does next to other mods, and what was tested with which versions.
 ## Mods that do the same job
 
 While one of these is installed, the Mobium modules it overlaps stay on the vanilla path and say why (settings screen,
-F3 `mobium:modules`, log). Mod ids from the mods' own sources, 20 Oct 2026.
+F3 `mobium:modules`, log). Mod ids as the mods' own sources declare them.
 
 | Mod | Mod id | Overlaps | Notes |
 | --- | --- | --- | --- |
@@ -35,9 +35,9 @@ fog. "Identical" means 0 changed pixels. Dev clients run the compat stack of `ve
 
 | Setup | Fabric | NeoForge |
 | --- | --- | --- |
-| Sodium 0.9.2 (Fabric) / 0.9.3-beta.1 (NeoForge), Iris 1.11.7 without pack, EMF 3.3.12, ETF 7.2.6 | Identical in every comparison (22 and 23 Oct 2026) | Identical in every comparison (22 and 23 Oct 2026) |
-| + Complementary Reimagined r5.9.3 (TAA and cloud movement off for the comparison) | Captures in Iris's formats (56-byte entity, 52-byte glyph vertices); the picture matches vanilla's up to the pack's own frame-to-frame noise, which is on terrain too. The shadow-pass timers read while the pack is on and 0 without it (23 Oct 2026) | Not tested: Iris 1.11.7 on NeoForge crashes with this pack in `CenterDepthSampler` ("Missing uniform InSampler"), with Mobium switched off as well (`self_check.py neoforge --mode iris-without-mobium`) |
-| + Fresh Animations (1.10.3 in the dev clients, 1.11.1 in the benchmark instances) | Identical in every comparison of the gallery (22 Oct 2026); EMF replaces the head models with the pack's, and the one head Fresh Animations animates stays vanilla (`containsCustomAnims`) | Identical in every comparison of the gallery (22 Oct 2026), as on Fabric |
+| Sodium 0.9.2 (Fabric) / 0.9.3-beta.1 (NeoForge), Iris 1.11.7 without pack, EMF 3.3.12, ETF 7.2.6 | Identical in every comparison | Identical in every comparison |
+| + Complementary Reimagined r5.9.3 (TAA and cloud movement off for the comparison) | Captures in Iris's formats (56-byte entity, 52-byte glyph vertices); the picture matches vanilla's up to the pack's own frame-to-frame noise, which is on terrain too. The shadow-pass timers read while the pack is on and 0 without it | Not tested: Iris 1.11.7 on NeoForge crashes with this pack in `CenterDepthSampler` ("Missing uniform InSampler"), with Mobium switched off as well (`self_check.py neoforge --mode iris-without-mobium`) |
+| + Fresh Animations (1.10.3 in the dev clients, 1.11.1 in the benchmark instances) | Identical in every comparison of the gallery; EMF replaces the head models with the pack's, and the one head Fresh Animations animates stays vanilla (`containsCustomAnims`) | Identical in every comparison of the gallery, as on Fabric |
 | Entity Culling | Not tested (not in the dev environment); expected to work, see above | Not tested |
 
 ## Tested: GPU part transform
@@ -52,15 +52,14 @@ paused). The Fabric gametests run the same validation on Mesa's software rendere
 
 | Setup | Fabric | NeoForge |
 | --- | --- | --- |
-| Vanilla models (Sodium's cube path), Iris without pack | 0 differing vertices (11.4M compared in the pens), pictures identical (26 Oct 2026) | 0 differing vertices (13.6M in the pens, 2.4M in the gallery), pictures identical (26 Oct 2026) |
+| Vanilla models (Sodium's cube path), Iris without pack | 0 differing vertices (11.4M compared in the pens), pictures identical | 0 differing vertices (13.6M in the pens, 2.4M in the gallery), pictures identical |
 | + Complementary Reimagined r5.9.3 | 0 differing vertices in the pens and the gallery, main and shadow pass; pictures identical in the pens, within the pack's own frame-to-frame noise in the gallery (the translucent conduit) | Not tested (Iris crashes with this pack on NeoForge, see above) |
 | + Fresh Animations 1.10.3 | 0 differing vertices (6.8M), pictures identical | 0 differing vertices (9.3M in the pens, 2.6M in the gallery), pictures identical |
 | Fresh Animations and Complementary | 0 differing vertices, pictures as with the pack alone | Not tested |
 
 The expand pass runs as a compute dispatch or in the vertex stage (`parts/ExpandPass.kt`), and `--mode parts`
-validates both in every setup. 27 Oct 2026, both stages: Fabric 33/33 checks (16 validations, 0
-differing vertices, 0.26–9.5M vertices compared each), NeoForge 17/17 (8 validations, 0 differing); pictures identical
-as above.
+validates both in every setup. Both stages: Fabric 33/33 checks (16 validations, 0 differing vertices, 0.26–9.5M
+vertices compared each), NeoForge 17/17 (8 validations, 0 differing); pictures identical as above.
 
 ### On players' GPUs
 
@@ -79,20 +78,19 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
 
 | GPU and driver | OS | Result |
 | --- | --- | --- |
-| Intel Arc 140V, Mesa iris | Fedora 44 | No difference (dev validation and the check, both stages; 28 Oct 2026: 980 parts in 21 paths in `--mode parts` on Fabric, 542 in 13 on NeoForge) |
+| Intel Arc 140V, Mesa iris | Fedora 44 | No difference (dev validation and the check, both stages; 980 parts in 21 paths in `--mode parts` on Fabric, 542 in 13 on NeoForge) |
 | Mesa llvmpipe | CI (Ubuntu) | No difference (gametests) |
-| Nvidia GeForce RTX 4070 Ti, driver not recorded | Not recorded | No difference: both runs with Mobium on in each scene of `/mobium benchmark` recorded `+parts-vertex`, so the check switched nothing off (vertex stage, vanilla cubes, no shader pack; [#32](https://github.com/btwonion/mobium/issues/32), 28 Oct 2026) |
-| Nvidia GeForce RTX 4070 Laptop GPU, driver not recorded | Linux | No difference, as above ([#31](https://github.com/btwonion/mobium/issues/31), 28 Oct 2026) |
+| Nvidia GeForce RTX 4070 Ti, driver not recorded | Not recorded | No difference: both runs with Mobium on in each scene of `/mobium benchmark` recorded `+parts-vertex`, so the check switched nothing off (vertex stage, vanilla cubes, no shader pack; [#32](https://github.com/btwonion/mobium/issues/32)) |
+| Nvidia GeForce RTX 4070 Laptop GPU, driver not recorded | Linux | No difference, as above ([#31](https://github.com/btwonion/mobium/issues/31)) |
 | AMD, Intel on Windows, others; Nvidia with Sodium or a shader pack | | Not tested yet; F3 `mobium:modules` and the log tell |
 
 ## Known differences and limits
 
-- Minecraft's Vulkan renderer: in 0.2.1 and older both modules need OpenGL and stay off (F3 `mobium:modules`:
-  `backend`). Since M7 step 3 (not released yet) the static cache runs on Vulkan too, checked in game on 29 Oct 2026
-  (both loaders, Intel Arc 140V with Mesa's ANV: pictures identical to vanilla, no validation-layer messages from
-  Mobium; `docs/vanilla-notes.md` §22). Module 2 on Vulkan works in the dev clients (0 differing vertices, §23) but
-  stays off for players until CI checks it on lavapipe (`PLAN.md`, M7 step 5); it needs `shaderFloat64`. Iris 1.11.7
-  does not start on Vulkan at all (§21).
+- Minecraft's Vulkan renderer: the static cache runs on it, checked in game on both loaders (Intel Arc 140V with Mesa's
+  ANV: pictures identical to vanilla, no validation-layer messages from Mobium; `docs/vanilla-notes.md` §22). Module 2
+  on Vulkan works in the dev clients (0 differing vertices, §23) but stays off for players (F3 `mobium:modules`:
+  `backend`) until the visual check in game (`PLAN.md`, M7 step 5); it needs `shaderFloat64`. Iris 1.11.7 does not
+  start on Vulkan at all (§21).
 - Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): hooks the same places as Mobium and
   is untested with it, so both modules stay off while it is installed (F3: `untested: Vitrail`).
 - Text drawn with a resource pack's antialiased (TrueType) font: vanilla draws a sign's glyphs in submission order
@@ -121,8 +119,8 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
   them the GPU check above compares the vertices.
 - Iris counts vertices written one by one per quad; a Sodium push right after such vertices loses one from its count
   and extends the following quads from the wrong vertices (vanilla with Iris and Sodium, not Mobium). With Module 2
-  both kinds of cube are expanded on the GPU, so that mix no longer happens; where it happened before, the picture
-  would now be correct instead. Not seen in the tested scenes.
+  both kinds of cube are expanded on the GPU, so that mix does not happen and the picture is correct. Not seen in the
+  tested scenes.
 - Sodium reuses its six packed normals while the normal matrix stays the same, without looking at whether the pose's
   normals are trusted; Module 2 computes them per part, so the two differ only for two consecutive poses with the same
   normal matrix and a different trusted flag.

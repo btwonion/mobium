@@ -43,14 +43,14 @@ internal fun migrate(json: Json, jsonTree: JsonElement, version: Int?): Config? 
 }.getOrNull()
 
 /**
- * Version 1 (M0–M2) only had the global switch; version 2 (M3) added `cache.prototype`, which the full static cache
- * (M5) no longer needs. Both keep the global switch only.
+ * Version 1 only had the global switch; version 2 added `cache.prototype`, which the static cache does not need. Both
+ * keep the global switch only.
  */
 private fun migrateVersion1(jsonTree: JsonElement): Config =
     Config(enabled = jsonTree.jsonObject["enabled"]?.jsonPrimitive?.booleanOrNull ?: true)
 
 /**
- * Version 3 (M4) had `cache.prototype` (the opt-in for the M3 chest prototype) and the per-type switch
+ * Version 3 had `cache.prototype` (the opt-in for the chest prototype) and the per-type switch
  * `cache.types.beds` (beds have no block entity in 26.3). Both are dropped, everything else is kept.
  */
 private fun migrateVersion3(json: Json, jsonTree: JsonElement): Config {

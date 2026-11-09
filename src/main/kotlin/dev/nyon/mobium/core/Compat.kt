@@ -19,7 +19,7 @@ enum class CompatMod(val modId: String, val displayName: String) {
 
 /**
  * Mods that do one of Mobium's jobs; while one is installed, the modules it overlaps take the vanilla path
- * (docs/compat.md). Mod ids looked up in their sources on 20 Oct 2026 (`docs/compat.md`).
+ * (docs/compat.md). Mod ids as the mods' own sources declare them.
  */
 enum class OverlappingMod(val modId: String, val displayName: String, val modules: Set<Module>) {
     /** Enhanced Block Entities and its "Reloaded" port (same id) turn block entities into baked block models. */

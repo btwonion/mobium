@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
 class GateBTest {
     @Test
     fun `cost adds the draw calls' CPU time back to the run without draws`() {
-        // Anton's 20 Oct numbers for storage_room and control, with a made-up run without the cache's draws.
+        // Measured numbers for storage_room and control, with a made-up run without the cache's draws.
         val gate = GateB.of(
             storage = GateB.Run(1.695, 0.050),
             storageNoDraw = GateB.Run(1.355, 0.000),

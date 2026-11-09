@@ -1,53 +1,20 @@
 # Mobium — Plan
 
-The plan of the work ahead, for the coding agent (Claude Code) and for Anton, who runs the game. Work through the
-milestones in order, tick their checkboxes as tasks land, and treat gates as hard stops. Keep *Current state* up to date
-at the end of every session.
+The current target: Mobium on Minecraft's Vulkan backend. Tick the checkboxes as tasks land and treat Gate D as a hard
+stop. Keep *Current state* up to date at the end of every session.
 
-How Mobium works today is in `docs/architecture.md`, every vanilla, Sodium, Iris and EMF detail it relies on in
-`docs/vanilla-notes.md`, measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`. Milestones M0–M6
-(scaffold, vanilla recon, benchmark harness, chest prototype and Gate A, core, static cache and Gate B, GPU part
-transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 release are in `git show dd7253f:PLAN.md`.
+How Mobium works is in `docs/architecture.md`, the Vulkan backend's details in `docs/vanilla-notes.md` §18–§23,
+measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 
 ---
 
-## Current state (updated 29 Oct 2026)
+## Current state
 
-- **0.2.1 is out** (29 Oct 2026, `release.yml` run 40869850005 on `master` at `93eedb6`; GitHub releases
-  `v0.2.1-26.3+fabric` / `+neoforge`): 0.2.0 plus the OS and the GPU driver in `/mobium benchmark`'s file (#34).
-  **0.2.0**, the first stable release (28 Oct 2026, run 40754122974 at `dd7253f`), brought the static cache and the
-  GPU part transform, Module 2's check on the player's GPU, `/mobium benchmark` with its built-in data pack, Minecraft
-  26.3.x only (`~26.3` on Fabric, `[26.3,26.4-alpha)` on NeoForge). Releases go to Modrinth `mobium` (`8i5oedw8`)
-  and CurseForge `mobium-perf` (`1759818`) through `release.yml`, which only Anton runs. `gradle.properties` still
-  says 0.2.1 (`mod.beta=0`); the next version is Anton's call before the next release.
-- **Gates passed:** A 1.53× (`storage_room`, chest prototype), B 1.17× (what the cached objects cost over `control`),
-  C (D's entity CPU work 1.90× lower, frames 1.18× faster in D and 1.25× in C); `docs/benchmarks.md` *Gates*.
-- **Tested by us on one machine:** Anton's ThinkPad X9-14 (Intel Arc 140V, Mesa's iris, Fedora 44) plus Mesa's
-  llvmpipe in CI. **Players' results:** two Nvidia GPUs so far (RTX 4070 Ti, RTX 4070 Laptop GPU on Linux; #31 and
-  #32, 28 Oct 2026, both without Sodium): `storage_room` 2.28× and 11.2×, `mob_pen_live` 2.42× and 3.02×, and Module
-  2's check found no difference. Results from other GPUs come from players' `/mobium benchmark` files (README
-  *Benchmarks wanted*, issue form `.github/ISSUE_TEMPLATE/benchmark.yml`, label `benchmark`) and from F3
-  `mobium:modules` lines; add them to `docs/compat.md` (*On players' GPUs*), `docs/benchmarks.md` (*Players' results*)
-  and the file to `players/` in `../mobium-benchmarks`. 0.2.0's file records neither the OS nor the driver; 0.2.1's
-  has `# os` and `# driver`.
-- **Modrinth:** the project was not public on 29 Oct 2026 either (the API answered 404 for `8i5oedw8` after 0.2.1's
-  release); Anton checks.
-- **CI:** green. The Fabric gametests run under `xvfb-run` with SDL on Mesa's EGL and software rendering
-  (`.github/workflows/build-commit.yml`; `release.yml` does the same); llvmpipe has compute and double precision, so
-  the gametests run Module 2 and its byte-for-byte validation too. If CI hangs or fails, read `gh run view
-  --log-failed` first.
-- **Next: M7, Vulkan.** Minecraft 26.4 makes Vulkan the default backend (`26.4-snapshot-1`, 22 Sep 2026: "Default"
-  now behaves like "Prefer Vulkan"); in 0.2.1 both modules are off on Vulkan. Vulkan already exists in 26.3 as an
-  option, with every class M7 needs, so M7 is built and gated on 26.3; M8 then ports to 26.4. Step 1 is done: up to
-  `26.4-snapshot-6` Renderpearl has no compute and no storage buffers, and drops push descriptors
-  (`docs/vanilla-notes.md` §20). Gate D is agreed as proposed (Anton, 29 Oct 2026). Step 2 is done: the dev clients,
-  the self-check (`--api vulkan`) and the gametests run on Vulkan with the validation layer, without Iris, which stops
-  the game on Vulkan (§21). The self-check on Vulkan needs `vulkan-validation-layers` installed (Anton, once). Step 3
-  is done: the static cache runs on Vulkan, pixel-identical with no validation messages from Mobium (§22); with
-  Vitrail installed both modules stay off. Module 1 waits for Module 2 (Anton, 29 Oct 2026). Step 4 is done and step
-  5 nearly: Module 2 runs on Vulkan in the dev clients and the gametests (lavapipe) with 0 differing vertices (§23),
-  but stays off for players (`-Dmobium.parts.vulkan`) until the gametests on lavapipe pass in CI and Anton has looked
-  at it. Next: turn it on for players, then step 6 (measure and document).
+- The static cache runs on Vulkan in the released mod; both modules stay off while Vitrail is installed.
+- Module 2 runs on Vulkan with 0 differing vertices (self-check on both loaders, gametests on lavapipe in CI), but only
+  with `-Dmobium.parts.vulkan`, which dev runs on Vulkan set.
+- CI is green on `master`.
+- Next: the last box of step 5 (Module 2 on Vulkan for players), then step 6.
 
 ---
 
@@ -56,206 +23,37 @@ transform and Gate C) are done; their tasks and write-ups up to the 0.2.0 releas
 **Goal:** both modules on Minecraft's Vulkan backend, with the same guarantee as on OpenGL: the same pixels and, for
 Module 2, the same vertex bytes as the game's own path.
 
-What the 26.3 Vulkan backend offers and lacks is in `docs/vanilla-notes.md` §18 (decompiled 28 Oct 2026). In short:
-Module 1 uses nothing but Renderpearl and should work as it is; Module 2's expand pass needs its own Vulkan dispatch,
-for which the backend has a public entry point (a command buffer of Mobium's own, executed in order inside the
-frame's submission), and three blockers: vanilla's vertex buffers are not storage buffers, the device does not enable
-64-bit floats, and the shader's GLSL is OpenGL's dialect.
-
-1. **Check 26.4 first.**
-   - [x] Decompile the newest 26.4 snapshot's Renderpearl and diff it with 26.3; look at computelib. Done on
-         `26.4-snapshot-6` (29 Oct 2026, `docs/vanilla-notes.md` §20): still no compute pipelines and no storage
-         buffers, so every step below stays; 26.4 drops push descriptors (the pass below binds a descriptor set of
-         its own instead). computelib is NeoForge-only for 26.2 and not a dependency; it marks storage buffers with
-         an extra usage bit, as planned below. Check the newest snapshot again before M8.
-2. **Tooling.**
-   - [x] `benchmark/self_check.py --api vulkan` (and the gametests' launch) start the dev clients on Vulkan: Gradle
-         property `mobium.graphicsBackend`, launch argument `--graphicsBackend`; the self-check and `StartupGameTest`
-         fail when Minecraft fell back to the other API; Iris stays off the dev classpath on Vulkan (§21).
-   - [x] Vulkan validation layers in the dev clients (`-Pmobium.vulkanValidation`, `--vulkanValidation`); Mobium's
-         own messenger (`debug/VulkanValidation.kt`), and the self-check fails on any validation message that names
-         Mobium's objects or follows its calls (`validation.txt` lists all). The gametests do not check the messages
-         yet (step 5, lavapipe).
-   - [x] `debug/ExpandProfile.kt` on Renderpearl's timestamps (`GpuDevice.createTimestampQueryPool`,
-         `CommandEncoder.writeTimestamp`) instead of GL queries, so `--mode expand-cost` works on both backends.
-3. **Module 1 on Vulkan.**
-   - [x] `ModuleRules`: the backend rule per module (`runsOn`). The static cache runs on OpenGL and Vulkan; Module 2
-         stays `OffReason.BACKEND` on Vulkan until step 4 (then `compute`, which `Capabilities` reports per backend);
-         `OffReason.BACKEND` stays for other backends. `ModuleRulesTest` covers both. While Vitrail is installed both
-         modules stay off (`OffReason.UNTESTED`, `docs/vanilla-notes.md` §22).
-   - [x] Self-check on Vulkan, both loaders: `storage_room` from three views, the `cache_gallery` scene with every
-         effect, `/mobium debug validate`; 0 changed pixels and no validation messages. Done on 29 Oct 2026 with no
-         change to the cache's code: all 70 (Fabric) and 71 (NeoForge) checks pass, 0 messages from Mobium, the
-         gametests pass on Vulkan too; §10's open point is answered (`docs/vanilla-notes.md` §22).
-   - [x] If Module 2 takes longer, Module 1 on Vulkan can be released first (Anton's call): no, Vulkan support ships
-         with both modules (Anton, 29 Oct 2026).
-4. **Module 2's dispatch on Vulkan** (`gpu/vk/`, behind one interface with `gpu/gl/GlCompute`). Done on 29 Oct 2026
-   (`docs/vanilla-notes.md` §23); Module 2 on Vulkan runs only with `-Dmobium.parts.vulkan` (dev runs on Vulkan) until
-   step 5 is done.
-   - [x] Reach the backend: `FrontendGpuDeviceAccessor` → `VulkanDevice` (`vkDevice()`, `vma()`,
-         `createCommandEncoder()` → the one `VulkanCommandEncoder`); vanilla's vertex buffer is a `VulkanGpuBuffer`
-         with `vkBuffer()`.
-   - [x] Storage buffers: a mixin on `VulkanConst.bufferUsageToVk` adds `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` and
-         `TRANSFER_SRC` (for the check's copy) to all `VERTEX` buffers, only in sessions where Module 2 can run on
-         Vulkan: one hook, checked at startup by calling it, instead of a usage bit set in a wrap of
-         `StagedVertexBuffer.GpuBufferPool`, whose application could not be checked before the first buffer.
-   - [x] Mobium's mesh and record buffers: done without Renderpearl buffers. VMA buffers of Mobium's own, a mapped
-         upload buffer per frame in flight into which records and new meshes are copied with `memCopy` (no
-         `ByteBuffer` or slice per upload, as `writeToBuffer` would need), a device-local mesh buffer;
-         `gpu/RingBuffer.kt` stays unused.
-   - [x] 64-bit floats: a mixin on `VulkanFeatureSets.optionalFeatureSets()` adds an optional feature set with
-         `shaderFloat64`, enabled where the GPU has it; a hook on the `VulkanDevice` constructor sees whether it was.
-         `Capabilities.compute` is true on Vulkan when it was enabled and the storage hook works; otherwise Module 2
-         is off with `no_compute`.
-   - [x] The shader for Vulkan: compiled to SPIR-V with LWJGL's shaderc; under `#ifdef VULKAN` push constants
-         instead of `layout(location)` uniforms; where the device's float controls allow, `RoundingModeRTE` and
-         `SignedZeroInfNanPreserve` for 32 and 64 bit and `DenormPreserve` for 32 bit (`GL_EXT_spirv_intrinsics`);
-         a unit test compiles every variant.
-   - [x] The pass: a compute pipeline with a descriptor set layout of three storage buffers and push constants, its
-         sets from a descriptor pool of Mobium's own per frame in flight; per staged buffer right after `upload()` a
-         transient command buffer with the mesh upload, the dispatch (split at the device's group limit) and a barrier
-         from compute writes to all commands, handed to `VulkanCommandEncoder.execute`. Compute only (the vertex stage
-         would also need `vertexPipelineStoresAndAtomics`; measure before adding it).
-   - [x] Every Vulkan mixin `require = 0`, each checked (`gpu/vk/VulkanSupport.kt`): a changed backend class leaves
-         Module 2 off on Vulkan with a reason instead of crashing the game.
+1. **26.4.** `26.4-snapshot-6` still has no compute and no storage buffers in Renderpearl and drops push descriptors
+   (§20). Check the newest snapshot again before porting to 26.4.
+2. **Tooling.** Done: dev clients, self-check (`--api vulkan`) and gametests on Vulkan with the validation layer,
+   `ExpandProfile` on Renderpearl's timestamps (§21).
+3. **Module 1 on Vulkan.** Done: pixel-identical on both loaders, no validation messages from Mobium (§22).
+4. **Module 2's dispatch on Vulkan.** Done: `gpu/vk/`, `parts/VulkanExpand`, three checked `require = 0` mixins (§23).
 5. **Checks on Vulkan.**
-   - [x] `PartValidation`'s read-back on Vulkan: `vkCmdCopyBuffer` into a host-visible VMA buffer behind the
-         dispatch, compared when a Renderpearl fence signals (`PartValidation.poll`, `settled`): Vulkan cannot wait
-         inside a frame for commands it has not submitted.
-   - [x] `PartCheck` on Vulkan: the sampled parts' GPU bytes are copied out and then overwritten with the CPU's bytes
-         in the same frame, so no sampled part is ever drawn from the GPU; the verdict arrives a few frames later and
-         switches Module 2 off as on OpenGL.
-   - [x] Self-check `--mode parts` on Vulkan, both loaders (29 Oct 2026): 0 differing vertices (about 31 million
-         compared per loader), pictures identical, no validation messages from Mobium; `/mobium debug gpucheck` still
-         repairs and switches off. On OpenGL `--mode parts` stays at 0 in both stages, shader pack included.
-   - [ ] CI: the Fabric gametests a second time on Mesa's lavapipe (software Vulkan, with `shaderFloat64`). The job
-         step is in `build-commit.yml` (M7 step 4's PR) and passes locally on lavapipe (Mesa 26.2.5, 4.6 min); tick
-         once it passes on GitHub's runner.
-   - [ ] Module 2 on Vulkan for players: `ModuleRules` without `-Dmobium.parts.vulkan`, the property and its build
-         wiring removed, after Anton's check on his machine (*How to verify* of M7 step 4's PR).
+   - [x] `PartValidation` and `PartCheck` on Vulkan; self-check `--mode parts` on Vulkan, both loaders: 0 differing
+         vertices, pictures identical, no validation messages from Mobium.
+   - [x] CI: the Fabric gametests a second time on Mesa's lavapipe.
+   - [ ] Module 2 on Vulkan for players: `ModuleRules` without `-Dmobium.parts.vulkan`, the property and its wiring
+         removed (`build.gradle.kts`, `VulkanSupport.allowed`, `ModuleEnvironment.vulkanParts`), after the visual check
+         in game (*How to verify* of #39).
 6. **Measure and document.**
    - [ ] Benchmark round A–D on Vulkan in the Prism instances (the graphics API set in their options), plus
-         `/mobium gatec` on Vulkan and OpenGL in one session each. Setups whose mods do not run on Vulkan are
-         reported as such (open questions below).
+         `/mobium gatec` on Vulkan and OpenGL in one session each. Setups whose mods do not run on Vulkan are reported
+         as such (B and D need Iris, see below).
    - [ ] `docs/compat.md` (Vulkan rows, GPUs without `shaderFloat64`), README (*Does Mobium work with Vulkan?*),
-         `changelog.md`.
+         `changelog.md` (no release notes have mentioned Vulkan yet).
 
-**Gate D** *(agreed with Anton on 29 Oct 2026)*: on Vulkan in 26.3, on both loaders, zero screenshot
-differences and 0 differing vertices (self-check, gametests on lavapipe), no validation-layer messages from Mobium;
-`mob_pen_live` no slower with Module 2 than without (at most 1.03×) in every setup that runs on Vulkan; `control`
-with Mobium no slower than without (at most 1.03×). Then release.
+**Gate D:** on Vulkan in 26.3, on both loaders, zero screenshot differences and 0 differing vertices (self-check,
+gametests on lavapipe), no validation-layer messages from Mobium; `mob_pen_live` no slower with Module 2 than without
+(at most 1.03×) in every setup that runs on Vulkan; `control` with Mobium no slower than without (at most 1.03×). Then
+release. If the gate fails, stop, write up why in the PR and agree on the next step first.
 
-**Open questions for M7:**
-- Do Iris 1.11, Sodium 0.9 and EMF/ETF run on Vulkan in 26.3 and 26.4? In 26.3 Sodium 0.9.2, EMF 3.3.12 and ETF
-  7.2.6 do; Iris 1.11.7 stops the game at startup (`docs/vanilla-notes.md` §21), so setups B and D stay on OpenGL
-  until Aperture or an Iris that runs on Vulkan. 26.4 is still open.
-- Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`, 0.13.0-beta for 26.3; asked about
-  on 26 Oct 2026): how it changes entity vertex formats and the shadow pass. It hooks the same places as Mobium
-  (§22); until checked in game (its dev client with an OptiFine-format pack), both modules stay off while it is
-  installed.
-- Which GPUs lack `shaderFloat64` on Vulkan (Intel Arc A-series on Windows, Apple through MoltenVK, *(verify)*); the
-  answer decides how soon the shader without double precision (*Later*) is needed.
-
----
-
-## M8 · Minecraft 26.4
-
-- [ ] A branch tracking the newest 26.4 snapshot: `26.4-fabric` / `26.4-neoforge` Stonecutter targets
-      (`settings.gradle.kts`, `versions/26.4-*/gradle.properties`), API changes recorded in `docs/vanilla-notes.md`
-      (Vineflower on the new client jar, as for 26.3). Known so far: Vulkan by default, no automatic switch of the
-      graphics API after a crash, the OIT shaders' depth bins instead of wavelets (`26.4-snapshot-1`);
-      `VertexFormat` moved to `com.mojang.blaze3d.vertex` (imported in seven of Mobium's files), `RenderPipeline`
-      and the GLSL compiler to `com.mojang.blaze3d.pipeline`, render passes need a `RenderPassLayout`,
-      `copyTextureToBuffer` has no callback (`26.4-snapshot-6`, `docs/vanilla-notes.md` §20).
-- [ ] Compat stack for 26.4 (Sodium, Iris, EMF, ETF, Mod Menu) in the dev clients as it appears.
-- [ ] Self-check and gametests on 26.4, on Vulkan and OpenGL; a benchmark round A–D.
-- [ ] Version ranges per target (26.3.x and 26.4.x builds side by side); release once 26.4 is out.
-
----
-
-## Later (not ordered)
-
-- **Module 2 without double precision.** Replace the double residuals in `expand_parts.comp` (square roots,
-  divisions, Iris's twice-rounded `rsqrt`) by exact integer arithmetic (`umulExtended`), so Module 2 runs on GPUs
-  without `shaderFloat64` on Vulkan and without fp64 on OpenGL. Must keep 0 differing vertices in every setup.
-- **Aperture**, Iris's Vulkan successor, once public; contact the Iris team before starting.
-- **Module 3, animation LOD** (`lod/`): far or tiny-on-screen mobs reuse Module 2's last records while their root
-  transform still updates every frame. Throttle by projected size on screen (a spyglass restores full rate); the hurt
-  flash, death animation and the targeted mob always at full rate; presets Off / Subtle / Aggressive; per-type
-  exclusions; EMF-animated models excluded until tested (EMF animations keep state between frames, and EMF has its own
-  LOD, `animationLODDistance`). Off by default: it changes the picture, so it is presented as a trade-off.
-- **Glint and outline** generated from Module 2's records.
-- **Module 1:** cached entities drawn in Iris's shadow pass too (in `display_build` the shadow pass prepares the 500
-  displays again, 1.9–2.0 ms; needs the shadow pass's vertex format and render types); armor stands with armor
-  (keep the equipment layers' submit orders); Fabric renderer API item meshes (`ExtendedItemSubmit`).
-- **Module 2 with shader packs in the vertex stage:** the compute dispatch's flushes submit the frame's first part
-  early, which a shader pack's frame gains from; an asynchronous way to submit after the vertex stage's pass would
-  give the vertex stage that too (`glFlush` waits for Mesa's driver thread: 2.5 ms per frame in D).
-- **Sodium on NeoForge:** Fabric uses Sodium 0.9.2, NeoForge 0.9.3-beta.1 (0.9.2-neoforge crashes against NeoForge
-  26.3.0.94); move Fabric to the same Sodium once 0.9.3 is released.
-
----
-
-## Gates
-
-A gate is a go/no-go decision before a release. If a gate fails, stop, write up why in the PR and agree on the next
-step with Anton before continuing. Gates measure what Mobium can change: B and C were redefined with Anton when the
-first targets turned out to depend on GPU work vanilla pays as well (`docs/benchmarks.md` *Gates*). Every gate also
-requires zero screenshot differences (self-check and gametests, both loaders).
-
----
-
-## Release checklist
-
-Copy this list into the release's PR and tick it there. Version scheme: a new module is a new minor version (Anton,
-26 Oct 2026), betas count up `mod.beta`, and `mod.beta=0` publishes as stable.
-
-- [ ] The milestone's gate passed, results in `docs/benchmarks.md`, raw data in `btwonion/mobium-benchmarks`.
-- [ ] `changelog.md` holds only this release's notes, one line of at most 120 characters per entry.
-- [ ] `docs/compat.md` updated; `README.md` describes the release. README changes merge right before `release.yml`:
-      `readme-modrinth-sync.yml` publishes every README change on `master` to Modrinth at once.
-- [ ] Self-check on both loaders (regular, `--mode parts`, `--mode benchmark`) and the gametests; 0 changed pixels,
-      0 differing vertices.
-- [ ] A benchmark round A–D (`python3 benchmark/bench_round.py`) if rendering changed since the last round.
-- [ ] Anton's visual checks of the release's rendering PRs (*How to verify*).
-- [ ] The bug report template's version placeholder (`.github/ISSUE_TEMPLATE/bug_report.yml`).
-- [ ] Anton's go, then `release.yml` on `master` (manual dispatch; Anton only, never `release.yml` or `releaseMod`
-      from here).
-- [ ] Afterwards a post-release PR: the next version in `gradle.properties`, `changelog.md` emptied, *Current state*.
-
----
-
-## Testing and verification
-
-| Check | Who / where | When |
-| --- | --- | --- |
-| `./gradlew build`, both targets | Claude Code and CI | Every PR |
-| Unit tests (pure Kotlin: module rules, fallback ledger, ring arithmetic, memory budget, light stamps, path sampler, gate maths, config format, translation keys) | CI | Every PR |
-| Fabric client gametests: scene smoke tests, screenshots, Module 2's byte-for-byte validation | CI under xvfb on Mesa's software OpenGL (and lavapipe from M7) | Every PR |
-| In-game self-check on both dev clients (`benchmark/self_check.py`): the PR's *How to verify* as scripted checks, pixel comparisons and screenshots | Claude Code, locally | Every rendering PR |
-| Visual check with shader packs and Fresh Animations | Anton | Every rendering PR |
-| Benchmarks (four setups, `bench_round.py`, the gate commands) | Anton's machine, unattended | Gates and releases |
-| Other GPUs and drivers | Players (`/mobium benchmark`, F3 `mobium:modules`) | Continuously |
-
-Every rendering PR description ends with **How to verify** (task to run, scene, keys, expected result) and the
-benchmark numbers if performance changed.
-
----
-
-## Open questions
-
-- The light shader pack of the test set (the heavy one is Complementary Reimagined r5.9.3).
-- Who covers AMD and Nvidia beyond players' reports.
-- Whether to reach out to the Sodium and Iris maintainers, now before M7 (Iris on Vulkan, Aperture).
-
----
-
-## References
-
-- House structure: `btwonion/autodrop`, `btwonion/better-boat-movement`, `btwonion/magnetic`
-- Stonecutter: https://stonecutter.kikugie.dev/ · modstitch: https://github.com/isXander/modstitch
-- Fabric client gametests: https://docs.fabricmc.net/develop/automatic-testing
-- 26.2 → 26.3 rendering changes: https://docs.neoforged.net/primer/docs/26.3/
-- 26.4 snapshots: https://minecraft.wiki/w/Java_Edition_26.4_Snapshot_1
-- Prior art: Accelerated Rendering (https://github.com/Argon4W/AcceleratedRendering), Flywheel/Vanillin, Enhanced
-  Block Entities, CrankShaft
+**Open questions:**
+- Iris on Vulkan: Iris 1.11.7 stops the game at startup (§21), so setups B and D stay on OpenGL until Aperture (Iris's
+  Vulkan successor) or an Iris that runs on Vulkan. Sodium 0.9.2, EMF 3.3.12 and ETF 7.2.6 run on Vulkan in 26.3.
+- Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): how it changes entity vertex
+  formats and the shadow pass. It hooks the same places as Mobium (§22); until checked in game (its dev client with an
+  OptiFine-format pack), both modules stay off while it is installed.
+- Which GPUs lack `shaderFloat64` on Vulkan (Intel Arc A-series on Windows, Apple through MoltenVK, *(verify)*). If
+  many do, Module 2 needs a shader without double precision: exact integer arithmetic (`umulExtended`) instead of the
+  double residuals in `expand_parts.comp`, still 0 differing vertices in every setup.

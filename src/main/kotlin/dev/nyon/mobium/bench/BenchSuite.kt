@@ -38,7 +38,7 @@ import java.util.Locale
  *   settled for at least [SETTLE_SECONDS] and until section rebuilds, light updates and server ticks have calmed down,
  *   then recorded `runs` times;
  * - `/mobium gatea [seconds] [runs]`: `storage_room` with the static cache off and on, alternating, then the
- *   speed-up against the 1.5× target of Gate A (passed with the M3 chest prototype; kept for comparisons);
+ *   speed-up against the 1.5× target of Gate A (passed with the chest prototype; kept for comparisons);
  * - `/mobium gateb [seconds] [runs]`: `storage_room` with the cache, the same with the cache's draw calls skipped,
  *   `control` with the cache and `control` without it, in turn, then Gate B's numbers ([GateB]): what the cached
  *   objects cost Mobium against `control` (target at most 1.2×), the whole frame against `control`, what drawing them

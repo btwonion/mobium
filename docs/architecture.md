@@ -1,22 +1,21 @@
 # Architecture
 
-How Mobium works as of 0.2.0 (Minecraft 26.3, Fabric/Quilt and NeoForge). Every vanilla, Sodium, Iris and EMF detail
-below is documented with its class and method in `docs/vanilla-notes.md`; what is planned next is in `PLAN.md`.
+How Mobium works (Minecraft 26.3, Fabric/Quilt and NeoForge). Every vanilla, Sodium, Iris and EMF detail below is
+documented with its class and method in `docs/vanilla-notes.md`; what is planned next is in `PLAN.md`.
 
 **The one rule:** Mobium may change *how* geometry reaches the GPU, never *what* ends up on screen. Every module
 switches between Mobium's path and vanilla's, never between two pictures.
 
 ## What Mobium does
 
-| Module | What it does | Package | State in 0.2.0 |
+| Module | What it does | Package | State |
 | --- | --- | --- | --- |
 | 1 · Static cache | Block entities and entities that stand still are captured once through vanilla's own submit and prepare and drawn from per-section GPU buffers until they change | `cache/` | On by default |
 | 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written | `parts/` | On by default where the GPU has OpenGL 4.3 compute with double precision |
-| 3 · Animation LOD | Far or tiny-on-screen mobs reuse last frame's pose | — | Not built; its config and settings exist (`PLAN.md`) |
+| 3 · Animation LOD | Far or tiny-on-screen mobs reuse last frame's pose | — | Not built; its config and settings exist |
 
-The static cache runs on OpenGL and on Minecraft's Vulkan backend (since M7 step 3; 0.2.1 and older need OpenGL);
-Module 2 needs OpenGL until its Vulkan dispatch exists (`PLAN.md`, *M7*). While Vitrail is installed both stay off
-(`OffReason.UNTESTED`).
+The static cache runs on OpenGL and on Minecraft's Vulkan backend; Module 2 on Vulkan runs only in dev clients until
+the visual check in game (`PLAN.md`, M7 step 5). While Vitrail is installed both stay off (`OffReason.UNTESTED`).
 
 - **Must-have compatibility:** Iris shader packs, and EMF/ETF including Fresh Animations. Never bypass `setupAnim`.
 - **Coexists with:** Sodium 0.9, Entity Culling, Mod Menu. Mods that do the same job (Enhanced Block Entities,
@@ -135,7 +134,7 @@ A model part keeps every CPU step up to its own `compile`: `setupAnim`, EMF's an
    Mobium's own that Renderpearl's encoder appends to the frame right after `upload()`; three `require = 0` mixins
    (`mixins/vulkan`, `gpu/vk/VulkanSupport.kt`) enable `shaderFloat64` and give vertex buffers storage usage
    (`docs/vanilla-notes.md` §23). Module 2 on Vulkan runs only in dev clients so far (`-Dmobium.parts.vulkan`, set by
-   `-Pmobium.graphicsBackend=vulkan`), until CI checks it (`PLAN.md` M7 step 5).
+   `-Pmobium.graphicsBackend=vulkan`), until the visual check in game (`PLAN.md` M7 step 5).
 7. **Two stages, same bytes.** Mesa's iris records a compute dispatch in a batch of its own and flushes both batches
    around it, a fixed GPU cost per frame however few parts there are. So without a shader pack the same shader runs
    compiled as a vertex shader, drawn as points with rasterisation off (the *vertex stage*, where vertex shaders may
@@ -194,7 +193,8 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
 ## Debug and measurement
 
 - **A/B key** (`debug/AbToggle.kt`): switches all of Mobium off and on live without touching the settings. A physical
-  key position (SDL scancode, right of P).
+  key position (SDL scancode, right of P: `]` on a US keyboard, `+` on a German one); the action bar names the bound
+  key, and it is rebound under Controls → Key Binds → Mobium.
 - **F3 entries:** `mobium:modules` (`debug/ModuleLines.kt`: states and reasons, GPU memory, cached objects, the GPU
   check, failed types) and `mobium:timings` (`debug/DebugLines.kt`: the `debug/Sections.kt` timers around extract,
   submit, pose, tessellate, prepare and draw, and Iris's shadow pass, averaged over 64 frames).
@@ -202,10 +202,41 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
   with its built-in data pack, and the unattended rounds (`BenchAutorun`). Protocol and results in
   `docs/benchmarks.md`.
 - **Dev only:** `debug/Validation.kt` (`/mobium debug validate`: a frame with Mobium against the next with vanilla,
-  pixel by pixel), `/mobium debug fail <module>`, `/mobium debug gpucheck`, `debug/ExpandProfile.kt` (CPU time and
-  Renderpearl's GPU timestamps of the expand pass, on both backends), `debug/VulkanValidation.kt` (a debug messenger
-  of Mobium's own on Vulkan with the validation layer, which sorts out the messages Mobium's objects or calls raise)
-  and `debug/selfcheck/` (the in-game self-check that `benchmark/self_check.py` drives, `--api opengl` or `vulkan`).
+  pixel by pixel), `/mobium debug fail <module>` (one toast, the module on vanilla until restart),
+  `/mobium debug gpucheck`, `debug/ExpandProfile.kt` (CPU time and Renderpearl's GPU timestamps of the expand pass, on
+  both backends), `debug/VulkanValidation.kt` (a debug messenger of Mobium's own on Vulkan with the validation layer,
+  which sorts out the messages Mobium's objects or calls raise) and `debug/selfcheck/` (the in-game self-check that
+  `benchmark/self_check.py` drives, `--api opengl` or `vulkan`).
+
+## Tests
+
+- **Unit tests** (`src/test`, pure Kotlin, `./gradlew :26.3-fabric:test`): module rules, the failure ledger, ring and
+  memory-budget arithmetic, light stamps, the path sampler, frame statistics, gate maths, machine state and OS
+  strings, the config format and translation keys; on Fabric also the expand shader compiled to SPIR-V in every
+  variant (`ExpandShaderTest`; ModDevGradle gives the unit tests no LWJGL).
+- **Client gametests** (`src/gametest`, Fabric only, mod id `mobium-test`): startup on the requested graphics API,
+  the benchmark world and scenes with screenshots and Module 2's byte-for-byte validation, the settings screen and the
+  fallback toast. On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game (locally a
+  window opens and closes by itself). CI runs them under `xvfb-run` on Mesa's software OpenGL and a second time on
+  Vulkan with Mesa's lavapipe (`-Pmobium.graphicsBackend=vulkan`). Screenshots land in
+  `versions/26.3-fabric/build/run/clientGameTest/screenshots/`.
+- **Self-check** (`benchmark/self_check.py [fabric|neoforge] [--api opengl|vulkan]`, `debug/selfcheck/`): starts each
+  dev client with a request file; inside the game it walks through the checks (screens opened the loader's way, both
+  languages, the Sodium page, and in the benchmark world key presses, commands and pixel comparisons against vanilla),
+  writes `<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched and closes the
+  game. On Vulkan it runs with the validation layer and fails on any message Mobium's objects or calls raise. `--mode`
+  runs one part instead:
+  - `gallery`: the `cache_gallery` scene only (every cached type, effects, shader pack, Fresh Animations); failed count
+    checks name why an object was not cached.
+  - `parts`: Module 2's GPU vertices against the CPU's and pictures against vanilla in `mob_pen_live` and
+    `part_gallery`, with the four setups' models and both expand stages.
+  - `benchmark`: the players' `/mobium benchmark` with 5-second runs, its refusals and the built-in pack.
+  - `profile-mobs [--scene <scene>]`: Module 2 off, on and without vertices under Java Flight Recorder; `profile` the
+    same for `storage_room` and the static cache.
+  - `expand-cost [--scene <scene>]`: Module 2's fixed cost per frame (compute against the vertex stage, CPU time per
+    step, GPU timestamps of the frame and of each pass; `ExpandProfile`).
+  - `gateb`: `/mobium gateb 20 2` in the dev window (a hint, not the protocol); `iris-without-mobium`: the first shader
+    pack with Mobium off.
 
 ## Config and settings
 
@@ -249,7 +280,7 @@ Vulkan backend in `vulkan/`), shaders in
 | Module 2 replaces `ModelPart.compile`, not the part walk | EMF overrides `render` and `compile` and animates inside `render`; Sodium's cube path sits below `compile` |
 | Expand into vanilla's own uploaded vertex buffer | Vanilla's draw order and sorting stay untouched, and no draw call is added |
 | The CPU path is the reference, compared byte for byte | A Kotlin copy of the shader's math would only test the copy; the 24k wrong normals on the Arc 140V were found this way |
-| Gates measure what Mobium can change | Gate B and Gate C were redefined when the first targets turned out to depend on GPU work vanilla pays as well (`docs/benchmarks.md`, *Gates*) |
+| Gates measure what Mobium can change | GPU work that vanilla pays as well cannot be taken away, so Gates B and C leave it out (`docs/benchmarks.md`, *Gates*) |
 | Vanilla first | Every feature has a config switch, a per-type switch and a runtime fallback; new hooks ship off until their screenshot tests pass |
 
 ## Project

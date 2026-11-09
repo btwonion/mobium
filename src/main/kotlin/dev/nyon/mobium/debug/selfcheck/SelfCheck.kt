@@ -102,9 +102,9 @@ import net.neoforged.neoforge.client.gui.modlist.ModListScreen
  * when read) in a development environment only; writes `report.txt` and screenshots to `<game dir>/mobium-selfcheck/`
  * and closes the game when done.
  *
- * The M4 scenario: the settings screen opened the loader's way (Mod Menu's factory on Fabric, the NeoForge mod list's
- * Config button), in English and German without untranslated keys; Mobium's Sodium page and its Apply path; and in
- * the benchmark world's `storage_room` the A/B key, F3 `mobium:modules` and `/mobium debug fail` with pixel
+ * The regular scenario: the settings screen opened the loader's way (Mod Menu's factory on Fabric, the NeoForge mod
+ * list's Config button), in English and German without untranslated keys; Mobium's Sodium page and its Apply path; and
+ * in the benchmark world's `storage_room` the A/B key, F3 `mobium:modules` and `/mobium debug fail` with pixel
  * comparisons against the vanilla picture. The world "Mobium Bench" has to be in `saves/`.
  */
 object SelfCheck {
@@ -408,8 +408,8 @@ object SelfCheck {
     }
 
     /**
-     * `--mode gateb`: `/mobium gateb 20 2` in the dev client's window (not the protocol's 1920×1080 or Anton's
-     * hardware, so only a hint), including its run with the cache's draw calls skipped; the medians file is copied into
+     * `--mode gateb`: `/mobium gateb 20 2` in the dev client's window (not the protocol's 1920×1080 or the benchmark
+     * machine, so only a hint), including its run with the cache's draw calls skipped; the medians file is copied into
      * `mobium-selfcheck/`. Then `display_build` and `map_wall` with the cache off and on, 15 s each, twice.
      */
     private fun gateB(minecraft: Minecraft) = sequence {
@@ -1076,8 +1076,8 @@ object SelfCheck {
      * nothing ([StillScreen]): Fresh Animations' animations run on EMF's frame time, which only stops while the game is
      * paused (with ticks frozen two vanilla frames still differed in about 600 pixels). First two vanilla frames show
      * what changes on its own; where nothing does, Mobium's picture must match exactly. A shader pack can still change
-     * a few thousand pixels from frame to frame in some scenes (Complementary in the part gallery, 26 Oct 2026, while
-     * the vertices were identical); there Mobium's picture may differ from vanilla's by at most twice that floor.
+     * a few thousand pixels from frame to frame in some scenes (Complementary in the part gallery, with identical
+     * vertices); there Mobium's picture may differ from vanilla's by at most twice that floor.
      */
     private suspend fun SequenceScope<Wait>.comparePaused(minecraft: Minecraft, name: String, file: String) {
         minecraft.gui.setScreen(StillScreen())
@@ -1365,7 +1365,7 @@ object SelfCheck {
 
         // Cached objects are drawn from camera-relative vertices: a moved camera rewrites every visible bucket, and at
         // render distance 2 the chest wall stands in the fog band at the end of the render distance, where fog taken
-        // from section-local positions (as in M3) would be visibly off.
+        // from section-local positions would be visibly off.
         val scenePlayer = checkNotNull(minecraft.player)
         val x = scenePlayer.x
         val y = scenePlayer.y
@@ -1379,7 +1379,7 @@ object SelfCheck {
         yield(until("world settled again", 120) { SceneBuilder.isQuiet(minecraft) })
         yield(ticks(TICKS_PER_SECOND))
 
-        // The dev command Anton can use in any still scene: the same frame pair, reported in chat. Sky and fog keep
+        // The dev command for any still scene: the same frame pair, reported in chat. Sky and fog keep
         // easing for a few seconds after the render distance changed, so wait for that first.
         yield(ticks(5 * TICKS_PER_SECOND))
         serverCommand(minecraft, "tick freeze")
@@ -1526,8 +1526,8 @@ object SelfCheck {
 
     /**
      * Light updates in other sections leave the cached objects on the fast path: a glowstone block 56 blocks west of
-     * the gallery (its light reaches no gallery section) switched on and off ten times. Before beta2 every light update
-     * anywhere sent every cached object through the full check once; now full checks per frame stay as before (the
+     * the gallery (its light reaches no gallery section) switched on and off ten times. A light update anywhere
+     * must not send every cached object through the full check: full checks per frame stay as before the toggles (the
      * shelves take it every frame). Then the 600-frame sweep forgets the sections all entries have seen.
      */
     private suspend fun SequenceScope<Wait>.lightElsewhere(minecraft: Minecraft) {
