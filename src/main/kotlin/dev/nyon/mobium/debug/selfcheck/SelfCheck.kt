@@ -371,7 +371,7 @@ object SelfCheck {
             screen is TitleScreen
         })
         yield(ticks(40))
-        results += "NOTE the A/B key reads \"${AbToggle.keyName().string}\" on this keyboard layout"
+        results += "NOTE the A/B key reads \"${MobiumKeys.AB_TOGGLE.translatedKeyMessage.string}\" on this keyboard layout"
     }
 
     /**
@@ -1251,11 +1251,12 @@ object SelfCheck {
         }
         val raw = texts.filter { "mobium." in it || "key.mobium" in it }
         check("settings texts translated ($language)", raw.isEmpty() && texts.size > 20, "${texts.size} texts, raw keys: $raw")
-        check(
-            "status lines ($language)",
-            Module.entries.all { module -> texts.any { it.startsWith(Component.translatable(module.translationKey).string + ":") } },
-            texts.take(4).joinToString(" | ")
-        )
+        // A cycle button adds its caption itself; a label that adds it too reads "Preset: Preset: Off".
+        val doubled = texts.filter { text ->
+            val caption = text.substringBefore(": ", "")
+            caption.isNotEmpty() && text.removePrefix("$caption: ").startsWith("$caption: ")
+        }
+        check("settings captions shown once ($language)", doubled.isEmpty(), doubled.joinToString(" | "))
     }
 
     private suspend fun SequenceScope<Wait>.setLanguage(minecraft: Minecraft, code: String) {
@@ -1275,7 +1276,7 @@ object SelfCheck {
         screenshot(minecraft, "sodium-page")
         yield(until("screenshot sodium-page", 10) { shotDone })
         check("Sodium option names translated", SodiumCheck.optionNames().none { "mobium." in it }, SodiumCheck.optionNames().joinToString(" | "))
-        check("Sodium page has the module status button", SodiumCheck.hasStatusButton())
+        check("Sodium page has the settings screen button", SodiumCheck.hasSettingsButton())
 
         // Apply through Sodium's own path, as its Apply button does: the binding writes the config, the storage
         // handler saves it and re-resolves the modules.
@@ -1421,14 +1422,6 @@ object SelfCheck {
         compare("chests still drawn after the failure (vanilla)", takeCapture("capture-after-failure"), vanillaImage)
         hud.toggle()
 
-        minecraft.gui.setScreen(MobiumSettingsScreen(TitleScreen()))
-        yield(ticks(5))
-        val texts = widgetTexts(minecraft.gui.screen())
-        val failedText = Component.translatable(OffReason.FAILED.translationKey).string
-        check("settings status shows the failure", texts.any { failedText in it }, texts.take(3).joinToString(" | "))
-        screenshot(minecraft, "settings-after-failure")
-        yield(until("screenshot settings-after-failure", 10) { shotDone })
-        minecraft.gui.setScreen(null)
         minecraft.debugEntries.setStatus(ModuleLines.ID, DebugScreenEntryStatus.NEVER)
         mobiumImage.close()
         vanillaImage.close()

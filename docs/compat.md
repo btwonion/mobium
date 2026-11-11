@@ -4,8 +4,8 @@ What Mobium does next to other mods, and what was tested with which versions.
 
 ## Mods that do the same job
 
-While one of these is installed, the Mobium modules it overlaps stay on the vanilla path and say why (settings screen,
-F3 `mobium:modules`, log). Mod ids as the mods' own sources declare them.
+While one of these is installed, the Mobium modules it overlaps stay on the vanilla path and say why (F3
+`mobium:modules`, log). Mod ids as the mods' own sources declare them.
 
 | Mod | Mod id | Overlaps | Notes |
 | --- | --- | --- | --- |

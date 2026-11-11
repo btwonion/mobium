@@ -6,16 +6,10 @@ import dev.nyon.mobium.config.Config
 import dev.nyon.mobium.config.LodPreset
 import dev.nyon.mobium.config.applyConfig
 import dev.nyon.mobium.config.config
-import dev.nyon.mobium.core.ModuleStates
-import dev.nyon.mobium.core.OffReason
-import dev.nyon.mobium.debug.AbToggle
-import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.client.OptionInstance
 import net.minecraft.client.Options
 import net.minecraft.client.gui.components.Button
-import net.minecraft.client.gui.components.StringWidget
-import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.layouts.LinearLayout
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.screens.options.OptionsSubScreen
@@ -35,18 +29,6 @@ class MobiumSettingsScreen(parent: Screen) :
 
     override fun addOptions() {
         val list = list ?: return
-        list.addHeader(Component.translatable("mobium.settings.status"))
-        for (status in ModuleStates.all()) {
-            val key = status.reason?.translationKey ?: "mobium.settings.status.active"
-            val state = Component.translatable(key, status.detail)
-                .withStyle(if (status.active) ChatFormatting.GREEN else ChatFormatting.GRAY)
-            val line = Component.translatable("mobium.settings.status.line", Component.translatable(status.module.translationKey), state)
-            list.addBig(StringWidget(310, 20, line, font).also {
-                val detail: Any = if (status.reason == OffReason.AB_TOGGLE) AbToggle.keyName() else status.detail
-                it.setTooltip(Tooltip.create(Component.translatable("$key.tooltip", detail)))
-            })
-        }
-
         list.addHeader(Component.translatable("mobium.settings.general"))
         list.addBig(toggle("mobium.settings.enabled", draft::enabled))
 
@@ -92,12 +74,13 @@ class MobiumSettingsScreen(parent: Screen) :
         ) { cache.memoryBudgetMb = it * MB_STEP }
     }
 
+    /** A cycle button, which puts the caption in front of the value itself (`docs/vanilla-notes.md` §14). */
     private fun lodPreset(draft: Config): OptionInstance<LodPreset> {
         val key = "mobium.settings.lod_preset"
         return OptionInstance(
             key,
             tooltip(key),
-            { caption, preset -> Options.genericValueLabel(caption, Component.translatable(presetKey(preset))) },
+            { _, preset -> Component.translatable(presetKey(preset)) },
             OptionInstance.Enum(LodPreset.entries.toList(), Codec.INT.xmap({ LodPreset.entries[it] }, { it.ordinal })),
             draft.lod.preset
         ) { draft.lod.preset = it }
