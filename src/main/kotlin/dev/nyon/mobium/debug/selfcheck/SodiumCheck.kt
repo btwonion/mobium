@@ -41,7 +41,7 @@ internal object SodiumCheck {
         }
     }
 
-    fun hasStatusButton(): Boolean =
+    fun hasSettingsButton(): Boolean =
         option(Identifier.fromNamespaceAndPath(Mobium.MOD_ID, "all_settings"))?.javaClass?.simpleName == "ExternalButtonOption"
 
     fun setAndApply(id: Identifier, value: Boolean) {

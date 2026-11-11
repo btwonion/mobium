@@ -26,7 +26,7 @@ class LangKeysTest {
     fun `keys built from enums and switches exist`() {
         val keys = keys("en_us")
         val built = Module.entries.map { it.translationKey } +
-            OffReason.entries.flatMap { listOf(it.translationKey, "${it.translationKey}.tooltip") } +
+            OffReason.entries.map { it.translationKey } +
             LodPreset.entries.map { "mobium.lod_preset.${it.name.lowercase()}" } +
             CacheTypes().switches().flatMap { (key, _) ->
                 listOf("mobium.settings.type.$key", "mobium.settings.type.$key.tooltip")

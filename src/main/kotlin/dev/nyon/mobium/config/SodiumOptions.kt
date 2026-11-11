@@ -13,9 +13,9 @@ import net.minecraft.resources.Identifier
 
 /**
  * Mobium's page in Sodium's video settings (Sodium Config API), with the same options as [MobiumSettingsScreen],
- * which a button on the page opens for the module status. Found through the `sodium:config_api_user` entrypoint on
- * Fabric and the annotation on NeoForge; only Sodium loads this class. The bindings read and write the live config,
- * and Sodium's Apply saves it and re-resolves the modules once.
+ * which a button on the page opens. Found through the `sodium:config_api_user` entrypoint on Fabric and the
+ * annotation on NeoForge; only Sodium loads this class. The bindings read and write the live config, and Sodium's
+ * Apply saves it and re-resolves the modules once.
  */
 @ConfigEntryPointForge(Mobium.MOD_ID)
 class SodiumOptions : ConfigEntryPoint {

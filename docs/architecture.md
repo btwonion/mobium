@@ -193,8 +193,8 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
 ## Debug and measurement
 
 - **A/B key** (`debug/AbToggle.kt`): switches all of Mobium off and on live without touching the settings. A physical
-  key position (SDL scancode, right of P: `]` on a US keyboard, `+` on a German one); the action bar names the bound
-  key, and it is rebound under Controls → Key Binds → Mobium.
+  key position (SDL scancode, right of P: `]` on a US keyboard, `+` on a German one); the action bar shows `Mobium: ON`
+  or `Mobium: OFF` like the settings' switch, and it is rebound under Controls → Key Binds → Mobium.
 - **F3 entries:** `mobium:modules` (`debug/ModuleLines.kt`: states and reasons, GPU memory, cached objects, the GPU
   check, failed types) and `mobium:timings` (`debug/DebugLines.kt`: the `debug/Sections.kt` timers around extract,
   submit, pose, tessellate, prepare and draw, and Iris's shadow pass, averaged over 64 frames).
