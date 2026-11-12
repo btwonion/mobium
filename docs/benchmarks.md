@@ -16,8 +16,10 @@ and players' files in `players/`. A build id in an older round may predate a rew
     entity counts);
   - `summary.csv`: one row per run, appended (averages, Minecraft and Mobium version, `build`, the commit the jar was
     built from (`git describe`, `-dirty` with local changes), loader, backend, GPU, the monitor and video mode, the
-    window size, `ac` or `battery`, the power profile, and `gpu_mhz`, the GPU's actual clock sampled once per second,
-    which three come from Linux sysfs and stay empty elsewhere; also `os` and `driver`, as in
+    window size, `ac` or `battery`, the power profile, `gpu_mhz`, the GPU's actual clock sampled once per second, and
+    `gpu_throttle`, why the driver held that clock down, sampled with it as the share of samples per reason
+    (`pl1 92%; none 8%`; a sample with two reasons counts for both; `xe`'s `throttle/reasons`, `i915`'s
+    `throttle_reason_*`), which four come from Linux sysfs and stay empty elsewhere; also `os` and `driver`, as in
     `/mobium benchmark` below, and `throttled_frames`: the frames during which the game capped its own frame rate,
     which it does at 10 FPS while an exclusive-fullscreen window is minimized or not focused (`FramerateLimitTracker`).
     A run with such frames warns in chat and does not count. A `summary.csv` with older columns is renamed to
@@ -530,7 +532,7 @@ at 1160–1195 against 904–958 MHz. A's mob pens looked 1.07–1.14× slower w
 faster with it in one session, by as much as the clock allows: Module 2 lowers their CPU work 1.8–1.9× in every
 session, and the frame gained 1.19× at 750 MHz on build 8d26a26 and 1.07× at 700 MHz on a484d88. So speed-ups are
 measured within one session, alternating (the gate commands, `/mobium stages`, `/mobium benchmark`), and `summary.csv`
-records `gpu_mhz`.
+records `gpu_mhz` and `gpu_throttle`.
 
 - **A's mob pens with Module 2 are GPU-bound.** In one session their frame followed the clock: 3.25 ms at 700 MHz,
   2.93 ms at 845 MHz, 2.60 ms at 1065 MHz (`/mobium stages`, vertex stage). Without Module 2 it does not (3.50–3.66 ms
@@ -546,7 +548,8 @@ records `gpu_mhz`.
   dev-client session) and 1950 MHz. In the dev client at 1423×800, `item_drops` with Module 2 kept the GPU busy 90–95 %
   of the time (`gtidle/idle_residency_ms`) at only 750–850 MHz, and `xe` named the power limit as the reason in nearly
   every sample (`freq0/throttle/reasons`: `pl1`). So a GPU-bound frame does not get the GPU's top clock while the CPU
-  draws power too. The rounds record `gpu_mhz` but not the reason.
+  draws power too. `summary.csv` records the reasons next to `gpu_mhz` (`gpu_throttle`), so a round tells a clock the
+  power limit held down from a GPU that had little to do.
 - **`display_build` does not get slower with Module 2's items.** The static cache draws all 100 item displays, so Module
   2 takes no item there: `self_check.py fabric --mode expand-cost --scene "display_build items"` (Module 2 off, on
   without its items, on with them, in rotating order) counted 0 item runs and 34 parts (the 17 shields) per frame with

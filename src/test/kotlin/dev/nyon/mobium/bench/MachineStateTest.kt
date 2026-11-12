@@ -23,6 +23,7 @@ class MachineStateTest {
         assertEquals("", state.power())
         assertEquals("", state.powerProfile())
         assertNull(state.gpuClockFile())
+        assertNull(state.gpuThrottleFile())
     }
 
     @Test
@@ -59,5 +60,42 @@ class MachineStateTest {
     @Test
     fun `unreadable clock is negative`() {
         assertEquals(-1, MachineState.readClock(sys.resolve("nothing")))
+    }
+
+    @Test
+    fun `xe throttle reasons are read as the driver lists them`() {
+        write("class/drm/card1-eDP-1/status", "connected\n")
+        write("class/drm/card1/device/tile0/gt0/freq0/throttle/reasons", "none\n")
+        write("class/drm/card1/device/tile0/gt0/freq0/throttle/reason_pl1", "0\n")
+        val file = MachineState(sys).gpuThrottleFile()
+        assertEquals(sys.resolve("class/drm/card1/device/tile0/gt0/freq0/throttle/reasons"), file)
+        assertEquals("none", MachineState.readThrottle(file!!))
+        write("class/drm/card1/device/tile0/gt0/freq0/throttle/reasons", "pl1 prochot\n")
+        assertEquals("pl1 prochot", MachineState.readThrottle(file))
+    }
+
+    @Test
+    fun `i915 throttle reasons come from one file per reason`() {
+        write("class/drm/card0/gt/gt0/throttle_reason_status", "0\n")
+        write("class/drm/card0/gt/gt0/throttle_reason_pl1", "0\n")
+        write("class/drm/card0/gt/gt0/throttle_reason_thermal", "0\n")
+        val file = MachineState(sys).gpuThrottleFile()!!
+        assertEquals(sys.resolve("class/drm/card0/gt/gt0/throttle_reason_status"), file)
+        assertEquals("none", MachineState.readThrottle(file))
+        write("class/drm/card0/gt/gt0/throttle_reason_status", "1\n")
+        write("class/drm/card0/gt/gt0/throttle_reason_pl1", "1\n")
+        write("class/drm/card0/gt/gt0/throttle_reason_thermal", "1\n")
+        assertEquals("pl1 thermal", MachineState.readThrottle(file))
+        write("class/drm/card0/gt/gt0/throttle_reason_pl1", "0\n")
+        write("class/drm/card0/gt/gt0/throttle_reason_thermal", "0\n")
+        assertEquals("other", MachineState.readThrottle(file))
+    }
+
+    @Test
+    fun `no throttle file without a driver that has one`() {
+        write("class/drm/card0/gt_act_freq_mhz", "300\n")
+        assertNull(MachineState(sys).gpuThrottleFile())
+        assertEquals("", MachineState.readThrottle(sys.resolve("nothing/reasons")))
+        assertEquals("", MachineState.readThrottle(sys.resolve("nothing/throttle_reason_status")))
     }
 }

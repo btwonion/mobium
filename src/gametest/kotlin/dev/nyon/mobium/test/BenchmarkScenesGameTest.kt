@@ -393,6 +393,10 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         check(row.getValue("resolution").matches(Regex("\\d+x\\d+"))) { "Window size not recorded: $row" }
         check(row.getValue("os").isNotBlank() && row.getValue("driver").isNotBlank()) { "OS or driver not recorded: $row" }
         check(row.getValue("throttled_frames") == "0") { "Frames counted as capped in a visible window: $row" }
+        // Empty where the driver has no throttle files (other GPUs, CI); otherwise `pl1 92%; none 8%`.
+        check(row.getValue("gpu_throttle").matches(Regex("([a-z0-9_]+ (<1|\\d{1,3})%(; |$))*"))) {
+            "Unexpected gpu_throttle: $row"
+        }
         check(row.getValue("entities").toInt() >= MOBS) { "Expected at least $MOBS entities: $row" }
         for (column in listOf("extract_entities_ms", "submit_entities_ms", "pose_entities_ms", "tessellate_entities_ms")) {
             check(row.getValue(column).toDouble() > 0.0) { "$column was not measured: $row" }
