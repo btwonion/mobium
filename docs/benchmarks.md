@@ -192,12 +192,14 @@ starts it checks mains power, an external monitor, that every instance has the b
 them is running. For each setup it writes the plan (`PLANS` in the script: `/mobium suite`, `/mobium stages` and
 `/mobium gatec 60 3 item_drops` in A–D, `/mobium gatec` in A, C and D, and in A also
 `/mobium stages 60 3 display_build`) to the instance's `mobium-bench/autorun` and starts the instance with Prism's
-command line straight into the world. Mobium (`bench/BenchAutorun.kt`) puts the fullscreen window on the monitor whose
-name contains `--display` (default `AOC`) at 1920×1080, runs the commands in turn, writes `mobium-bench/autorun-done`
-(what it did, the window and display it measured on) and closes the game. Afterwards the script copies the round's
-files into `<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (`-<build>` appended when an earlier round of the
-day is there), prints the medians, and commits and pushes the round. Nobody may use the computer while it runs: the
-game owns the monitor, and anything else running costs frame time.
+command line straight into the world. The game opens on the display the desktop chooses (the laptop's own screen);
+as soon as it has started, before the world loads, Mobium (`bench/BenchAutorun.kt`) moves the fullscreen window to the
+monitor whose name contains `--display` (default `AOC`) at 1920×1080, and checks it again before the first command.
+Then it runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it measured
+on) and closes the game. Afterwards the script copies the round's files into `<yyyy-mm-dd>-<machine>/<setup>/` of the
+data repository (`-<build>` appended when an earlier round of the day is there), prints the medians, and commits and
+pushes the round. Nobody may use the computer while it runs: the game owns the monitor, and anything else running
+costs frame time.
 
 The data repository is [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks); the raw-data
 links below point into it. Its checkout sits next to this one (`../mobium-benchmarks`, or `--data`); the script

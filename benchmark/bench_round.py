@@ -8,14 +8,14 @@
 
 For each setup it writes the setup's plan (PLANS) to the instance's mobium-bench/autorun, starts the instance through
 Prism's command line straight into the "Mobium Bench" world, and waits until Mobium has run every command and closed
-the game (bench/BenchAutorun.kt). Mobium puts the fullscreen window on the monitor whose name contains --display at
-1920×1080. Before anything starts it checks mains power, an external monitor, that every instance has the bench kit's
-Mobium jar (python3 benchmark/prism_instances.py installs it) and that none of them is running. Afterwards it copies
-this round's files into <yyyy-mm-dd>-<machine>/<setup>/ of the data repository btwonion/mobium-benchmarks (per-run
-CSVs gzipped, summary.csv with this round's rows; -<build> is appended when that folder holds an earlier round of the
-day), prints the medians, and commits and pushes the round. The data repository's checkout sits next to Mobium's
-(../mobium-benchmarks, or --data); it is cloned or pulled before the round starts.
-Nobody may use the computer while it runs.
+the game (bench/BenchAutorun.kt). As soon as the game has started, Mobium moves the fullscreen window to the monitor
+whose name contains --display at 1920×1080. Before anything starts it checks mains power, an external monitor, that
+every instance has the bench kit's Mobium jar (python3 benchmark/prism_instances.py installs it) and that none of them
+is running. Afterwards it copies this round's files into <yyyy-mm-dd>-<machine>/<setup>/ of the data repository
+btwonion/mobium-benchmarks (per-run CSVs gzipped, summary.csv with this round's rows; -<build> is appended when that
+folder holds an earlier round of the day), prints the medians, and commits and pushes the round. The data
+repository's checkout sits next to Mobium's (../mobium-benchmarks, or --data); it is cloned or pulled before the round
+starts. Nobody may use the computer while it runs.
 """
 
 import argparse
@@ -154,7 +154,9 @@ def collect(letter: str, game: Path, since: datetime, target: Path) -> list[Path
     if summary.exists():
         lines = summary.read_text().splitlines()
         rows = [line for line in lines[1:] if line.split(",", 1)[0] >= stamp]
-        (out / "summary.csv").write_text("\n".join([lines[0], *rows]) + "\n")
+        # Without rows the setup measured nothing, and an empty folder is not published.
+        if rows:
+            (out / "summary.csv").write_text("\n".join([lines[0], *rows]) + "\n")
     return plans
 
 

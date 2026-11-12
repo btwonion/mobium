@@ -16,11 +16,12 @@ import java.time.format.DateTimeFormatter
 
 /**
  * An unattended benchmark round (`benchmark/bench_round.py`): when `<game dir>/mobium-bench/autorun` exists at client
- * start, Mobium reads and deletes it, opens its world (unless the launcher's quick play already did), puts the
- * fullscreen window on the monitor whose name contains `display`, runs each `command` line in turn as a client command
- * (`mobium suite`, `mobium gatec`, …), waiting for each plan to finish, then writes `autorun-done` next to it and quits
- * the game. File format, one `key=value` per line: `world=`, `display=` (optional), any number of `command=`. Nothing
- * happens without the file. Ticked once per client tick on the render thread.
+ * start, Mobium reads and deletes it, puts the fullscreen window on the monitor whose name contains `display` at once
+ * (and checks it again once the world has settled), opens its world (unless the launcher's quick play already did),
+ * runs each `command` line in turn as a client command (`mobium suite`, `mobium gatec`, …), waiting for each plan to
+ * finish, then writes `autorun-done` next to it and quits the game. File format, one `key=value` per line: `world=`,
+ * `display=` (optional), any number of `command=`. Nothing happens without the file. Ticked once per client tick on
+ * the render thread.
  */
 object BenchAutorun {
     private const val REQUEST = "autorun"
@@ -65,6 +66,9 @@ object BenchAutorun {
             }
         }
         note("started (build ${Mobium.BUILD}): world \"$world\", display \"$display\", ${commands.size} commands")
+        // The game opens on whichever display the desktop chooses; moving before the world loads keeps the round from
+        // looking as if it ran on the wrong one. SETTLE checks the display again before the first command.
+        if (display.isNotEmpty()) note(moveToDisplay(minecraft, display))
         state = State.WORLD
         ticks = 0
     }
