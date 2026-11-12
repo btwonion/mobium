@@ -199,7 +199,9 @@ command line straight into the world. The game opens on the display the desktop 
 as soon as it has started, before the world loads, Mobium (`bench/BenchAutorun.kt`) moves the fullscreen window to the
 monitor whose name contains `--display` (default `AOC`) at 1920×1080, and checks it again before the first command.
 Then it runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it measured
-on, and when the window lost or regained focus) and closes the game. Afterwards the script copies the round's files into
+on, and when the window lost or regained focus) and closes the game. The script prints each focus change with the
+keyboard or mouse input around it, from GNOME's idle monitor (`org.gnome.Mutter.IdleMonitor`, polled every 5 s): without
+input a program took the focus, with input someone at the computer. Afterwards the script copies the round's files into
 `<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (`-<build>` appended when an earlier round of the day is
 there), prints the medians, and commits and pushes the round. Runs with `throttled_frames` are named after each setup,
 at the end and in the commit message; such a setup has to run again (`bench_round.py B`). Nobody may use the computer
@@ -451,9 +453,11 @@ every item's vertex writes skipped (the items vanish; the bound for what the CPU
   and ETF's hooks on that call cost about as much as the vertices (`docs/vanilla-notes.md` §25).
 - What stays on the CPU: the render states (rebuilt each frame, with each item model's bounding box), one submit per
   drawn copy, and the client's own tick of the items, which runs between frames and is outside Mobium's scope.
-- Extract and submit, whose code Module 2 does not change, read 0.2–0.45 ms higher with it on (each condition the
-  average of two rounds); in the benchmark round 0.5–0.6 ms in A and C and 1.2–1.6 ms with a shader pack. Not
-  explained yet. The frame time includes it.
+- Extract and submit read 0.2–0.45 ms higher with Module 2 on (each condition the average of two rounds; in the
+  benchmark round 0.5–0.6 ms in A and C and 1.2–1.6 ms with a shader pack). Mobium adds no work there: the CPU runs
+  slower while the GPU draws more frames (*Extract and submit follow the CPU's clock*). In this table one of the two
+  rounds with Module 2 ran under Java Flight Recorder, which slows the render thread further; `profile-mobs` keeps that
+  round out of its averages.
 
 ### Module 2's fixed cost: a compute batch of its own
 
@@ -528,6 +532,59 @@ session, and the frame gained 1.19× at 750 MHz on build 8d26a26 and 1.07× at 7
 measured within one session, alternating (the gate commands, `/mobium stages`, `/mobium benchmark`), and `summary.csv`
 records `gpu_mhz`.
 
+- **A's mob pens with Module 2 are GPU-bound.** In one session their frame followed the clock: 3.25 ms at 700 MHz,
+  2.93 ms at 845 MHz, 2.60 ms at 1065 MHz (`/mobium stages`, vertex stage). Without Module 2 it does not (3.50–3.66 ms
+  at 750–882 MHz in 8d26a26's `/mobium gatec`): the CPU limits it.
+- **So A's gain moves with the clock, not with the build.** Between the rounds on 8d26a26 and a484d88, `/mobium gatec`
+  measured the same CPU work with Module 2 (1.12 and 1.10 ms) and without it (2.12 and 2.01 ms) and the same frame
+  without it (3.55 and 3.49 ms); the frame with it went from 2.98 to 3.26 ms as the clock went from 750–776 to 700 MHz.
+  The expand pass's changes for items add uniform branches for cubes and read the quad's extra word only for items.
+  Extract and submit, whose code did not change between the builds, read 2–5 % higher in a484d88's suite, like
+  `prepare` (7 %): the CPU ran slower too (next section).
+- **The package power limit holds the iGPU's clock down**, which CPU and GPU share. The firmware picks the clock
+  (`xe`, GuC SLPC, `power_profile` base) between the efficient frequency (`tile0/gt0/freq0/rpe_freq`, 650 MHz in a
+  dev-client session) and 1950 MHz. In the dev client at 1423×800, `item_drops` with Module 2 kept the GPU busy 90–95 %
+  of the time (`gtidle/idle_residency_ms`) at only 750–850 MHz, and `xe` named the power limit as the reason in nearly
+  every sample (`freq0/throttle/reasons`: `pl1`). So a GPU-bound frame does not get the GPU's top clock while the CPU
+  draws power too. The rounds record `gpu_mhz` but not the reason.
+- **`display_build` does not get slower with Module 2's items.** The static cache draws all 100 item displays, so Module
+  2 takes no item there: `self_check.py fabric --mode expand-cost --scene "display_build items"` (Module 2 off, on
+  without its items, on with them, in rotating order) counted 0 item runs and 34 parts (the 17 shields) per frame with
+  and without items. The frames of its rounds followed where the render thread ran (next section), and A's 1.80 →
+  1.94 ms between the two rounds is the clock (750 against 700 MHz).
+
+### Extract and submit follow the CPU's clock
+
+With Module 2 on, `extract_entities` and `submit_entities` read higher in `item_drops` (*Latest results*: by 0.5–0.6 ms
+in A and C, by 1.2–1.6 ms in B and D, and Iris's `shadow_extract` and `shadow_submit` too) and by 5–8 % in A's mob pens.
+Mobium runs the same code there with Module 2 off and on: the timers wrap only vanilla's calls, and the one check per
+entity (`PartTransform.excludes`) runs in both. What changes is how fast the CPU runs it. The Core Ultra 7 258V has
+four P-cores (4.7–4.8 GHz) and four LP E-cores (3.7 GHz, outside the P-cores' L3), and CPU and GPU share the package's
+power limit. Measured in the Fabric dev client (854×480 and 1423×800) by sampling the render thread every 2 ms from
+outside (its core in `/proc/<pid>/task/<tid>/stat`, that core's `scaling_cur_freq`, `xe`'s clock and throttle reasons):
+
+- **The CPU's clock drops while the GPU works.** With Module 2 the iGPU draws the items at three times the frame rate
+  instead of waiting for the CPU, at 1,150–1,500 MHz with `pl1` as the reason it is not higher. In
+  `/mobium gatec 10 2 item_drops` with the render thread held on the P-cores, its core ran at 1.8–2.1 GHz with Module 2
+  and at 2.5–2.6 GHz without, and the two stages followed the clock: `extract_entities` 0.91 and `submit_entities`
+  1.73 ms at 1.8 GHz, 0.75–0.77 and 1.46–1.52 ms at 2.0–2.1 GHz, 0.74–0.79 and 1.39–1.47 ms without Module 2.
+- **The scheduler moves the render thread to the E-cores now and then**, where the same work takes about twice as long.
+  Linux places threads by capacity (`cpu_capacity` 1005–1024 for the P-cores, 676 for the E-cores), so a thread that
+  waits for the GPU for part of each frame can land on an E-core. In `profile-mobs --scene item_drops` at 1423×800,
+  without Module 2 the render thread was busy 96–97 % of the time and never ran on an E-core; with it, it waited for the
+  GPU (busy 81–84 %) and spent 45–50 % of its time on E-cores, and `extract_entities` read 0.89 against 0.69 ms,
+  `submit_entities` 1.53 against 1.37 ms (no vertices: 0.60 and 1.40 ms, on P-cores). With a shader pack the frames show
+  two modes: B's `item_drops` with Module 2 has `shadow_extract` at 0.30–0.45 ms in 13 % of its frames and at 0.80–1.05
+  ms in the rest, without Module 2 at 0.35–0.50 ms in all. In `display_build` (dev client) the rounds of one condition
+  whose render thread spent 21–31 % of its time on E-cores were up to 1.3× slower than one at 4 %. Java Flight
+  Recorder's sampling, which stops the thread a thousand times a second, put it on E-cores for 60–84 % of a round.
+- **One condition differs between sessions by as much:** C's suite run of `item_drops` with Module 2 had
+  `submit_entities` at 1.44 ms, its `/mobium gatec` runs at 2.30 ms, at the same frame time (3.7 ms).
+
+So this is not work Mobium adds, but it is in the frame wherever the CPU limits it (A and C at 1920×1080), and the
+speed-ups in *Latest results* include it. On desktops, where CPU and GPU do not share a power limit, the frame gains
+what the CPU saves (*Players' results*).
+
 ### Slow vanilla `storage_room`
 
 In three of five early sessions, vanilla `storage_room` ran at 15–18 ms per frame for the whole session
@@ -545,7 +602,14 @@ baseline in this state does not count.
 - Vanilla's default 120 FPS cap, and its idle frame limit after 60 s without input (the bench handles the second).
 - Vanilla's 10 FPS cap while an exclusive-fullscreen window is minimized or not focused, whatever the inactivity
   setting: every frame takes 100 ms and the GPU idles. `throttled_frames` in `summary.csv` counts those frames, the run
-  warns in chat, and the autorun log notes the focus change.
+  warns in chat, the autorun log notes the focus change and `bench_round.py` prints it with the keyboard or mouse
+  input around it. In the rounds on a484d88 and b264421 the window lost the focus three times (B for good, C for half
+  a minute, B's rerun for 2 s). None of the likely programs took it: GNOME shows notifications on the laptop's screen
+  without taking the focus (a mail notification during A took none), the session never went idle or locked, 1Password
+  showed nothing, and no long frame came first (as GNOME's "not responding" dialog would need). In B's rerun the
+  Claude desktop app's window received the focus in that second, with no session activity before it; the other two
+  left no trace in the journal or the apps' logs. The laptop's own screen stays on during a round, with its windows
+  on it, so a click there takes the focus.
 - Battery power: vanilla `storage_room` 9 → 42 ms on the dev laptop (gametest window); the bench
   warns in chat.
 - The first run after a scene is built (the suite waits until the world has settled).

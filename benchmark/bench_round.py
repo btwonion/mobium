@@ -15,9 +15,10 @@ is running. Afterwards it copies this round's files into <yyyy-mm-dd>-<machine>/
 btwonion/mobium-benchmarks (per-run CSVs gzipped, summary.csv with this round's rows; -<build> is appended when that
 folder holds an earlier round of the day), prints the medians, and commits and pushes the round. Runs during which
 the game capped its own frame rate (the window lost focus or was minimized: 10 FPS) are named after each setup, at the
-end and in the commit message; such a setup has to run again. The data repository's checkout sits next to Mobium's
-(../mobium-benchmarks, or --data); it is cloned or pulled before the round starts. Nobody may use the computer while
-it runs.
+end and in the commit message; such a setup has to run again. Each focus change Mobium noted is printed with the
+keyboard or mouse input around it (GNOME's idle monitor, polled every 5 s): without input a program took the focus,
+with input someone at the computer. The data repository's checkout sits next to Mobium's (../mobium-benchmarks, or
+--data); it is cloned or pulled before the round starts. Nobody may use the computer while it runs.
 """
 
 import argparse
@@ -38,6 +39,8 @@ ROOT = prism_instances.ROOT
 DATA_URL = "https://github.com/btwonion/mobium-benchmarks.git"
 WORLD = "Mobium Bench"
 PRISM = ["flatpak", "run", "org.prismlauncher.PrismLauncher"]
+IDLE_TIME = ["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.IdleMonitor", "--object-path",
+             "/org/gnome/Mutter/IdleMonitor/Core", "--method", "org.gnome.Mutter.IdleMonitor.GetIdletime"]
 
 # Per setup: the client commands of the round, in order (docs/benchmarks.md "Tools"), and their length in minutes.
 PLANS = {
@@ -99,6 +102,60 @@ def running_games(game: Path) -> list[int]:
     return pids
 
 
+def idle_seconds() -> float | None:
+    """Seconds since the last keyboard, mouse or touchpad input (GNOME's idle monitor); None elsewhere."""
+    try:
+        result = subprocess.run(IDLE_TIME, capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    # "(uint64 852022,)": milliseconds
+    words = result.stdout.split() if result.returncode == 0 else []
+    digits = "".join(c for c in words[-1] if c.isdigit()) if words else ""
+    return int(digits) / 1000 if digits else None
+
+
+class InputWatch:
+    """Notes when someone used the keyboard, mouse or touchpad: a click takes the focus from the game. Polled every
+    few seconds, each poll gives the time of the last input before it."""
+
+    def __init__(self) -> None:
+        self.inputs: list[datetime] = []
+        self.available = idle_seconds() is not None
+        self.last_poll = time.time()
+
+    def poll(self) -> None:
+        if not self.available:
+            return
+        idle = idle_seconds()
+        now = time.time()
+        if idle is not None and idle < now - self.last_poll + 1:
+            moment = datetime.fromtimestamp(now - idle).replace(microsecond=0)
+            if not self.inputs or self.inputs[-1] != moment:
+                self.inputs.append(moment)
+        self.last_poll = now
+
+    def near(self, moment: datetime, seconds: int = 5) -> datetime | None:
+        """The input closest to [moment], if one was within [seconds]."""
+        close = [i for i in self.inputs if abs((i - moment).total_seconds()) <= seconds]
+        return min(close, key=lambda i: abs((i - moment).total_seconds())) if close else None
+
+
+def focus_report(done: Path, watch: InputWatch) -> list[str]:
+    """Every focus change in Mobium's autorun-done, with the keyboard or mouse input around it."""
+    lines = []
+    for line in done.read_text().splitlines() if done.exists() else []:
+        if not line.endswith(("window lost focus", "window focused", "window minimized")):
+            continue
+        moment = datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S")
+        if not watch.available:
+            lines.append(line[11:])
+        elif (seen := watch.near(moment)) is not None:
+            lines.append(f"{line[11:]}: keyboard or mouse used at {seen:%H:%M:%S}")
+        else:
+            lines.append(f"{line[11:]}: no keyboard or mouse input within 5 s")
+    return lines
+
+
 def launch(folder: str) -> None:
     subprocess.Popen(
         [*PRISM, "--launch", folder, "--world", WORLD],
@@ -119,8 +176,11 @@ def run_setup(letter: str, game: Path, folder: str, display: str) -> bool:
     launch(folder)
     deadline = time.time() + minutes * 1.5 * 60
     started = False
+    watch = InputWatch()
     while time.time() < deadline:
-        time.sleep(15)
+        for _ in range(3):
+            time.sleep(5)
+            watch.poll()
         running = bool(running_games(game))
         started = started or running
         if done.exists() and not running:
@@ -134,6 +194,11 @@ def run_setup(letter: str, game: Path, folder: str, display: str) -> bool:
         return False
     for line in done.read_text().splitlines():
         print(f"  {line}")
+    if focus := focus_report(done, watch):
+        # Without input a program took the focus (a window or dialog that opened); with input, someone at the computer.
+        print(f"  {letter}: the window's focus changed (keyboard and mouse input from GNOME's idle monitor):")
+        for line in focus:
+            print(f"    {line}")
     return True
 
 

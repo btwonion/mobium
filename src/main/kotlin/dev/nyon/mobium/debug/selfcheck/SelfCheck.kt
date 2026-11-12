@@ -172,7 +172,15 @@ object SelfCheck {
             IRIS_WITHOUT_MOBIUM -> irisWithoutMobium(minecraft)
             PROFILE -> profile(minecraft)
             PROFILE_MOBS -> profileMobs(minecraft, argument.ifEmpty { MOB_SCENE })
-            EXPAND_COST -> expandCost(minecraft, argument.substringBefore(' ').ifEmpty { DISPLAY_SCENE }, argument.endsWith(" stages"))
+            EXPAND_COST -> expandCost(
+                minecraft,
+                argument.substringBefore(' ').ifEmpty { DISPLAY_SCENE },
+                when {
+                    argument.endsWith(" stages") -> STAGES
+                    argument.endsWith(" items") -> ITEMS
+                    else -> null
+                }
+            )
             PARTS -> parts(minecraft)
             GATE_B -> gateB(minecraft)
             GALLERY_ONLY -> galleryOnly(minecraft)
@@ -783,8 +791,10 @@ object SelfCheck {
     /**
      * [MOB_SCENE] for 6 × 8 s, alternating Module 2 off, Module 2 on and [Sections.skipModelVertices] (the models write
      * no vertices, so they vanish), with the stage timers sampled once a second (each a 64-frame average). The last is
-     * the most Module 2 can take off the CPU. The first run with Module 2 is recorded with Java Flight Recorder (method
-     * samples every millisecond, allocation samples).
+     * the most Module 2 can take off the CPU. A seventh run with Module 2, which the averages leave out, is recorded
+     * with Java Flight Recorder (method samples every millisecond, allocation samples): its sampling stops the render
+     * thread a thousand times a second, and the scheduler then moves it to the slower cores now and then
+     * (docs/benchmarks.md, *Extract and submit follow the CPU's clock*).
      */
     private suspend fun SequenceScope<Wait>.recordMobs(minecraft: Minecraft, scene: String, setup: String) {
         yield(ticks(10 * TICKS_PER_SECOND))
@@ -793,13 +803,14 @@ object SelfCheck {
         val sums = Array(names.size) { DoubleArray(Sections.COUNT) }
         val frameMs = DoubleArray(names.size)
         val partsBefore = config.parts.enabled
-        for (round in 0 until 6) {
-            val condition = round % names.size
+        for (round in 0 until 7) {
+            // Rounds 0 to 5 alternate the three conditions; round 6 is Java Flight Recorder's, with Module 2.
+            val condition = if (round == 6) 1 else round % names.size
             config.parts.enabled = condition == 1
             ModuleStates.refresh("self-check")
             Sections.skipModelVertices = condition == 2
             yield(ticks(2 * TICKS_PER_SECOND))
-            val recording = if (round == 1) Recording(Configuration.getConfiguration("profile")) else null
+            val recording = if (round == 6) Recording(Configuration.getConfiguration("profile")) else null
             recording?.enable("jdk.ExecutionSample")?.withPeriod(Duration.ofMillis(1))
             // Allocation samples too: Module 2's per-part path must not allocate (CLAUDE.md, *Hot paths*).
             recording?.enable("jdk.ObjectAllocationSample")?.with("throttle", "1000/s")?.withStackTrace()
@@ -808,10 +819,10 @@ object SelfCheck {
             recording?.start()
             repeat(8) {
                 yield(ticks(TICKS_PER_SECOND))
-                for (i in 0 until Sections.COUNT) sums[condition][i] += Sections.averageMillis(i) / 16
+                if (recording == null) for (i in 0 until Sections.COUNT) sums[condition][i] += Sections.averageMillis(i) / 16
             }
             recording?.stop()
-            frameMs[condition] += (System.nanoTime() - start) / 1e6 / (Sections.frame - framesBefore) / 2
+            if (recording == null) frameMs[condition] += (System.nanoTime() - start) / 1e6 / (Sections.frame - framesBefore) / 2
             if (recording != null) {
                 val file = directory.resolve("$scene-$setup.jfr")
                 recording.dump(file)
@@ -835,10 +846,11 @@ object SelfCheck {
      * `--mode expand-cost`: Module 2's fixed cost per frame (docs/benchmarks.md, *Module 2's fixed cost*) in [scene]
      * (default `display_build`, where Module 2 takes only the 17 shields) with the default config, the static cache on
      * as in the benchmark; `mob_pen_live` also with Fresh Animations (setup C) and with the first shader pack on top
-     * (setup D). Each setup is measured by [recordExpand]. With [stagesOnly] (`--scene "mob_pen_live stages"`), only
-     * compute against the vertex stage, in all four setups.
+     * (setup D). Each setup is measured by [recordExpand]. With [only] set, only those conditions: [STAGES]
+     * (`--scene "mob_pen_live stages"`) compute against the vertex stage, in all four setups; [ITEMS]
+     * (`--scene "display_build items"`) Module 2 off and on with and without its items, with vanilla models only.
      */
-    private fun expandCost(minecraft: Minecraft, scene: String, stagesOnly: Boolean) = sequence {
+    private fun expandCost(minecraft: Minecraft, scene: String, only: List<ExpandCondition>?) = sequence {
         snapshotOptions(minecraft)
         titleScreen(minecraft)
         val saved = config.deepCopy()
@@ -853,7 +865,9 @@ object SelfCheck {
         val repository = minecraft.resourcePackRepository
         repository.reload()
         val fresh = if (scene == MOB_SCENE) repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) } else null
-        if (stagesOnly && buildScene(minecraft, scene)) {
+        if (only === ITEMS) {
+            if (buildScene(minecraft, scene)) recordExpand(minecraft, scene, "plain", ITEMS)
+        } else if (only === STAGES && buildScene(minecraft, scene)) {
             // Compute against the vertex stage with the models of all four setups: A, B (the shader pack), D (and
             // Fresh Animations), C (Fresh Animations alone).
             recordExpand(minecraft, scene, "a", STAGES)
@@ -935,13 +949,17 @@ object SelfCheck {
         val gpuMs = DoubleArray(names.size)
         val passUs = DoubleArray(names.size)
         val mhz = DoubleArray(names.size)
+        val runFrames = Array(names.size) { ArrayList<Double>() }
+        val taken = Array(names.size) { DoubleArray(2) }
         val clockFile = MachineState.SYSTEM.gpuClockFile()
         val partsBefore = config.parts.enabled
+        val itemsBefore = config.parts.items
         val forcedBefore = ExpandPass.forcedStage
         for (run in 0 until names.size * rounds) {
             val condition = (run + run / names.size % names.size) % names.size
             val settings = conditions[condition]
             config.parts.enabled = settings.parts
+            config.parts.items = settings.items
             ExpandPass.forcedStage = settings.stage
             ModuleStates.refresh("self-check")
             Sections.skipModelVertices = settings.skipVertices
@@ -955,9 +973,13 @@ object SelfCheck {
                 yield(ticks(TICKS_PER_SECOND))
                 for (i in 0 until Sections.COUNT) sums[condition][i] += Sections.averageMillis(i) / (samples * rounds)
                 if (clockFile != null) mhz[condition] += MachineState.readClock(clockFile).toDouble() / (samples * rounds)
+                taken[condition][0] += PartTransform.lastParts.toDouble() / (samples * rounds)
+                taken[condition][1] += PartTransform.lastItems.toDouble() / (samples * rounds)
             }
             val frames = (Sections.frame - framesBefore).toDouble()
-            frameMs[condition] += (System.nanoTime() - start) / 1e6 / frames / rounds
+            val runMs = (System.nanoTime() - start) / 1e6 / frames
+            runFrames[condition] += runMs
+            frameMs[condition] += runMs / rounds
             ExpandProfile.enabled = false
             for (i in 0 until ExpandProfile.COUNT) steps[condition][i] += ExpandProfile.nanos[i] / 1e3 / frames / rounds
             passes[condition] += ExpandProfile.passes / frames / rounds
@@ -968,13 +990,17 @@ object SelfCheck {
         Sections.skipModelVertices = false
         Sections.forceTimers = false
         config.parts.enabled = partsBefore
+        config.parts.items = itemsBefore
         ExpandPass.forcedStage = forcedBefore
         ModuleStates.refresh("self-check")
         val window = minecraft.window
         for ((index, name) in names.withIndex()) {
             results += String.format(
-                Locale.ROOT, "NOTE %s, setup %s, %s, window %dx%d: frame %.3f ms, GPU %.3f ms at %.0f MHz, expand passes on the GPU %.1f µs; ",
-                scene, setup, name, window.width, window.height, frameMs[index], gpuMs[index], mhz[index], passUs[index]
+                Locale.ROOT, "NOTE %s, setup %s, %s, window %dx%d: frame %.3f ms (rounds %s), GPU %.3f ms at %.0f MHz, " +
+                    "expand passes on the GPU %.1f µs; Module 2 took %.0f parts and %.0f item runs per frame; ",
+                scene, setup, name, window.width, window.height, frameMs[index],
+                runFrames[index].joinToString(" ") { String.format(Locale.ROOT, "%.3f", it) }, gpuMs[index], mhz[index],
+                passUs[index], taken[index][0], taken[index][1]
             ) +
                 Sections.NAMES.indices.filter { sums[index][it] > 0.0005 }
                     .joinToString { String.format(Locale.ROOT, "%s %.3f", Sections.NAMES[it], sums[index][it]) } +
@@ -989,7 +1015,8 @@ object SelfCheck {
         val name: String,
         val parts: Boolean,
         val stage: Int = ExpandPass.STAGE_COMPUTE,
-        val skipVertices: Boolean = false
+        val skipVertices: Boolean = false,
+        val items: Boolean = true
     )
 
     private val COST_CONDITIONS = listOf(
@@ -1002,6 +1029,13 @@ object SelfCheck {
     private val STAGES = listOf(
         ExpandCondition("compute", parts = true),
         ExpandCondition("vertex stage", parts = true, stage = ExpandPass.STAGE_VERTEX)
+    )
+
+    /** Module 2's items (`parts.items`) off and on, in the vertex stage, which A and C use without a shader pack. */
+    private val ITEMS = listOf(
+        ExpandCondition("Module 2 off", parts = false),
+        ExpandCondition("items off", parts = true, stage = ExpandPass.STAGE_VERTEX, items = false),
+        ExpandCondition("items on", parts = true, stage = ExpandPass.STAGE_VERTEX)
     )
 
     /**

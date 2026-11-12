@@ -260,10 +260,12 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
     `part_gallery` (with a row of dropped items of every item path), with the four setups' models and both expand
     stages.
   - `benchmark`: the players' `/mobium benchmark` with 5-second runs, its refusals and the built-in pack.
-  - `profile-mobs [--scene <scene>]`: Module 2 off, on and without vertices (models' and items') under Java Flight
-    Recorder (`--scene item_drops` for items); `profile` the same for `storage_room` and the static cache.
+  - `profile-mobs [--scene <scene>]`: Module 2 off, on and without vertices (models' and items'), and one more run
+    with Module 2 under Java Flight Recorder that the averages leave out (`--scene item_drops` for items); `profile`
+    records `storage_room` under Java Flight Recorder with the static cache and without Mobium.
   - `expand-cost [--scene <scene>]`: Module 2's fixed cost per frame (compute against the vertex stage, CPU time per
-    step, GPU timestamps of the frame and of each pass; `ExpandProfile`).
+    step, GPU timestamps of the frame and of each pass; `ExpandProfile`); `--scene "display_build items"` measures
+    Module 2 off, on without its items (`parts.items`) and on with them.
   - `gateb`: `/mobium gateb 20 2` in the dev window (a hint, not the protocol); `iris-without-mobium`: the first shader
     pack with Mobium off.
 
