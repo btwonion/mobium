@@ -370,12 +370,15 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
     }
 
-    /** Runs `/mobium suite` on the control scene and checks its medians file. */
+    /**
+     * Runs `/mobium suite` on the control scene and checks its medians file; the window is not minimized, so vanilla
+     * did not cap the run.
+     */
     private fun checkSuiteCommand(context: ClientGameTestContext) {
         val medians = runPlan(context, "mobium suite $BENCH_SECONDS 1 control", "suite-")
         check(
-            medians.size == 3 && medians[1].startsWith("control,") && medians[2].startsWith("# build,") &&
-                !medians[2].endsWith(",unknown")
+            medians.size == 4 && medians[1].startsWith("control,") && medians[2] == "# throttled_runs,0" &&
+                medians[3].startsWith("# build,") && !medians[3].endsWith(",unknown")
         ) {
             "Unexpected suite medians: $medians"
         }
@@ -389,6 +392,7 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         check(row.getValue("frames").toInt() > 0) { "No frames recorded: $row" }
         check(row.getValue("resolution").matches(Regex("\\d+x\\d+"))) { "Window size not recorded: $row" }
         check(row.getValue("os").isNotBlank() && row.getValue("driver").isNotBlank()) { "OS or driver not recorded: $row" }
+        check(row.getValue("throttled_frames") == "0") { "Frames counted as capped in a visible window: $row" }
         check(row.getValue("entities").toInt() >= MOBS) { "Expected at least $MOBS entities: $row" }
         for (column in listOf("extract_entities_ms", "submit_entities_ms", "pose_entities_ms", "tessellate_entities_ms")) {
             check(row.getValue(column).toDouble() > 0.0) { "$column was not measured: $row" }

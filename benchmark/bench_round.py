@@ -13,12 +13,15 @@ whose name contains --display at 1920×1080. Before anything starts it checks ma
 every instance has the bench kit's Mobium jar (python3 benchmark/prism_instances.py installs it) and that none of them
 is running. Afterwards it copies this round's files into <yyyy-mm-dd>-<machine>/<setup>/ of the data repository
 btwonion/mobium-benchmarks (per-run CSVs gzipped, summary.csv with this round's rows; -<build> is appended when that
-folder holds an earlier round of the day), prints the medians, and commits and pushes the round. The data
-repository's checkout sits next to Mobium's (../mobium-benchmarks, or --data); it is cloned or pulled before the round
-starts. Nobody may use the computer while it runs.
+folder holds an earlier round of the day), prints the medians, and commits and pushes the round. Runs during which
+the game capped its own frame rate (the window lost focus or was minimized: 10 FPS) are named after each setup, at the
+end and in the commit message; such a setup has to run again. The data repository's checkout sits next to Mobium's
+(../mobium-benchmarks, or --data); it is cloned or pulled before the round starts. Nobody may use the computer while
+it runs.
 """
 
 import argparse
+import csv
 import gzip
 import os
 import shutil
@@ -160,6 +163,16 @@ def collect(letter: str, game: Path, since: datetime, target: Path) -> list[Path
     return plans
 
 
+def throttled_runs(summary: Path) -> list[str]:
+    """The runs in [summary] during which the game capped its own frame rate (FrameRecorder's throttled_frames)."""
+    if not summary.exists():
+        return []
+    with summary.open(newline="") as file:
+        return [f"{row['timestamp']} {row['scene']} ({row['setup']}): "
+                f"{row['throttled_frames']} of {row['frames']} frames"
+                for row in csv.DictReader(file) if int(row.get("throttled_frames") or 0) > 0]
+
+
 def default_data() -> Path:
     """The data repository's checkout next to Mobium's main checkout (also when this runs in a worktree)."""
     common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=ROOT,
@@ -272,6 +285,7 @@ def main() -> None:
         return
 
     finished = []
+    throttled = {}
     for letter in letters:
         folder, game = games[letter]
         started = datetime.now()
@@ -279,16 +293,26 @@ def main() -> None:
         plans = collect(letter, game, started, target)
         for plan in plans:
             print_medians(plan)
+        if runs := throttled_runs(target / letter / "summary.csv"):
+            throttled[letter] = runs
+            print(f"  {letter}: {len(runs)} runs under the game's own frame cap (window lost focus or minimized):")
+            for run in runs:
+                print(f"    {run}")
         if not ok:
             break
         finished.append(letter)
         time.sleep(30)
     print(f"Finished {' '.join(finished) or 'nothing'}; results in {target}")
+    if throttled:
+        print(f"Run {' '.join(throttled)} again: their throttled runs do not count "
+              f"(python3 benchmark/bench_round.py {' '.join(throttled)})")
     if not args.quick and any(path.is_file() for path in target.rglob("*")):
         stopped = [letter for letter in letters if letter not in finished]
+        notes = [f"{' '.join(stopped)} not finished"] if stopped else []
+        notes += [f"throttled runs in {' '.join(throttled)}"] if throttled else []
         publish(data, target, f"{target.name}: {' '.join(letters)} with build {kit}"
-                + (f" ({' '.join(stopped)} not finished)" if stopped else ""))
-    sys.exit(0 if len(finished) == len(letters) else 1)
+                + (f" ({'; '.join(notes)})" if notes else ""))
+    sys.exit(0 if len(finished) == len(letters) and not throttled else 1)
 
 
 if __name__ == "__main__":

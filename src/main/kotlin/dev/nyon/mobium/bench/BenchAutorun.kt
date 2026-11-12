@@ -20,8 +20,9 @@ import java.time.format.DateTimeFormatter
  * (and checks it again once the world has settled), opens its world (unless the launcher's quick play already did),
  * runs each `command` line in turn as a client command (`mobium suite`, `mobium gatec`, …), waiting for each plan to
  * finish, then writes `autorun-done` next to it and quits the game. File format, one `key=value` per line: `world=`,
- * `display=` (optional), any number of `command=`. Nothing happens without the file. Ticked once per client tick on
- * the render thread.
+ * `display=` (optional), any number of `command=`. Nothing happens without the file. The log also notes each time the
+ * window loses or regains focus or is minimized: vanilla then caps the frame rate (`FrameRecorder` counts those frames
+ * per run). Ticked once per client tick on the render thread.
  */
 object BenchAutorun {
     private const val REQUEST = "autorun"
@@ -47,6 +48,8 @@ object BenchAutorun {
     private val commands = ArrayList<String>()
     private var next = 0
     private val log = ArrayList<String>()
+    private var focused = true
+    private var minimized = false
 
     /** Reads the request file, if there is one; called once when the client has started. */
     fun startIfRequested(minecraft: Minecraft) {
@@ -69,6 +72,8 @@ object BenchAutorun {
         // The game opens on whichever display the desktop chooses; moving before the world loads keeps the round from
         // looking as if it ran on the wrong one. SETTLE checks the display again before the first command.
         if (display.isNotEmpty()) note(moveToDisplay(minecraft, display))
+        focused = minecraft.window.isFocused
+        minimized = minecraft.window.isIconified
         state = State.WORLD
         ticks = 0
     }
@@ -77,6 +82,7 @@ object BenchAutorun {
     fun tick(minecraft: Minecraft) {
         if (state == State.IDLE) return
         ticks++
+        noteFocus(minecraft)
         when (state) {
             State.WORLD -> when {
                 minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null -> enter(State.SETTLE)
@@ -139,6 +145,21 @@ object BenchAutorun {
         Files.write(directory.resolve(DONE), log)
         if (minecraft.level != null) minecraft.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE)
         enter(State.QUIT)
+    }
+
+    /** Notes when the window loses or regains focus or is minimized: vanilla caps exclusive fullscreen then. */
+    private fun noteFocus(minecraft: Minecraft) {
+        val window = minecraft.window
+        if (window.isFocused == focused && window.isIconified == minimized) return
+        focused = window.isFocused
+        minimized = window.isIconified
+        note(
+            when {
+                minimized -> "window minimized"
+                focused -> "window focused"
+                else -> "window lost focus"
+            }
+        )
     }
 
     private fun enter(next: State) {

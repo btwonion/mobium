@@ -1,5 +1,6 @@
 package dev.nyon.mobium.bench
 
+import com.mojang.blaze3d.platform.FramerateLimitTracker
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
@@ -22,14 +23,18 @@ import java.util.Locale
  * `<game dir>/mobium-bench/<scene>-<setup>-<timestamp>.csv`, appends one row to `mobium-bench/summary.csv` and prints a
  * summary in chat. A run is [WARMUP_SECONDS] of warm-up followed by the requested number of seconds; the HUD is hidden
  * while it runs. [onFrameStart] is called once per game-loop iteration on the render thread and does not allocate
- * unless a run outgrows its preallocated arrays; once per second it reads the GPU clock from sysfs (a few bytes).
+ * unless a run outgrows its preallocated arrays; once per second it reads the GPU clock from sysfs (a few bytes). It
+ * also counts the frames vanilla throttled ([throttledFrames]): an exclusive-fullscreen window that is minimized or not
+ * focused runs at 10 FPS (`FramerateLimitTracker`), and a run with such frames does not count.
  */
 /** The result of one finished benchmark run. */
 class BenchResult(
     @JvmField val scene: String,
     @JvmField val setup: String,
     @JvmField val summary: FrameSummary,
-    @JvmField val sectionMeansMs: DoubleArray
+    @JvmField val sectionMeansMs: DoubleArray,
+    /** Recorded frames during which vanilla capped the frame rate itself (window minimized or not focused). */
+    @JvmField val throttledFrames: Int
 )
 
 object FrameRecorder {
@@ -53,6 +58,7 @@ object FrameRecorder {
     private var clockSamples = 0
 
     private var frames = 0
+    private var throttledFrames = 0
     private var frameNanos = LongArray(0)
     private var sectionNanos = LongArray(0)
     private var entityCounts = IntArray(0)
@@ -76,7 +82,8 @@ object FrameRecorder {
         lastFrameStart = now
         if (phase == Phase.IDLE) return
         // Nobody touches the game during a run; without this vanilla caps the frame rate after 60 s of inactivity.
-        Minecraft.getInstance().framerateLimitTracker.onInputReceived()
+        val limiter = Minecraft.getInstance().framerateLimitTracker
+        limiter.onInputReceived()
         if (previous == 0L) return
 
         if (phase == Phase.WARMUP) {
@@ -88,6 +95,7 @@ object FrameRecorder {
         }
 
         record(now - previous)
+        if (limiter.throttleReason != FramerateLimitTracker.FramerateThrottleReason.NONE) throttledFrames++
         if (now >= nextClockSample) sampleClock(now)
         if (now >= phaseEndNanos) finish()
     }
@@ -110,6 +118,7 @@ object FrameRecorder {
 
         val capacity = seconds * PREALLOCATED_FPS + 256
         frames = 0
+        throttledFrames = 0
         frameNanos = LongArray(capacity)
         sectionNanos = LongArray(capacity * Sections.COUNT)
         entityCounts = IntArray(capacity)
@@ -179,7 +188,7 @@ object FrameRecorder {
 
         val summary = FrameStats.summarize(frameNanos, frames)
         val sectionMeans = DoubleArray(Sections.COUNT) { FrameStats.columnMeanMs(sectionNanos, frames, Sections.COUNT, it) }
-        lastResult = BenchResult(scene, setup, summary, sectionMeans)
+        lastResult = BenchResult(scene, setup, summary, sectionMeans, throttledFrames)
         completedRuns++
         val entities = entityCounts.copyOf(frames).average().toInt()
         val blockEntities = blockEntityCounts.copyOf(frames).average().toInt()
@@ -223,6 +232,14 @@ object FrameRecorder {
                     fmt(sectionMeans[Sections.SHADOW_PREPARE], 2),
                     fmt(sectionMeans[Sections.SHADOW_DRAW], 2)
                 )
+            )
+        }
+        if (throttledFrames > 0) {
+            chat(Component.translatable("mobium.bench.throttled", throttledFrames, summary.frames))
+            Mobium.LOGGER.warn(
+                "Benchmark {} ({}): {} of {} frames ran under the game's own frame cap (window minimized or not " +
+                    "focused); this run does not count",
+                scene, setup, throttledFrames, summary.frames
             )
         }
 
@@ -275,7 +292,7 @@ object FrameRecorder {
             append("timestamp,scene,setup,seconds,frames,avg_fps,low1_fps,avg_ms,p95_ms")
             for (name in Sections.NAMES) append(",${name}_ms")
             append(",entities,block_entities,framerate_limit,vsync,minecraft,mobium,build,loader,backend,gpu")
-            append(",display,resolution,power,power_profile,gpu_mhz,os,driver\n")
+            append(",display,resolution,power,power_profile,gpu_mhz,os,driver,throttled_frames\n")
         }
         val capabilities = Capabilities.current
         val row = buildString {
@@ -296,7 +313,7 @@ object FrameRecorder {
             append(",${csv(environment?.display ?: "")},${environment?.resolution ?: ""}")
             append(",${environment?.power ?: ""},${csv(environment?.powerProfile ?: "")}")
             append(",${if (clockSamples == 0) "" else (clockSumMhz / clockSamples).toString()}")
-            append(",${csv(environment?.os ?: "")},${csv(environment?.driver ?: "")}\n")
+            append(",${csv(environment?.os ?: "")},${csv(environment?.driver ?: "")},$throttledFrames\n")
         }
         if (Files.exists(file) && Files.newBufferedReader(file).use { it.readLine() } + "\n" != header) {
             // Older Mobium versions wrote fewer columns; keep their rows in a file of their own.

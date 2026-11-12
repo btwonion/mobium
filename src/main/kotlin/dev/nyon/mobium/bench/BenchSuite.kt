@@ -624,6 +624,7 @@ object BenchSuite {
         }
         if (kind == Kind.STAGES) stagesRatio(medians())?.let { rows.append("# stages_vertex_over_compute,${fmt(it, 3)}\n") }
         if (kind == Kind.BENCHMARK) appendBenchmarkLines(rows)
+        rows.append("# throttled_runs,${throttledRuns()}\n")
         rows.append("# build,${Mobium.BUILD}\n")
 
         return try {
@@ -637,6 +638,23 @@ object BenchSuite {
             chat(Component.translatable("mobium.bench.failed", e.message ?: e.javaClass.simpleName))
             null
         }
+    }
+
+    /** Runs with frames that vanilla capped itself (window minimized or not focused); their numbers do not count. */
+    private fun throttledRuns(): Int {
+        var count = 0
+        for (result in results) if (result.throttledFrames > 0) count++
+        return count
+    }
+
+    private fun warnThrottled() {
+        val throttled = throttledRuns()
+        if (throttled == 0) return
+        chat(Component.translatable("mobium.suite.throttled", throttled, results.size))
+        Mobium.LOGGER.warn(
+            "{} of {} runs ran under the game's own frame cap (window minimized or not focused); medians include them",
+            throttled, results.size
+        )
     }
 
     private fun report() {
@@ -653,6 +671,7 @@ object BenchSuite {
                 )
             )
         }
+        warnThrottled()
 
         if (kind == Kind.GATE_B) {
             gateB(medians)?.let { gate ->
@@ -739,6 +758,7 @@ object BenchSuite {
             )
             Mobium.LOGGER.info("Benchmark {}: {} ms without Mobium, {} ms with it", scene, fmt(ms[0], 3), fmt(ms[1], 3))
         }
+        warnThrottled()
         val file = writeMedians() ?: return
         val folder = Component.literal(file.fileName.toString()).withStyle(ChatFormatting.UNDERLINE)
             .withStyle { it.withClickEvent(ClickEvent.OpenFile(file.parent)) }

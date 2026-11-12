@@ -18,8 +18,11 @@ and players' files in `players/`. A build id in an older round may predate a rew
     built from (`git describe`, `-dirty` with local changes), loader, backend, GPU, the monitor and video mode, the
     window size, `ac` or `battery`, the power profile, and `gpu_mhz`, the GPU's actual clock sampled once per second,
     which three come from Linux sysfs and stay empty elsewhere; also `os` and `driver`, as in
-    `/mobium benchmark` below). A `summary.csv` with older columns is renamed to `summary-before-<timestamp>.csv`. The
-    suite and gate files end with a `# build,<commit>` line.
+    `/mobium benchmark` below, and `throttled_frames`: the frames during which the game capped its own frame rate,
+    which it does at 10 FPS while an exclusive-fullscreen window is minimized or not focused (`FramerateLimitTracker`).
+    A run with such frames warns in chat and does not count. A `summary.csv` with older columns is renamed to
+    `summary-before-<timestamp>.csv`. The suite and gate files end with `# throttled_runs,<n>` (runs with such frames;
+    the medians include them) and `# build,<commit>` lines.
   `setup` is detected when omitted: `sodium` or `vanilla`, `+iris` if a shader pack is active, `+emf` if Entity Model
   Features is installed, `+fa` if a resource pack with "fresh" in its id is enabled. Before it starts, the run warns in chat about anything that breaks the protocol: a window other than
   1920×1080, battery power, a low-power profile, or a setup other than the instance's (below). `/mobium stop` aborts a
@@ -196,10 +199,12 @@ command line straight into the world. The game opens on the display the desktop 
 as soon as it has started, before the world loads, Mobium (`bench/BenchAutorun.kt`) moves the fullscreen window to the
 monitor whose name contains `--display` (default `AOC`) at 1920×1080, and checks it again before the first command.
 Then it runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it measured
-on) and closes the game. Afterwards the script copies the round's files into `<yyyy-mm-dd>-<machine>/<setup>/` of the
-data repository (`-<build>` appended when an earlier round of the day is there), prints the medians, and commits and
-pushes the round. Nobody may use the computer while it runs: the game owns the monitor, and anything else running
-costs frame time.
+on, and when the window lost or regained focus) and closes the game. Afterwards the script copies the round's files into
+`<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (`-<build>` appended when an earlier round of the day is
+there), prints the medians, and commits and pushes the round. Runs with `throttled_frames` are named after each setup,
+at the end and in the commit message; such a setup has to run again (`bench_round.py B`). Nobody may use the computer
+while it runs: the game owns the monitor, anything else running costs frame time, and a click anywhere takes the focus
+from the game, which then runs at 10 FPS.
 
 The data repository is [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks); the raw-data
 links below point into it. Its checkout sits next to this one (`../mobium-benchmarks`, or `--data`); the script
@@ -501,6 +506,9 @@ baseline in this state does not count.
   renamed instance folder leaves a duplicate; `benchmark/prism_instances.py` writes `[General]` and uses the folder
   Prism launched last.
 - Vanilla's default 120 FPS cap, and its idle frame limit after 60 s without input (the bench handles the second).
+- Vanilla's 10 FPS cap while an exclusive-fullscreen window is minimized or not focused, whatever the inactivity
+  setting: every frame takes 100 ms and the GPU idles. `throttled_frames` in `summary.csv` counts those frames, the run
+  warns in chat, and the autorun log notes the focus change.
 - Battery power: vanilla `storage_room` 9 → 42 ms on the dev laptop (gametest window); the bench
   warns in chat.
 - The first run after a scene is built (the suite waits until the world has settled).
