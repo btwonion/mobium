@@ -1,7 +1,7 @@
 # Mobium
 
-**Faster chests, signs and mobs: Mobium draws things that stand still from GPU buffers and lets the GPU write animated
-models' vertices, instead of the CPU rebuilding them every frame.**
+**Faster chests, signs, mobs and dropped items: Mobium draws things that stand still from GPU buffers and lets the GPU
+write the vertices of mobs and items, instead of the CPU rebuilding them every frame.**
 
 Mobium is a client-side performance mod for Minecraft (Fabric, Quilt and NeoForge). Vanilla, Iris and Entity Model
 Features still decide how everything looks: Mobium changes how geometry reaches the GPU, never what ends up on screen.
@@ -13,12 +13,15 @@ Features still decide how everything looks: Mobium changes how geometry reaches 
 | Test scene | Without Mobium | With Mobium | Gain |
 | --- | ---: | ---: | ---: |
 | 1,000 chests and 300 signs | 300 FPS | 586 FPS | **+95 %** |
-| 500 mobs | 282 FPS | 335 FPS | **+19 %** |
-| 500 mobs with Fresh Animations | 101 FPS | 137 FPS | **+36 %** |
-| 500 mobs with Fresh Animations and Complementary Reimagined | 15 FPS | 18 FPS | **+20 %** |
+| 1,000 dropped items | 83 FPS | 239 FPS | **+188 %** |
+| 1,000 dropped items with Complementary Reimagined | 11.7 FPS | 25.9 FPS | **+122 %** |
+| 500 mobs | 287 FPS | 307 FPS | **+7 %** |
+| 500 mobs with Fresh Animations | 101 FPS | 136 FPS | **+35 %** |
+| 500 mobs with Fresh Animations and Complementary Reimagined | 13.6 FPS | 16.4 FPS | **+20 %** |
 
-Average FPS on a laptop with Intel Arc 140V graphics, Sodium, 1920×1080. The more chests, signs, item frames and mobs
-are on screen, the more Mobium gains; an empty field gets neither faster nor slower.
+Average FPS on a laptop with Intel Arc 140V graphics, Sodium, 1920×1080. The more chests, signs, item frames, mobs
+and dropped items are on screen, the more Mobium gains; an empty field gets neither faster nor slower. With 500 plain
+mobs this laptop's graphics chip is the limit, so the gain there follows its clock (+7 % to +19 % between sessions).
 
 ### 📊 Benchmarks wanted
 
@@ -57,10 +60,13 @@ While a chest opens, a pot wobbles or anything else moves, the game draws it as 
 
 Mobs, armor, banners and everything else built from model parts are still posed and animated by the game, Entity Model
 Features and Fresh Animations. Only the last step moves: instead of the CPU writing every corner of every cube, a
-shader on the GPU writes exactly the same vertices, also in Iris's shader pack formats. Mobium checks this on your GPU
-and lets the game draw as usual should a graphics driver ever disagree.
+shader on the GPU writes exactly the same vertices, also in Iris's shader pack formats. Items work the same way:
+dropped items, items in hands, in frames and on displays keep the game's own models, colours and lighting, and the GPU
+writes their faces. Mobium checks this on your GPU and lets the game draw as usual should a graphics driver ever
+disagree.
 
-The gain is largest where writing vertices is expensive: many mobs, Fresh Animations or a shader pack. With only a few
+The gain is largest where writing vertices is expensive: many mobs, piles of dropped items, Fresh Animations or a
+shader pack. With only a few
 mobs on screen it can cost slightly more than it saves, which shows only at several hundred FPS. It needs OpenGL 4.3
 (current Windows and Linux drivers; not macOS).
 

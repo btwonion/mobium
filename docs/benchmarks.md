@@ -332,11 +332,11 @@ Without Mobium these scenes were (other sessions): `storage_room` in A 3.33 ms (
 FPS), the mob pens and `item_drops` as in the first columns of the tables above. Frames from different sessions
 follow the GPU clock more than anything else (*Findings*), so a speed-up is only quoted from one session.
 
-**The README's table** comes from build 8d26a26's round
-([raw data](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-27-thinkpad-x9-8d26a26/)):
-`storage_room` 300 → 586 FPS (setup A, two earlier sessions) and the three mob pens' `/mobium gatec` (A 282 → 335, C
-101 → 137, D 14.8 → 17.7 FPS). On a484d88 they are A 287 → 307, C 101 → 136 and D 13.6 → 16.4 FPS with the same CPU
-saving; A's frame with Module 2 ran at 700 instead of 750 MHz.
+**The README's table** comes from these numbers: `storage_room` 300 → 586 FPS (setup A, two earlier sessions; this
+round does not measure it without Mobium), `item_drops` from the table above (A, B) and the three mob pens from the
+`mob_pen_live` table above (A, C, D), as average FPS. A's mob pen gained 1.19× at 750 MHz on build 8d26a26
+([raw data](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-27-thinkpad-x9-8d26a26/)) with the same CPU
+saving, hence the README's range (*Frames between sessions follow the GPU clock*).
 
 ## Players' results
 
