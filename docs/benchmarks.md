@@ -230,40 +230,62 @@ By hand instead: `/function mobium-bench:<scene>`, wait for "Scene <scene> is re
 
 ## Latest results
 
-Build **8d26a26**, unattended (`bench_round.py`), fullscreen 1920×1080 on the AOC monitor, mains power, uncapped,
+Build **a484d88**, unattended (`bench_round.py`), fullscreen 1920×1080 on the AOC monitor, mains power, uncapped,
 VSync off; the static cache and Module 2 on, Module 2's expand pass in the vertex stage in A and C and as a compute
-dispatch in B and D (shader pack), as `ExpandPass.stage` chooses. Later builds draw the same vertices on OpenGL (the GPU
-check compares only in the first frames of each shader path), so no newer round was run. Machine: Lenovo ThinkPad
-X9-14 Gen 1, Intel Core Ultra 7 258V, Intel Arc 140V iGPU (`xe`, Mesa 26.2, OpenGL 4.6), 32 GB, Fedora 44. Raw data:
-[`2026-10-27-thinkpad-x9-8d26a26/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-27-thinkpad-x9-8d26a26/).
+dispatch in B and D (shader pack), as `ExpandPass.stage` chooses. Setup B is from build b264421, which draws the same
+and only adds `throttled_frames` to the bench; B's runs on a484d88 do not count, as its window lost focus halfway
+(*Measurement pitfalls*). Machine: Lenovo ThinkPad X9-14 Gen 1, Intel Core Ultra 7 258V, Intel Arc 140V iGPU (`xe`,
+Mesa 26.2, OpenGL 4.6), 32 GB, Fedora 44. Raw data:
+[`2026-11-12-thinkpad-x9/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-11-12-thinkpad-x9/) (A, C,
+D) and
+[`2026-11-12-thinkpad-x9-b264421/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-11-12-thinkpad-x9-b264421/)
+(B).
 
 ### Module 2 off and on, same session
 
-`/mobium gatec` (Module 2 off and on in turn, medians of three 60-second runs; *CPU work* is `prepare` +
-`shadow_prepare`):
+`/mobium gatec` and `/mobium gatec 60 3 item_drops` (Module 2 off and on in turn, medians of three 60-second runs;
+*CPU work* is `prepare` + `shadow_prepare`):
 
 | `mob_pen_live` | without Module 2: frame / CPU work | with: frame / CPU work | frame | CPU work |
 | --- | --- | --- | --- | --- |
-| A (vertex stage) | 3.55 / 2.12 ms (282 FPS) | 2.98 / 1.12 ms (335 FPS) | 1.19× faster | 1.89× lower |
-| C (vertex stage) | 9.94 / 6.02 ms (101 FPS) | 7.31 / 3.85 ms (137 FPS) | 1.36× faster | 1.57× lower |
-| D (compute) | 67.44 / 14.91 ms (14.8 FPS) | 56.37 / 6.84 ms (17.7 FPS) | 1.20× faster | 2.18× lower |
+| A (vertex stage) | 3.49 / 2.01 ms (287 FPS) | 3.26 / 1.10 ms (307 FPS) | 1.07× faster | 1.82× lower |
+| C (vertex stage) | 9.93 / 5.97 ms (101 FPS) | 7.34 / 3.84 ms (136 FPS) | 1.35× faster | 1.55× lower |
+| D (compute) | 73.35 / 17.80 ms (13.6 FPS) | 61.16 / 7.69 ms (16.4 FPS) | 1.20× faster | 2.31× lower |
+
+| `item_drops` | without Module 2: frame / CPU work | with: frame / CPU work | frame | CPU work |
+| --- | --- | --- | --- | --- |
+| A (vertex stage) | 12.02 / 8.77 ms (83 FPS) | 4.18 / 0.52 ms (239 FPS) | 2.88× faster | 16.9× lower |
+| B (compute) | 85.82 / 46.38 ms (11.7 FPS) | 38.62 / 0.83 ms (25.9 FPS) | 2.22× faster | 55.6× lower |
+| C (vertex stage) | 13.39 / 9.80 ms (75 FPS) | 4.19 / 0.48 ms (239 FPS) | 3.20× faster | 20.6× lower |
+| D (compute) | 104.92 / 49.74 ms (9.5 FPS) | 61.13 / 0.98 ms (16.4 FPS) | 1.72× faster | 50.6× lower |
+
+- **In A's mob pen the frame gains less than the CPU saves:** both sides ran at 700 MHz, the CPU work fell by 0.91 ms
+  and the frame by 0.23 ms, so the frame with Module 2 waits for the GPU. The CPU saving is the same in every session,
+  the frame follows the clock (*Frames between sessions follow the GPU clock*).
+- **With a shader pack the items are drawn twice:** Iris's shadow pass falls from 25.8 to 4.0 ms in B and from 27.7 to
+  4.4 ms in D, so most of the CPU work Module 2 takes is there.
+- **Extract and submit read higher with Module 2 on in `item_drops`**, by 0.5–0.6 ms in A and C and by 1.2–1.6 ms in B
+  and D (submit 1.5–1.8 → 2.1–2.4 ms, extract 0.4–0.5 → 0.6–1.2 ms), as in the dev client (*Dropped items*). The
+  frames include it.
 
 `/mobium stages` (compute and the vertex stage in turn, three 60-second runs each; ms per frame per run, the GPU clock
 in MHz in brackets, and the ratio of the medians):
 
 | Scene, setup | compute | vertex stage | vertex / compute |
 | --- | --- | --- | --- |
-| `mob_pen_live`, A | 3.07 (750), 3.10 (745), 3.26 (701) | 2.96 (749), 3.04 (722), 3.10 (702) | 0.980× |
-| `display_build`, A | 2.02 (700), 2.04 (700), 2.03 (700) | 1.90 (700), 1.90 (700), 1.85 (742) | 0.934× |
-| `mob_pen_live`, C | 7.57 (918), 7.55 (936), 7.53 (823) | 7.37 (880), 7.33 (928), 7.38 (873) | 0.977× |
-| `mob_pen_live`, B (shader pack) | 30.95 (1391), 31.15 (1325), 31.77 (1263) | 32.70 (1334), 30.20 (1466), 30.79 (1420) | 0.988× |
-| `mob_pen_live`, D (shader pack) | 58.98 (677), 56.27 (803), 52.02 (840) | 52.59 (868), 53.59 (822), 58.54 (681) | 0.952× |
+| `mob_pen_live`, A | 3.37 (700), 3.39 (700), 3.03 (810) | 3.25 (700), 2.93 (845), 2.60 (1065) | 0.868× |
+| `display_build`, A | 1.90 (775), 1.75 (953), 1.66 (1111) | 1.56 (1086), 1.62 (1021), 1.72 (895) | 0.927× |
+| `mob_pen_live`, C | 7.69 (991), 7.64 (933), 7.62 (928) | 7.37 (847), 7.43 (900), 7.37 (843) | 0.965× |
+| `mob_pen_live`, B (shader pack) | 29.76 (1394), 30.15 (1390), 28.78 (1472) | 29.99 (1445), 30.20 (1449), 31.94 (1364) | 1.015× |
+| `mob_pen_live`, D (shader pack) | 56.60 (761), 62.35 (632), 53.49 (796) | 59.09 (707), 55.55 (817), 59.75 (722) | 1.044× |
 
-- Without a shader pack the vertex stage is faster in every pair at the same GPU clock (A's mob pens by 0.06–0.16 ms,
-  `display_build` by 0.12–0.18 ms, C's mob pens by 0.15–0.20 ms): the 0.2 ms of GPU time per frame of *Module 2's
-  fixed cost* below.
+- Without a shader pack the vertex stage is faster at the same or a lower GPU clock (A's mob pens by 0.12–0.14 ms at
+  700 MHz, C's by 0.2–0.3 ms at 843–900 against 928–991 MHz, `display_build` by 0.03–0.10 ms): the 0.2 ms of GPU time
+  per frame of *Module 2's fixed cost* below. The rest of A's ratio is the clock, which rose during the vertex
+  stage's runs.
 - With a shader pack the two are equal: the pairs disagree in sign and each run follows the GPU clock (D: compute
-  52.0 ms at 840 MHz, the vertex stage 52.6 and 53.6 ms at 868 and 822 MHz). So `ExpandPass.stage` keeps compute there.
+  53.5 ms at 796 MHz and 62.4 ms at 632 MHz, the vertex stage 55.6 ms at 817 MHz). So `ExpandPass.stage` keeps compute
+  there.
 
 ### Suites
 
@@ -272,37 +294,47 @@ tessellate add entities and block entities, *Shadow* is Iris's whole shadow pass
 
 | Scene | Setup | Avg FPS | 1% low | Avg ms | p95 ms | Extract | Submit | Pose | Tessellate | Prepare | Draw | Shadow | Shadow prepare | GPU MHz |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| mob_pen_static | A | 321 | 173 | 3.12 | 4.64 | 0.57 | 0.25 | 0.09 | 0.53 | 1.13 | 0.02 | 0.00 | 0.00 | 689–700 |
-| mob_pen_live | A | 319 | 170 | 3.14 | 4.62 | 0.63 | 0.27 | 0.10 | 0.57 | 1.15 | 0.03 | 0.00 | 0.00 | 700 |
-| storage_room | A | 568 | 263 | 1.76 | 2.33 | 0.15 | 0.00 | 0.00 | 0.00 | 0.01 | 0.06 | 0.00 | 0.00 | 874–902 |
-| map_wall | A | 222 | 99 | 4.50 | 5.11 | 0.91 | 0.47 | 0.00 | 0.00 | 2.11 | 0.51 | 0.00 | 0.00 | 1192–1256 |
-| display_build | A | 555 | 245 | 1.80 | 2.38 | 0.61 | 0.12 | 0.00 | 0.01 | 0.44 | 0.03 | 0.00 | 0.00 | 750 |
-| control | A | 778 | 325 | 1.28 | 1.70 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 920–954 |
-| mob_pen_static | B | 33 | 22 | 29.87 | 40.78 | 1.05 | 0.42 | 0.11 | 0.61 | 1.02 | 0.05 | 1.68 | 0.37 | 1490–1563 |
-| mob_pen_live | B | 32 | 22 | 31.67 | 41.10 | 0.97 | 0.46 | 0.12 | 0.71 | 1.17 | 0.05 | 1.75 | 0.39 | 1253–1278 |
-| storage_room | B | 33 | 28 | 30.10 | 33.98 | 0.27 | 0.00 | 0.00 | 0.00 | 0.02 | 0.22 | 0.44 | 0.01 | 1063–1140 |
-| map_wall | B | 19 | 14 | 53.39 | 57.46 | 2.45 | 1.07 | 0.00 | 0.00 | 4.80 | 0.83 | 2.86 | 1.03 | 600 |
-| display_build | B | 36 | 22 | 28.11 | 41.87 | 0.98 | 0.31 | 0.00 | 0.01 | 0.28 | 0.09 | 3.32 | 1.52 | 1310–1372 |
-| control | B | 36 | 31 | 27.76 | 30.60 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.00 | 0.42 | 0.01 | 980–1015 |
-| mob_pen_static | C | 145 | 75 | 6.90 | 11.11 | 0.84 | 1.15 | 0.16 | 3.12 | 3.59 | 0.02 | 0.00 | 0.00 | 1065–1304 |
-| mob_pen_live | C | 138 | 74 | 7.25 | 11.62 | 0.86 | 1.24 | 0.17 | 3.35 | 3.85 | 0.02 | 0.00 | 0.00 | 969–1023 |
-| storage_room | C | 603 | 277 | 1.66 | 2.23 | 0.14 | 0.00 | 0.00 | 0.00 | 0.01 | 0.05 | 0.00 | 0.00 | 910–958 |
-| map_wall | C | 232 | 109 | 4.31 | 4.81 | 0.83 | 0.46 | 0.00 | 0.00 | 2.11 | 0.47 | 0.00 | 0.00 | 1144–1204 |
-| display_build | C | 534 | 247 | 1.87 | 2.50 | 0.62 | 0.14 | 0.00 | 0.01 | 0.45 | 0.03 | 0.00 | 0.00 | 700 |
-| control | C | 814 | 345 | 1.23 | 1.62 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 965–1011 |
-| mob_pen_static | D | 16 | 14 | 61.85 | 68.68 | 1.45 | 3.46 | 0.23 | 5.10 | 6.17 | 0.05 | 3.04 | 1.07 | 644–712 |
-| mob_pen_live | D | 18 | 14 | 56.92 | 65.43 | 1.16 | 3.20 | 0.23 | 5.19 | 6.30 | 0.05 | 2.99 | 1.10 | 676–701 |
-| storage_room | D | 31 | 27 | 31.88 | 35.71 | 0.32 | 0.00 | 0.00 | 0.00 | 0.02 | 0.22 | 0.46 | 0.00 | 1014–1051 |
-| map_wall | D | 19 | 14 | 53.02 | 57.23 | 2.40 | 1.07 | 0.00 | 0.00 | 4.79 | 0.85 | 2.86 | 0.99 | 600 |
-| display_build | D | 37 | 21 | 27.38 | 41.53 | 0.97 | 0.39 | 0.00 | 0.01 | 0.26 | 0.09 | 3.25 | 1.45 | 1294–1438 |
-| control | D | 36 | 31 | 27.57 | 30.71 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.00 | 0.43 | 0.00 | 1013–1015 |
+| mob_pen_static | A | 301 | 155 | 3.32 | 4.66 | 0.60 | 0.25 | 0.09 | 0.56 | 1.23 | 0.02 | 0.00 | 0.00 | 700–743 |
+| mob_pen_live | A | 303 | 161 | 3.30 | 4.64 | 0.66 | 0.27 | 0.10 | 0.60 | 1.23 | 0.03 | 0.00 | 0.00 | 700–770 |
+| storage_room | A | 573 | 270 | 1.74 | 2.51 | 0.13 | 0.00 | 0.00 | 0.00 | 0.01 | 0.05 | 0.00 | 0.00 | 868–911 |
+| map_wall | A | 225 | 98 | 4.44 | 5.06 | 0.93 | 0.50 | 0.00 | 0.00 | 2.01 | 0.51 | 0.00 | 0.00 | 1515–1586 |
+| display_build | A | 515 | 242 | 1.94 | 2.83 | 0.60 | 0.12 | 0.00 | 0.01 | 0.51 | 0.03 | 0.00 | 0.00 | 700 |
+| item_drops | A | 226 | 104 | 4.43 | 6.88 | 0.61 | 2.05 | 0.00 | 0.00 | 0.50 | 0.01 | 0.00 | 0.00 | 700–750 |
+| control | A | 767 | 325 | 1.30 | 1.88 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 894–952 |
+| mob_pen_static | B | 36 | 24 | 28.02 | 37.28 | 1.02 | 0.41 | 0.11 | 0.59 | 1.01 | 0.06 | 1.69 | 0.39 | 1640–1745 |
+| mob_pen_live | B | 34 | 23 | 29.20 | 38.30 | 0.97 | 0.45 | 0.12 | 0.64 | 1.09 | 0.05 | 1.73 | 0.38 | 1240–1519 |
+| storage_room | B | 38 | 30 | 26.13 | 31.47 | 0.27 | 0.00 | 0.00 | 0.00 | 0.02 | 0.20 | 0.41 | 0.00 | 1355–1509 |
+| map_wall | B | 27 | 15 | 37.46 | 51.09 | 1.87 | 0.85 | 0.00 | 0.00 | 3.32 | 0.92 | 2.87 | 0.98 | 838–1264 |
+| display_build | B | 37 | 22 | 27.23 | 39.65 | 1.01 | 0.31 | 0.00 | 0.01 | 0.27 | 0.09 | 2.52 | 0.72 | 1006–1541 |
+| item_drops | B | 25 | 16 | 39.48 | 58.77 | 0.83 | 2.15 | 0.00 | 0.00 | 0.42 | 0.03 | 3.78 | 0.38 | 1321–1597 |
+| control | B | 46 | 33 | 21.98 | 28.00 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.00 | 0.39 | 0.00 | 1322–1550 |
+| mob_pen_static | C | 143 | 76 | 6.98 | 11.10 | 0.83 | 1.20 | 0.17 | 3.19 | 3.67 | 0.02 | 0.00 | 0.00 | 1080–1235 |
+| mob_pen_live | C | 138 | 75 | 7.26 | 11.42 | 0.84 | 1.26 | 0.18 | 3.39 | 3.89 | 0.02 | 0.00 | 0.00 | 891–1151 |
+| storage_room | C | 711 | 308 | 1.41 | 1.95 | 0.11 | 0.00 | 0.00 | 0.00 | 0.01 | 0.05 | 0.00 | 0.00 | 992–1237 |
+| map_wall | C | 246 | 112 | 4.06 | 4.58 | 0.85 | 0.46 | 0.00 | 0.00 | 1.83 | 0.50 | 0.00 | 0.00 | 1287–1361 |
+| display_build | C | 631 | 261 | 1.58 | 2.20 | 0.63 | 0.12 | 0.00 | 0.01 | 0.31 | 0.03 | 0.00 | 0.00 | 881–1057 |
+| item_drops | C | 239 | 34 | 4.18 | 6.81 | 0.62 | 1.41 | 0.00 | 0.00 | 0.58 | 0.01 | 0.00 | 0.00 | 625–990 |
+| control | C | 817 | 339 | 1.22 | 1.58 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 934–982 |
+| mob_pen_static | D | 16 | 14 | 63.19 | 69.53 | 1.46 | 3.64 | 0.24 | 5.19 | 6.25 | 0.05 | 3.15 | 1.09 | 625–722 |
+| mob_pen_live | D | 17 | 14 | 58.83 | 68.30 | 1.21 | 3.46 | 0.23 | 5.14 | 6.15 | 0.05 | 3.07 | 1.08 | 664–679 |
+| storage_room | D | 32 | 26 | 30.93 | 35.86 | 0.29 | 0.00 | 0.00 | 0.00 | 0.03 | 0.22 | 0.47 | 0.01 | 1051–1095 |
+| map_wall | D | 19 | 14 | 52.63 | 57.07 | 2.51 | 1.23 | 0.00 | 0.00 | 4.16 | 0.83 | 3.52 | 1.19 | 600 |
+| display_build | D | 34 | 21 | 29.05 | 43.95 | 1.10 | 0.41 | 0.00 | 0.01 | 0.31 | 0.10 | 2.75 | 0.86 | 1253–1395 |
+| item_drops | D | 17 | 14 | 59.98 | 68.76 | 1.12 | 2.39 | 0.00 | 0.00 | 0.53 | 0.03 | 4.18 | 0.48 | 661–919 |
+| control | D | 36 | 31 | 27.44 | 31.00 | 0.01 | 0.00 | 0.00 | 0.00 | 0.01 | 0.00 | 0.43 | 0.01 | 1025–1082 |
 
-Without Mobium these scenes were (other sessions): `storage_room` in A 3.33 ms (300 FPS; with the
-cache 1.71 ms, 586 FPS), the mob pens as in the first column of the gate table above. Frames from different
-sessions follow the GPU clock more than anything else (*Findings*), so a speed-up is only quoted from one session.
+C's `item_drops` row: two of its three runs lost the window's focus for a moment (29 and 217 frames at 100 ms), so its
+1% low does not count and its frame is about 0.2 ms high; the `item_drops` table above has clean runs of the scene.
+One of B's `map_wall` runs has 27 such frames; it is not the median.
+Without Mobium these scenes were (other sessions): `storage_room` in A 3.33 ms (300 FPS; with the cache 1.71 ms, 586
+FPS), the mob pens and `item_drops` as in the first columns of the tables above. Frames from different sessions
+follow the GPU clock more than anything else (*Findings*), so a speed-up is only quoted from one session.
 
-**The README's table** comes from these numbers: `storage_room` 300 → 586 FPS (setup A, two earlier sessions), the
-three mob pen rows from the `/mobium gatec` table above (A, C, D).
+**The README's table** comes from build 8d26a26's round
+([raw data](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-10-27-thinkpad-x9-8d26a26/)):
+`storage_room` 300 → 586 FPS (setup A, two earlier sessions) and the three mob pens' `/mobium gatec` (A 282 → 335, C
+101 → 137, D 14.8 → 17.7 FPS). On a484d88 they are A 287 → 307, C 101 → 136 and D 13.6 → 16.4 FPS with the same CPU
+saving; A's frame with Module 2 ran at 700 instead of 750 MHz.
 
 ## Players' results
 
@@ -351,7 +383,7 @@ are reported without a target; `/mobium gateb` records the extra run without the
 inside `ModelPart.render`, so 3.2 of 5.3 ms of tessellation stay on the CPU without a single vertex written (*What
 Module 2 can take* below). Mobium can only take CPU work away; how much of it shows in the frame depends on the GPU.
 With Module 2 the iGPU clocked higher (CPU and GPU share one power budget), so the frames gained more than the CPU time
-saved. Gate C holds on build 8d26a26 too (D 2.18× lower CPU work and 1.20× faster, C 1.36× faster; *Latest results*).
+saved. Gate C holds on build a484d88 too (D 2.31× lower CPU work and 1.20× faster, C 1.35× faster; *Latest results*).
 
 ## Findings
 
@@ -412,13 +444,16 @@ every item's vertex writes skipped (the items vanish; the bound for what the CPU
 | NeoForge | on | 4.38 | 1.00 | 1.65 | 0.68 |
 | NeoForge | no vertices | 2.76 | 0.73 | 1.34 | 0.18 |
 
-- Frames 3.9× (Fabric) and 3.6× (NeoForge) faster; `prepare` 18× lower. Besides the vertex writes Module 2 also
+- Frames 3.9× (Fabric) and 3.6× (NeoForge) faster; `prepare` 18× lower. At 1920×1080 in the benchmark round
+  (*Latest results*) 2.9× (A), 2.2× (B), 3.2× (C) and 1.7× (D) faster, the entity CPU work 17–56× lower; with a shader
+  pack most of it is Iris's shadow pass, which draws the items again. Besides the vertex writes Module 2 also
   removes most of their upload and the per-quad builder lookups: vanilla asks for the builder once per quad, and Iris's
   and ETF's hooks on that call cost about as much as the vertices (`docs/vanilla-notes.md` §25).
 - What stays on the CPU: the render states (rebuilt each frame, with each item model's bounding box), one submit per
   drawn copy, and the client's own tick of the items, which runs between frames and is outside Mobium's scope.
 - Extract and submit, whose code Module 2 does not change, read 0.2–0.45 ms higher with it on (each condition the
-  average of two rounds); not explained yet. The frame time includes it.
+  average of two rounds); in the benchmark round 0.5–0.6 ms in A and C and 1.2–1.6 ms with a shader pack. Not
+  explained yet. The frame time includes it.
 
 ### Module 2's fixed cost: a compute batch of its own
 
@@ -487,9 +522,11 @@ With Complementary Reimagined r5.9.3 at its defaults, as setups B and D run it:
 
 The iGPU picks its clock per workload, and CPU and GPU share one power budget. Between sessions, scenes where Mobium
 does nothing moved by up to ±18 % with the clock: `control` 1.18× slower in D at 668–766 against 900–942 MHz, 0.85× in C
-at 1160–1195 against 904–958 MHz. A's mob pens looked 1.07–1.14× slower with Module 2
-across sessions and are 1.19× faster with it in one session. So speed-ups are measured within one session, alternating
-(the gate commands, `/mobium stages`, `/mobium benchmark`), and `summary.csv` records `gpu_mhz`.
+at 1160–1195 against 904–958 MHz. A's mob pens looked 1.07–1.14× slower with Module 2 across sessions and are
+faster with it in one session, by as much as the clock allows: Module 2 lowers their CPU work 1.8–1.9× in every
+session, and the frame gained 1.19× at 750 MHz on build 8d26a26 and 1.07× at 700 MHz on a484d88. So speed-ups are
+measured within one session, alternating (the gate commands, `/mobium stages`, `/mobium benchmark`), and `summary.csv`
+records `gpu_mhz`.
 
 ### Slow vanilla `storage_room`
 
