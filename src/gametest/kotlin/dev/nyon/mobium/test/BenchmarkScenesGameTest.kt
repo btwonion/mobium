@@ -100,7 +100,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
             checkDebugEntry(context)
             checkSuiteCommand(context)
             checkGateB(context)
-            checkGateC(context)
+            checkGateC(context, null)
+            checkGateC(context, "item_drops")
             checkStages(context)
             setCache(context, true)
         }
@@ -180,16 +181,23 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         false
     }
 
-    /** A short `/mobium gatec`: `mob_pen_live` with Module 2 off and on, Gate C's numbers, Module 2 restored. */
-    private fun checkGateC(context: ClientGameTestContext) {
+    /**
+     * A short `/mobium gatec` in [scene] (null: without the argument, `mob_pen_live`): the scene with Module 2 off and
+     * on, Gate C's numbers, Module 2 restored.
+     */
+    private fun checkGateC(context: ClientGameTestContext, scene: String?) {
         if (!module2Runs(context)) return
-        val gate = runPlan(context, "mobium gatec $BENCH_SECONDS 1", "gatec-")
-        val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
-        check(setups.size == 2 && setups.count { "+parts" in it } == 1) { "Unexpected Gate C rows: $gate" }
+        val command = if (scene == null) "mobium gatec $BENCH_SECONDS 1" else "mobium gatec $BENCH_SECONDS 1 $scene"
+        val gate = runPlan(context, command, "gatec-")
+        val rows = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',') }
+        val scenes = rows.map { it[0] }.toSet()
+        check(rows.size == 2 && scenes == setOf(scene ?: "mob_pen_live") && rows.count { "+parts" in it[1] } == 1) {
+            "Unexpected /$command rows: $gate"
+        }
         fun value(name: String) = gate.single { it.startsWith("# $name,") }.substringAfter(',').toDouble()
         LOGGER.info(
-            "Gate C first look (/mobium gatec {} 1): entity CPU work {}x lower with Module 2, frame {}x",
-            BENCH_SECONDS, value("gate_c_cpu_without_over_with"), value("gate_c_frame_with_over_without")
+            "Module 2 first look (/{}): entity CPU work {}x lower with Module 2, frame {}x",
+            command, value("gate_c_cpu_without_over_with"), value("gate_c_frame_with_over_without")
         )
         context.runOnClient<RuntimeException> {
             check(PartTransform.active && config.parts.enabled) { "/mobium gatec did not restore Module 2" }

@@ -34,18 +34,18 @@ import java.util.Locale
 
 /**
  * Runs benchmark plans unattended, so a whole setup is one command:
- * - `/mobium suite [seconds] [runs] [scenes…]`: every scene (default all six), each built with the benchmark datapack,
- *   settled for at least [SETTLE_SECONDS] and until section rebuilds, light updates and server ticks have calmed down,
- *   then recorded `runs` times;
+ * - `/mobium suite [seconds] [runs] [scenes…]`: every scene (default all seven), each built with the benchmark
+ *   datapack, settled for at least [SETTLE_SECONDS] and until section rebuilds, light updates and server ticks have
+ *   calmed down, then recorded `runs` times;
  * - `/mobium gatea [seconds] [runs]`: `storage_room` with the static cache off and on, alternating, then the
  *   speed-up against the 1.5× target of Gate A (passed with the chest prototype; kept for comparisons);
  * - `/mobium gateb [seconds] [runs]`: `storage_room` with the cache, the same with the cache's draw calls skipped,
  *   `control` with the cache and `control` without it, in turn, then Gate B's numbers ([GateB]): what the cached
  *   objects cost Mobium against `control` (target at most 1.2×), the whole frame against `control`, what drawing them
  *   costs, and `control` with the cache against `control` without it (must not be slower);
- * - `/mobium gatec [seconds] [runs]`: `mob_pen_live` with Module 2 off and on, alternating, then Gate C's numbers
- *   ([GateC]): the entity CPU work without over with Module 2 (target at least 1.5× in setup D) and the frame time
- *   with over without (must not be slower);
+ * - `/mobium gatec [seconds] [runs] [scene]`: a scene (default `mob_pen_live`) with Module 2 off and on, alternating,
+ *   then Gate C's numbers ([GateC]): the entity CPU work without over with Module 2 (target at least 1.5× in setup D)
+ *   and the frame time with over without (must not be slower); in another scene the same numbers without the verdict;
  * - `/mobium stages [seconds] [runs] [scene]`: a scene (default `mob_pen_live`) with Module 2's expand pass as a
  *   compute dispatch and in the vertex stage, alternating ([ExpandPass]), then the frame time of the vertex stage over
  *   compute's;
@@ -174,11 +174,16 @@ object BenchSuite {
         return null
     }
 
-    /** Starts `/mobium gatec`; returns an error message or null. */
-    fun startGateC(seconds: Int, runs: Int): Component? {
-        val plan = (1..runs).flatMap { listOf(Step("mob_pen_live", null, parts = false), Step("mob_pen_live", null, parts = true)) }
+    /** Starts `/mobium gatec`; returns an error message or null. Gate C's targets apply in [GateC.SCENE] only. */
+    fun startGateC(seconds: Int, runs: Int, scene: String): Component? {
+        if (scene !in SCENES) return Component.translatable("mobium.suite.unknown_scene", scene)
+        val plan = (1..runs).flatMap { listOf(Step(scene, null, parts = false), Step(scene, null, parts = true)) }
         startGate(plan, seconds, Kind.GATE_C, "mobium.suite.gatec_unavailable", Module.PART_TRANSFORM)?.let { return it }
-        chat(Component.translatable("mobium.suite.gatec_started", runs, seconds, minutes(plan.size, 1)))
+        val minutes = minutes(plan.size, 1)
+        chat(
+            if (scene == GateC.SCENE) Component.translatable("mobium.suite.gatec_started", runs, seconds, minutes)
+            else Component.translatable("mobium.suite.gatec_scene_started", scene, runs, seconds, minutes)
+        )
         return null
     }
 
@@ -670,6 +675,16 @@ object BenchSuite {
         }
         if (kind == Kind.GATE_C) {
             gateC(medians)?.let { gate ->
+                val scene = medians[0].scene
+                if (scene != GateC.SCENE) {
+                    val cpu = fmt(gate.cpu, 2)
+                    chat(Component.translatable("mobium.suite.gatec_scene_result", scene, cpu, fmt(gate.frame, 2)))
+                    Mobium.LOGGER.info(
+                        "Module 2 in {}: entity CPU work {}x lower with it, frame {}x the frame without it",
+                        scene, cpu, fmt(gate.frame, 3)
+                    )
+                    return@let
+                }
                 val cpuVerdict = when {
                     !gateCSetupD(medians) -> "mobium.suite.gatec_not_d"
                     gate.cpuPasses -> "mobium.suite.gatea_pass"

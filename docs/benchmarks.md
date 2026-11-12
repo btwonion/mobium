@@ -24,7 +24,7 @@ and players' files in `players/`. A build id in an older round may predate a rew
   Features is installed, `+fa` if a resource pack with "fresh" in its id is enabled. Before it starts, the run warns in chat about anything that breaks the protocol: a window other than
   1920×1080, battery power, a low-power profile, or a setup other than the instance's (below). `/mobium stop` aborts a
   run.
-- **`/mobium suite [seconds] [runs] [scenes…]`** — runs a whole setup unattended (defaults: 60 s, 3 runs, all six
+- **`/mobium suite [seconds] [runs] [scenes…]`** — runs a whole setup unattended (defaults: 60 s, 3 runs, all seven
   scenes). For each scene it builds the scene through the integrated server (singleplayer only; no cheats needed),
   waits at least 10 s and until section rebuilds, client light updates and server ticks have calmed down, then
   records `runs` runs. It rewrites `mobium-bench/suite-<timestamp>.csv` with the medians after every run (quitting
@@ -44,10 +44,13 @@ and players' files in `players/`. A build id in an older round may predate a rew
   the medians and those numbers, plus the run without draw calls over `control` before their CPU time is added back
   (`gate_b_nodraw_over_control`). Both gate commands switch the cache themselves for the plan, even when it is off
   in the settings (which they do not save).
-- **`/mobium gatec [seconds] [runs]`** — Gate C: records `mob_pen_live` with Module 2 off and on, alternating
-  (defaults: 60 s, 3 runs each), then prints the entity CPU work (`prepare` + `shadow_prepare`) without over with
-  Module 2 (target at least 1.5× in setup D) and the frame time with over without (must not be slower), and writes
-  `mobium-bench/gatec-<timestamp>.csv`.
+- **`/mobium gatec [seconds] [runs] [scene]`** — Gate C: records a scene with Module 2 off and on, alternating
+  (defaults: 60 s, 3 runs each, `mob_pen_live`; about 7 minutes), then prints the entity CPU work (`prepare` +
+  `shadow_prepare`) without over with Module 2 (target at least 1.5× in setup D) and the frame time with over without
+  (must not be slower), and writes `mobium-bench/gatec-<timestamp>.csv`. The targets are Gate C's, so they apply to
+  `mob_pen_live` only: in another scene (`/mobium gatec 60 3 item_drops`) it prints and writes the same two numbers
+  without a verdict, and the file's `scene` column names the scene. Like the other gates, it switches Module 2 on for
+  the plan.
 - **`/mobium stages [seconds] [runs] [scene]`** — Module 2's expand pass as a compute dispatch and in the vertex stage
   (`parts/ExpandPass.kt`), alternating, in one scene (defaults: 60 s, 3 runs each, `mob_pen_live`; about 7 minutes),
   then prints the frame time with the vertex stage over compute's and writes `mobium-bench/stages-<timestamp>.csv`.
@@ -183,18 +186,18 @@ the scene two seconds later in the same place (each scene replaces the previous 
 
 ### Running a round unattended
 
-`python3 benchmark/bench_round.py` runs setups A–D one after another without anyone at the keyboard (about three
-hours; `A D` for some setups, `--dry-run` to see the plan, `--quick` for a five-minute smoke test). Before it starts
-it checks mains power, an external monitor, that every instance has the bench kit's Mobium jar and that none of them
-is running. For each setup it writes the plan (`PLANS` in the script: `/mobium suite` everywhere, `/mobium stages` in
-A–D, `/mobium gatec` in A, C and D, and in A also `/mobium stages 60 3 display_build`) to the instance's
-`mobium-bench/autorun` and starts the instance with Prism's command line straight into the world. Mobium
-(`bench/BenchAutorun.kt`) puts the fullscreen window on the monitor whose name contains `--display` (default `AOC`) at
-1920×1080, runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it
-measured on) and closes the game. Afterwards the script copies the round's files into
-`<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (`-<build>` appended when an earlier round of the day is
-there), prints the medians, and commits and pushes the round. Nobody may use the computer while it
-runs: the game owns the monitor, and anything else running costs frame time.
+`python3 benchmark/bench_round.py` runs setups A–D one after another without anyone at the keyboard (about three and
+a half hours; `A D` for some setups, `--dry-run` to see the plan, `--quick` for a five-minute smoke test). Before it
+starts it checks mains power, an external monitor, that every instance has the bench kit's Mobium jar and that none of
+them is running. For each setup it writes the plan (`PLANS` in the script: `/mobium suite`, `/mobium stages` and
+`/mobium gatec 60 3 item_drops` in A–D, `/mobium gatec` in A, C and D, and in A also
+`/mobium stages 60 3 display_build`) to the instance's `mobium-bench/autorun` and starts the instance with Prism's
+command line straight into the world. Mobium (`bench/BenchAutorun.kt`) puts the fullscreen window on the monitor whose
+name contains `--display` (default `AOC`) at 1920×1080, runs the commands in turn, writes `mobium-bench/autorun-done`
+(what it did, the window and display it measured on) and closes the game. Afterwards the script copies the round's
+files into `<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (`-<build>` appended when an earlier round of the
+day is there), prints the medians, and commits and pushes the round. Nobody may use the computer while it runs: the
+game owns the monitor, and anything else running costs frame time.
 
 The data repository is [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks); the raw-data
 links below point into it. Its checkout sits next to this one (`../mobium-benchmarks`, or `--data`); the script

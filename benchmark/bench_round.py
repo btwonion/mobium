@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runs a benchmark round unattended in the Prism instances "Mobium Bench A–D" (docs/benchmarks.md).
 
-    python3 benchmark/bench_round.py              # setups A, B, C, D in turn, about 2.5 hours
+    python3 benchmark/bench_round.py              # setups A, B, C, D in turn, about 3.5 hours
     python3 benchmark/bench_round.py A D          # some setups only
     python3 benchmark/bench_round.py --dry-run    # checks and plans, launches nothing
     python3 benchmark/bench_round.py --quick A    # smoke test: one short /mobium stages, results in build/
@@ -38,14 +38,15 @@ PRISM = ["flatpak", "run", "org.prismlauncher.PrismLauncher"]
 
 # Per setup: the client commands of the round, in order (docs/benchmarks.md "Tools"), and their length in minutes.
 PLANS = {
-    "A": ["mobium suite", "mobium gatec", "mobium stages", "mobium stages 60 3 display_build"],
-    "B": ["mobium suite", "mobium stages"],
-    "C": ["mobium suite", "mobium gatec", "mobium stages"],
-    "D": ["mobium suite", "mobium gatec", "mobium stages"],
+    "A": ["mobium suite", "mobium gatec", "mobium stages", "mobium stages 60 3 display_build",
+          "mobium gatec 60 3 item_drops"],
+    "B": ["mobium suite", "mobium stages", "mobium gatec 60 3 item_drops"],
+    "C": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
+    "D": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
 }
 QUICK_PLAN = ["mobium stages 5 1 display_build"]
 MINUTES = {"mobium suite": 26, "mobium gatec": 8, "mobium stages": 8, "mobium stages 60 3 display_build": 8,
-           QUICK_PLAN[0]: 2}
+           "mobium gatec 60 3 item_drops": 8, QUICK_PLAN[0]: 2}
 START_MINUTES = 5
 
 

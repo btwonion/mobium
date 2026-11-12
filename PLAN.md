@@ -74,5 +74,6 @@ GPU like model parts (`docs/architecture.md`, *Items*).
 - [x] Self-check `--mode parts` on both loaders and on Vulkan, gametests: 0 differing vertices, pictures identical.
 - [x] `item_drops` in the dev client, Module 2 off and on: frames 3.9× (Fabric) and 3.6× (NeoForge) faster
       (`docs/benchmarks.md`, *Dropped items*).
-- [ ] `item_drops` in a benchmark round (setups A–D, 1920×1080), Module 2 off and on.
+- [ ] `item_drops` in a benchmark round (setups A–D, 1920×1080), Module 2 off and on: `/mobium gatec 60 3 item_drops`,
+      the last command of every setup's plan in `benchmark/bench_round.py`.
 - [ ] The maintainer's visual check (*How to verify* of the PR).
