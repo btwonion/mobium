@@ -1,5 +1,6 @@
 package dev.nyon.mobium.bench
 
+import com.mojang.brigadier.Command
 import com.mojang.brigadier.arguments.IntegerArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
@@ -15,7 +16,7 @@ import net.minecraft.network.chat.Component
 
 /**
  * Client commands `/mobium bench <scene> <seconds> [setup]`, `/mobium suite [seconds] [runs] [scenes…]`,
- * `/mobium gatea [seconds] [runs]`, `/mobium gateb [seconds] [runs]`, `/mobium gatec [seconds] [runs]`,
+ * `/mobium gatea [seconds] [runs]`, `/mobium gateb [seconds] [runs]`, `/mobium gatec [seconds] [runs] [scene]`,
  * `/mobium stages [seconds] [runs] [scene]`, `/mobium benchmark` (see [BenchSuite]) and `/mobium stop`. The tree is
  * built for any command source type, so the same code registers with Fabric's client command API and NeoForge's
  * `RegisterClientCommandsEvent`. The scene is only a label; build it first with the benchmark datapack.
@@ -90,13 +91,14 @@ object BenchCommand {
         )
         .then(
             LiteralArgumentBuilder.literal<S>("gatec")
-                .executes { gateC(BenchSuite.DEFAULT_SECONDS, BenchSuite.DEFAULT_RUNS) }
+                .executes { gateC(BenchSuite.DEFAULT_SECONDS, BenchSuite.DEFAULT_RUNS, GateC.SCENE) }
                 .then(
                     RequiredArgumentBuilder.argument<S, Int>("seconds", IntegerArgumentType.integer(MIN_SECONDS, MAX_SECONDS))
-                        .executes { gateC(seconds(it), BenchSuite.DEFAULT_RUNS) }
+                        .executes { gateC(seconds(it), BenchSuite.DEFAULT_RUNS, GateC.SCENE) }
                         .then(
                             RequiredArgumentBuilder.argument<S, Int>("runs", IntegerArgumentType.integer(1, MAX_RUNS))
-                                .executes { gateC(seconds(it), runs(it)) }
+                                .executes { gateC(seconds(it), runs(it), GateC.SCENE) }
+                                .then(sceneArgument { gateC(seconds(it), runs(it), scene(it)) })
                         )
                 )
         )
@@ -109,14 +111,7 @@ object BenchCommand {
                         .then(
                             RequiredArgumentBuilder.argument<S, Int>("runs", IntegerArgumentType.integer(1, MAX_RUNS))
                                 .executes { stages(seconds(it), runs(it), STAGES_SCENE) }
-                                .then(
-                                    RequiredArgumentBuilder.argument<S, String>("scene", StringArgumentType.word())
-                                        .suggests { _, builder ->
-                                            BenchSuite.SCENES.forEach(builder::suggest)
-                                            builder.buildFuture()
-                                        }
-                                        .executes { stages(seconds(it), runs(it), StringArgumentType.getString(it, "scene")) }
-                                )
+                                .then(sceneArgument { stages(seconds(it), runs(it), scene(it)) })
                         )
                 )
         )
@@ -177,9 +172,20 @@ object BenchCommand {
             1
         })
 
+    /** A `scene` argument with the benchmark scenes as suggestions; the plan checks it against [BenchSuite.SCENES]. */
+    private fun <S> sceneArgument(command: Command<S>): RequiredArgumentBuilder<S, String> =
+        RequiredArgumentBuilder.argument<S, String>("scene", StringArgumentType.word())
+            .suggests { _, builder ->
+                BenchSuite.SCENES.forEach(builder::suggest)
+                builder.buildFuture()
+            }
+            .executes(command)
+
     private fun <S> seconds(context: CommandContext<S>) = IntegerArgumentType.getInteger(context, "seconds")
 
     private fun <S> runs(context: CommandContext<S>) = IntegerArgumentType.getInteger(context, "runs")
+
+    private fun <S> scene(context: CommandContext<S>) = StringArgumentType.getString(context, "scene")
 
     private fun suite(seconds: Int, runs: Int, scenes: List<String>): Int {
         BenchSuite.startSuite(seconds, runs, scenes)?.let { chat(it); return 0 }
@@ -196,8 +202,8 @@ object BenchCommand {
         return 1
     }
 
-    private fun gateC(seconds: Int, runs: Int): Int {
-        BenchSuite.startGateC(seconds, runs)?.let { chat(it); return 0 }
+    private fun gateC(seconds: Int, runs: Int, scene: String): Int {
+        BenchSuite.startGateC(seconds, runs, scene)?.let { chat(it); return 0 }
         return 1
     }
 

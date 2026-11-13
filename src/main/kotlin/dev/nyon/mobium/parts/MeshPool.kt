@@ -10,19 +10,33 @@ import org.lwjgl.system.MemoryUtil
  *   polygon order, then the face's `Direction` ordinal;
  * - vanilla cubes with Sodium as Sodium's `EntityRenderer.renderCuboid` writes them from its `ModelCuboid`
  *   ([SodiumCubes]): the corner origin and sizes, four vertices `corner, u, v`, in Sodium's face order, then the
- *   `Direction` ordinal with [SODIUM_LAYOUT] set.
- * The cube remembers where (`PartMeshHolder`, so a lookup is a few field reads); new quads collect in [pending] until
- * the expand pass uploads them. EMF's parts are cubes too. Render thread only.
+ *   `Direction` ordinal with [SODIUM_LAYOUT] set;
+ * - items' baked quads ([ItemMeshes]): four vertices `x, y, z, u, v` as `BakedQuad` holds them, then the `Direction`
+ *   ordinal with the tint index, the light emission and whether NeoForge uses the quad's baked normal
+ *   ([ITEM_TINT_SHIFT], [ITEM_EMISSION_SHIFT], [ITEM_BAKED_NORMAL]), then the quad's packed normal (Sodium's, or
+ *   NeoForge's baked one).
+ * The last word is 0 for cubes. The cube remembers where (`PartMeshHolder`, so a lookup is a few field reads); new
+ * quads collect in [pending] until the expand pass uploads them. EMF's parts are cubes too. Render thread only.
  *
  * A cube that cannot be expanded (a polygon with other than four vertices, a normal that is not one of the six axis
  * directions, no `ModelCuboid`) is remembered as such and stays on the vanilla path. [clear] (resource reload, level
  * change) starts the pool over: every cube is written again when next drawn.
  */
 object MeshPool {
-    const val QUAD_WORDS = 21
+    const val QUAD_WORDS = 22
 
-    /** Set in a quad's last word when the quad has Sodium's layout. */
+    /** Set in a quad's direction word when the quad has Sodium's layout. */
     const val SODIUM_LAYOUT = 0x100
+
+    /** An item quad's tint index in its direction word ([ITEM_UNTINTED] for none), 4 bits. */
+    const val ITEM_TINT_SHIFT = 12
+    const val ITEM_UNTINTED = 0xF
+
+    /** An item quad's light emission (0 to 15) in its direction word. */
+    const val ITEM_EMISSION_SHIFT = 16
+
+    /** Set in an item quad's direction word when NeoForge draws it with its baked normal (the quad's last word). */
+    const val ITEM_BAKED_NORMAL = 0x200
     private const val QUAD_BYTES = QUAD_WORDS * 4
     private const val INITIAL_PENDING_QUADS = 4096
 
@@ -69,6 +83,20 @@ object MeshPool {
         generation++
         quadCount = 0
         uploadedQuads = 0
+        ItemMeshes.clear()
+    }
+
+    /** Address for [quads] new quads after the pool's last; [commit] adds them once written. */
+    fun appendAddress(quads: Int): Long {
+        ensurePending(quadCount - uploadedQuads + quads)
+        return pending + (quadCount - uploadedQuads).toLong() * QUAD_BYTES
+    }
+
+    /** Adds the [quads] quads written at [appendAddress]; returns the first one's index. */
+    fun commit(quads: Int): Int {
+        val first = quadCount
+        quadCount += quads
+        return first
     }
 
     private fun write(cube: ModelPart.Cube): Int {
@@ -90,7 +118,8 @@ object MeshPool {
                 address += 20
             }
             MemoryUtil.memPutInt(address, direction(polygon))
-            address += 4
+            MemoryUtil.memPutInt(address + 4, 0)
+            address += 8
         }
         quadCount = first + polygons.size
         return first
@@ -117,6 +146,7 @@ object MeshPool {
             MemoryUtil.memPutInt(address + 72, 0)
             MemoryUtil.memPutInt(address + 76, 0)
             MemoryUtil.memPutInt(address + 80, SodiumCubes.NORMAL_DIRECTIONS[SodiumCubes.normals[face]] or SODIUM_LAYOUT)
+            MemoryUtil.memPutInt(address + 84, 0)
             address += QUAD_BYTES
         }
         quadCount = first + faces

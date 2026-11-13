@@ -83,11 +83,14 @@ data class CacheTypes(
  * Module 2: animated models keep CPU posing, the GPU expands one record per part into vertices.
  *
  * @param enabled switches the module; it only runs where compute shaders exist.
- * @param excludedEntities are entity type ids (e.g. `minecraft:zombie`) that always take the vanilla path.
+ * @param items lets the module expand items' baked quads too (dropped items, held items, items in frames).
+ * @param excludedEntities are entity type ids (e.g. `minecraft:zombie`, or `minecraft:item` for dropped items) whose
+ * models and items always take the vanilla path.
  */
 @Serializable
 data class PartsConfig(
     var enabled: Boolean = true,
+    var items: Boolean = true,
     var excludedEntities: MutableList<String> = mutableListOf()
 ) {
     fun deepCopy() = copy(excludedEntities = excludedEntities.toMutableList())

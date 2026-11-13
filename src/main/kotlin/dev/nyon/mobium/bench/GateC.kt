@@ -1,13 +1,14 @@
 package dev.nyon.mobium.bench
 
 /**
- * Gate C's numbers (docs/benchmarks.md, *Gates*), from `mob_pen_live` with Module 2 off and on in one session:
+ * Gate C's numbers (docs/benchmarks.md, *Gates*), from [SCENE] with Module 2 off and on in one session:
  *
  * - **[cpu]**: the entity CPU work of the frame, `prepare` + `shadow_prepare` (posing, tessellation and upload of the
  *   level's and Iris's shadow pass's prepare stages), without Module 2 over with it. Target at least [CPU_TARGET] in
  *   setup D (shader pack and Fresh Animations); reported in the other setups.
  * - **[frame]**: the frame time with Module 2 over without it; must not be slower, up to [FRAME_TOLERANCE], in C and D.
  *
+ * `/mobium gatec` in another scene gives the same two numbers, which the targets do not apply to.
  * Pure, so the arithmetic is unit-tested.
  */
 class GateC(@JvmField val cpu: Double, @JvmField val frame: Double) {
@@ -21,6 +22,9 @@ class GateC(@JvmField val cpu: Double, @JvmField val frame: Double) {
     class Run(@JvmField val frameMs: Double, @JvmField val prepareMs: Double, @JvmField val shadowPrepareMs: Double)
 
     companion object {
+        /** The scene the targets apply to. */
+        const val SCENE = "mob_pen_live"
+
         const val CPU_TARGET = 1.5
 
         /** The same noise allowance as Gate B's `control` check. */

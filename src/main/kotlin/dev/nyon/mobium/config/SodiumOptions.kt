@@ -72,6 +72,14 @@ class SodiumOptions : ConfigEntryPoint {
                     .setDefaultValue(defaults.parts.enabled)
                     .setBinding({ config.parts.enabled = it }, { config.parts.enabled })
             )
+            .addOption(
+                builder.createBooleanOption(id("parts_items"))
+                    .setName(Component.translatable("mobium.settings.parts_items"))
+                    .setTooltip(Component.translatable("mobium.settings.parts_items.tooltip"))
+                    .setStorageHandler(save)
+                    .setDefaultValue(defaults.parts.items)
+                    .setBinding({ config.parts.items = it }, { config.parts.items })
+            )
 
         val lod = builder.createOptionGroup()
             .setName(Component.translatable("mobium.module.animation_lod"))

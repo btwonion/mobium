@@ -73,6 +73,9 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 // Particles (the smoke of the mobs a scene reset removes, the ender chest's) differ between two
                 // screenshots on their own.
                 it.options.particles().set(ParticleStatus.MINIMAL)
+                // The enchantment glint scrolls with the wall clock, also with ticks frozen (the part gallery's
+                // enchanted items); at speed 0 it stands still.
+                it.options.glintSpeed().set(0.0)
             }
             // The baselines are vanilla's pictures; each static scene is then compared with the cache on.
             setCache(context, false)
@@ -97,7 +100,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
             checkDebugEntry(context)
             checkSuiteCommand(context)
             checkGateB(context)
-            checkGateC(context)
+            checkGateC(context, null)
+            checkGateC(context, "item_drops")
             checkStages(context)
             setCache(context, true)
         }
@@ -177,16 +181,23 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         false
     }
 
-    /** A short `/mobium gatec`: `mob_pen_live` with Module 2 off and on, Gate C's numbers, Module 2 restored. */
-    private fun checkGateC(context: ClientGameTestContext) {
+    /**
+     * A short `/mobium gatec` in [scene] (null: without the argument, `mob_pen_live`): the scene with Module 2 off and
+     * on, Gate C's numbers, Module 2 restored.
+     */
+    private fun checkGateC(context: ClientGameTestContext, scene: String?) {
         if (!module2Runs(context)) return
-        val gate = runPlan(context, "mobium gatec $BENCH_SECONDS 1", "gatec-")
-        val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
-        check(setups.size == 2 && setups.count { "+parts" in it } == 1) { "Unexpected Gate C rows: $gate" }
+        val command = if (scene == null) "mobium gatec $BENCH_SECONDS 1" else "mobium gatec $BENCH_SECONDS 1 $scene"
+        val gate = runPlan(context, command, "gatec-")
+        val rows = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',') }
+        val scenes = rows.map { it[0] }.toSet()
+        check(rows.size == 2 && scenes == setOf(scene ?: "mob_pen_live") && rows.count { "+parts" in it[1] } == 1) {
+            "Unexpected /$command rows: $gate"
+        }
         fun value(name: String) = gate.single { it.startsWith("# $name,") }.substringAfter(',').toDouble()
         LOGGER.info(
-            "Gate C first look (/mobium gatec {} 1): entity CPU work {}x lower with Module 2, frame {}x",
-            BENCH_SECONDS, value("gate_c_cpu_without_over_with"), value("gate_c_frame_with_over_without")
+            "Module 2 first look (/{}): entity CPU work {}x lower with Module 2, frame {}x",
+            command, value("gate_c_cpu_without_over_with"), value("gate_c_frame_with_over_without")
         )
         context.runOnClient<RuntimeException> {
             check(PartTransform.active && config.parts.enabled) { "/mobium gatec did not restore Module 2" }
@@ -359,12 +370,15 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
     }
 
-    /** Runs `/mobium suite` on the control scene and checks its medians file. */
+    /**
+     * Runs `/mobium suite` on the control scene and checks its medians file; the window is not minimized, so vanilla
+     * did not cap the run.
+     */
     private fun checkSuiteCommand(context: ClientGameTestContext) {
         val medians = runPlan(context, "mobium suite $BENCH_SECONDS 1 control", "suite-")
         check(
-            medians.size == 3 && medians[1].startsWith("control,") && medians[2].startsWith("# build,") &&
-                !medians[2].endsWith(",unknown")
+            medians.size == 4 && medians[1].startsWith("control,") && medians[2] == "# throttled_runs,0" &&
+                medians[3].startsWith("# build,") && !medians[3].endsWith(",unknown")
         ) {
             "Unexpected suite medians: $medians"
         }
@@ -378,6 +392,11 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         check(row.getValue("frames").toInt() > 0) { "No frames recorded: $row" }
         check(row.getValue("resolution").matches(Regex("\\d+x\\d+"))) { "Window size not recorded: $row" }
         check(row.getValue("os").isNotBlank() && row.getValue("driver").isNotBlank()) { "OS or driver not recorded: $row" }
+        check(row.getValue("throttled_frames") == "0") { "Frames counted as capped in a visible window: $row" }
+        // Empty where the driver has no throttle files (other GPUs, CI); otherwise `pl1 92%; none 8%`.
+        check(row.getValue("gpu_throttle").matches(Regex("([a-z0-9_]+ (<1|\\d{1,3})%(; |$))*"))) {
+            "Unexpected gpu_throttle: $row"
+        }
         check(row.getValue("entities").toInt() >= MOBS) { "Expected at least $MOBS entities: $row" }
         for (column in listOf("extract_entities_ms", "submit_entities_ms", "pose_entities_ms", "tessellate_entities_ms")) {
             check(row.getValue(column).toDouble() > 0.0) { "$column was not measured: $row" }
@@ -462,7 +481,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
         // Must match X0 / Z0 in benchmark/generate.py.
         val ORIGIN = BlockPos(-3840, -60, -2816)
-        val SCENES = listOf("control", "storage_room", "map_wall", "display_build", "mob_pen_static", "mob_pen_live")
+        // The mob pens come last: the bench, suite and gate checks after the loop record the scene that stands, mob_pen_live.
+        val SCENES = listOf("control", "storage_room", "map_wall", "display_build", "item_drops", "mob_pen_static", "mob_pen_live")
 
         /** Not a benchmark scene: every cached type side by side (benchmark/generate.py). */
         const val GALLERY = "cache_gallery"

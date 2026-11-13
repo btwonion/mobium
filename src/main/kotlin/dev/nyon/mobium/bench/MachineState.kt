@@ -4,8 +4,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Power and GPU clock state of the machine, read from Linux sysfs (empty strings and no clock elsewhere). Benchmarks
- * record it because it changes results without changing anything visible: on the development laptop vanilla
+ * Power, GPU clock and GPU throttle state of the machine, read from Linux sysfs (empty strings and no files elsewhere).
+ * Benchmarks record it because it changes results without changing anything visible: on the development laptop vanilla
  * `storage_room` ran 5× slower in some sessions (the iGPU's clock range is 400–1950 MHz) and slower still on battery
  * (docs/benchmarks.md, *Measurement pitfalls*).
  *
@@ -39,6 +39,24 @@ class MachineState(private val sys: Path) {
         return null
     }
 
+    /**
+     * The file saying why the render GPU's clock is not higher, read by [readThrottle]: `xe` lists the active reasons
+     * per GT (`device/tile0/gt0/freq0/throttle/reasons`), `i915` has a 0/1 file per reason next to
+     * `gt/gt0/throttle_reason_status`, which this returns. Null when there is none. docs/benchmarks.md, *Frames between
+     * sessions follow the GPU clock*, says what the reasons showed.
+     */
+    fun gpuThrottleFile(): Path? {
+        for (card in list(sys.resolve("class/drm"))) {
+            val name = card.fileName.toString()
+            if (!name.startsWith("card") || '-' in name) continue
+            val xe = card.resolve("device/tile0/gt0/freq0/throttle/reasons")
+            if (Files.isReadable(xe)) return xe
+            val i915 = card.resolve("gt/gt0/throttle_reason_status")
+            if (Files.isReadable(i915)) return i915
+        }
+        return null
+    }
+
     companion object {
         val SYSTEM = MachineState(Path.of("/sys"))
 
@@ -47,6 +65,33 @@ class MachineState(private val sys: Path) {
 
         /** Reads a clock file written by [gpuClockFile]; -1 if it cannot be read. */
         fun readClock(file: Path): Int = read(file).toIntOrNull() ?: -1
+
+        /** The reasons `i915` reports, each in a file `throttle_reason_<reason>` holding 0 or 1. */
+        private val I915_THROTTLE_REASONS =
+            arrayOf("pl1", "pl2", "pl4", "thermal", "prochot", "ratl", "vr_tdc", "vr_thermalert")
+
+        /**
+         * Reads a file found by [gpuThrottleFile]: the reasons that hold the GPU's clock down right now as the
+         * driver names them (`pl1`, `pl1 prochot`; [ThrottleTally] splits them at spaces and commas), `none` when
+         * nothing does, `other` for a limit `i915` does not name, or empty if it cannot be read. `xe` writes them into
+         * one file; `i915`'s status file is 0 or 1, and when it is 1 the files next to it say which.
+         */
+        fun readThrottle(file: Path): String {
+            if (file.fileName.toString() != "throttle_reason_status") return read(file)
+            when (read(file)) {
+                "0" -> return "none"
+                "1" -> {}
+                else -> return ""
+            }
+            val reasons = StringBuilder()
+            for (reason in I915_THROTTLE_REASONS) {
+                if (read(file.resolveSibling("throttle_reason_$reason")) != "1") continue
+                if (reasons.isNotEmpty()) reasons.append(' ')
+                reasons.append(reason)
+            }
+            // The status covers more limits than the eight named files.
+            return if (reasons.isEmpty()) "other" else reasons.toString()
+        }
 
         private fun read(file: Path): String = try {
             Files.readString(file).trim()

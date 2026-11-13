@@ -12,7 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 var config: Config = Config()
     internal set
 
-const val CONFIG_VERSION = 4
+const val CONFIG_VERSION = 5
 
 /**
  * Replaces the config with [value], writes it to disk and re-resolves the module states, which logs every module
@@ -38,6 +38,7 @@ internal fun migrate(json: Json, jsonTree: JsonElement, version: Int?): Config? 
     when (version) {
         1, 2 -> migrateVersion1(jsonTree)
         3 -> migrateVersion3(json, jsonTree)
+        4 -> migrateVersion4(json, jsonTree)
         else -> null
     }
 }.getOrNull()
@@ -61,3 +62,10 @@ private fun migrateVersion3(json: Json, jsonTree: JsonElement): Config {
     val newCache = JsonObject(cache - "prototype" + newTypes)
     return json.decodeFromJsonElement(Config.serializer(), JsonObject(root + ("cache" to newCache)))
 }
+
+/**
+ * Version 4 had no `parts.items`; its files decode as they are and get the default. Konfig reaches this only for a
+ * version 4 file that fails to decode for another reason, which fails here again and falls back to defaults.
+ */
+private fun migrateVersion4(json: Json, jsonTree: JsonElement): Config =
+    json.decodeFromJsonElement(Config.serializer(), jsonTree)

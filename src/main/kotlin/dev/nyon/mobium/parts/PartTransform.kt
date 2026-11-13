@@ -85,6 +85,19 @@ object PartTransform {
     private var parts = 0
     private var quads = 0
 
+    /** Items and their quads taken over in the last frame ([ItemTransform]), for F3. */
+    @JvmField
+    var lastItems = 0
+
+    @JvmField
+    var lastItemQuads = 0
+
+    @JvmField
+    internal var items = 0
+
+    @JvmField
+    internal var itemQuads = 0
+
     /** A failure after a reservation: this frame's reserved vertices are blanked instead of expanded. */
     private var failedThisFrame = false
 
@@ -104,14 +117,18 @@ object PartTransform {
     /** A valid address for the empty push's source; nothing is read from it. */
     private val emptyPush = MemoryUtil.nmemAlloc(64)
 
-    /** Reads the excluded entity types from the config; called whenever the module states are resolved. */
-    fun configure(excludedEntities: List<String>) {
+    /**
+     * Reads the excluded entity types and the item switch from the config; called whenever the module states are
+     * resolved.
+     */
+    fun configure(excludedEntities: List<String>, items: Boolean) {
         val types = HashSet<EntityType<*>>()
         for (id in excludedEntities) {
             val identifier = Identifier.tryParse(id) ?: continue
             BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).ifPresent { types += it }
         }
         excludedTypes = types
+        ItemTransform.enabled = items
     }
 
     /** Whether Module 2 leaves [type]'s models on the CPU path; per entity per frame, no allocation. */
@@ -143,11 +160,18 @@ object PartTransform {
         try {
             return tryCompile(cubes, pose, consumer, light, overlay, color)
         } catch (e: Throwable) {
-            // Vertices this part reserved may be left without records; the upload hook blanks them ([afterUpload]).
-            failedThisFrame = true
-            Fallback.moduleFailed(Module.PART_TRANSFORM, e)
+            failed(e)
             return false
         }
+    }
+
+    /**
+     * Module 2 fails: vertices reserved this frame may be left without records, so the upload hook blanks them
+     * ([afterUpload]) instead of expanding; the caller writes its own vertices the vanilla way.
+     */
+    internal fun failed(e: Throwable) {
+        failedThisFrame = true
+        Fallback.moduleFailed(Module.PART_TRANSFORM, e)
     }
 
     private fun tryCompile(
@@ -198,10 +222,7 @@ object PartTransform {
         if (target.`mobium$vertexCount`() + quadTotal * 4 > MAX_VERTICES) return false
 
         // Everything checked: from here on the part is Module 2's.
-        val offset = target.`mobium$reserve`(quadTotal * 4)
-        // Iris counts each vertex at the next endLastVertex to extend it, except after a Sodium push; an empty push
-        // marks the reserved vertices as pushed (Iris's push TAIL hook), as Sodium's cube path would have.
-        if (iris) (builder as VertexBufferWriter).push(MemoryStack.stackGet(), emptyPush, 0, format)
+        val offset = reserve(builder, quadTotal, iris)
         val vertexSize = format.vertexSize
         var firstVertex = (target.`mobium$drawBytesBefore`() + offset) / vertexSize
 
@@ -210,7 +231,7 @@ object PartTransform {
         val slot = batch.slotOf(draw)
         val drawBytes = target.`mobium$drawBytesBefore`() + offset
         batch.reserved(slot).add(drawBytes, drawBytes + quadTotal * 4 * vertexSize)
-        val flags = writePart(batch.addPart(), pose, light, overlay, color, sprite, iris, slot)
+        val flags = writePart(batch.addPart(), pose, light, overlay, color, sprite, iris, slot, 0)
         for (i in 0 until cubes.size) {
             val cube = cubes[i]
             val cubeQuads = MeshPool.quads(cube)
@@ -226,8 +247,23 @@ object PartTransform {
         return true
     }
 
-    /** Writes the part record at [address]; returns its flags. */
-    private fun writePart(
+    /**
+     * Reserves [quads] quads' vertices in [builder] (checked to be a staged builder that may take them); returns the
+     * byte offset of the first in the builder.
+     */
+    internal fun reserve(builder: BufferBuilder, quads: Int, iris: Boolean): Int {
+        val offset = (builder as PartTarget).`mobium$reserve`(quads * 4)
+        // Iris counts each vertex at the next endLastVertex to extend it, except after a Sodium push; an empty push
+        // marks the reserved vertices as pushed (Iris's push TAIL hook), as Sodium's cube path would have.
+        if (iris) (builder as VertexBufferWriter).push(MemoryStack.stackGet(), emptyPush, 0, builder.`mobium$format`())
+        return offset
+    }
+
+    /** Whether [vertices] more fit into [target]'s builder (vanilla's limit for one mesh). */
+    internal fun fits(target: PartTarget, vertices: Int): Boolean = target.`mobium$vertexCount`() + vertices <= MAX_VERTICES
+
+    /** Writes the part record at [address], with [extraFlags] (`PartBatch.FLAG_ITEM`, …); returns its flags. */
+    internal fun writePart(
         address: Long,
         pose: PoseStack.Pose,
         light: Int,
@@ -235,7 +271,8 @@ object PartTransform {
         color: Int,
         sprite: TextureAtlasSprite?,
         iris: Boolean,
-        slot: Int
+        slot: Int,
+        extraFlags: Int
     ): Int {
         val matrix: Matrix4f = pose.pose()
         MemoryUtil.memPutFloat(address, matrix.m00())
@@ -255,7 +292,7 @@ object PartTransform {
         // come from the normal matrix on the GPU; a matrix the GPU's math is not written for (not finite, or so large
         // that squares overflow) is done here instead. Iris replaces vanilla-style quads' normals with the face normal
         // while it renders the level; Sodium-style quads keep theirs.
-        var flags = 0
+        var flags = extraFlags
         val faceNormalOnly = iris && IrisCompat.isRenderingLevel()
         val n = pose.normal()
         if (gpuNormals(n)) {
@@ -312,7 +349,7 @@ object PartTransform {
     }
 
     /** Whether the GPU can do this normal matrix: every entry finite and small enough that no square overflows. */
-    private fun gpuNormals(n: Matrix3f): Boolean =
+    internal fun gpuNormals(n: Matrix3f): Boolean =
         abs(n.m00()) < NORMAL_LIMIT && abs(n.m01()) < NORMAL_LIMIT && abs(n.m02()) < NORMAL_LIMIT &&
             abs(n.m10()) < NORMAL_LIMIT && abs(n.m11()) < NORMAL_LIMIT && abs(n.m12()) < NORMAL_LIMIT &&
             abs(n.m20()) < NORMAL_LIMIT && abs(n.m21()) < NORMAL_LIMIT && abs(n.m22()) < NORMAL_LIMIT
@@ -329,7 +366,7 @@ object PartTransform {
 
     private fun normalByte(c: Float): Int = (Mth.clamp(c, -1.0f, 1.0f) * 127.0f).toInt() and 0xFF
 
-    private fun batchOf(staged: StagedVertexBuffer): PartBatch {
+    internal fun batchOf(staged: StagedVertexBuffer): PartBatch {
         val holder = staged as PartStaged
         holder.`mobium$batch`()?.let { return it }
         val batch = PartBatch()
@@ -337,7 +374,7 @@ object PartTransform {
         return batch
     }
 
-    private fun irisFormat(): VertexFormat? {
+    internal fun irisFormat(): VertexFormat? {
         if (!irisFormatLooked) {
             irisFormatLooked = true
             irisFormat = if (Compat.isLoaded(CompatMod.IRIS)) IrisCompat.entityFormat() else null
@@ -452,15 +489,20 @@ object PartTransform {
         VulkanExpand.endFrame()
         lastParts = parts
         lastQuads = quads
+        lastItems = items
+        lastItemQuads = itemQuads
         parts = 0
         quads = 0
+        items = 0
+        itemQuads = 0
     }
 
     /** F3 `mobium:modules`: what Module 2 took over in the last frame, what its meshes hold and how it expands. */
     fun debugLine(): String = String.format(
         java.util.Locale.ROOT,
-        "Mobium part transform: %d parts, %d quads last frame; meshes %d quads; GPU %.1f MB, %s",
-        lastParts, lastQuads, MeshPool.quadCount, ExpandPass.bytesAllocated / 1048576.0, ExpandPass.stageName
+        "Mobium part transform: %d parts, %d quads, %d items, %d item quads last frame; meshes %d quads; GPU %.1f MB, %s",
+        lastParts, lastQuads, lastItems, lastItemQuads, MeshPool.quadCount, ExpandPass.bytesAllocated / 1048576.0,
+        ExpandPass.stageName
     )
 
     /** A new level, a resource reload or a render distance change: every mesh is written again. */

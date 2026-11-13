@@ -5,9 +5,10 @@ import org.lwjgl.system.MemoryUtil
 
 /**
  * One staged vertex buffer's records for the expand pass of this frame (`expand_parts.comp`, which documents the
- * layout): per compiled part one part record of [PART_WORDS] words (pose, normal matrix, colour, overlay, light,
- * flags, draw slot, sprite, Iris's ids), per cube one cube record of [CUBE_WORDS] words (first quad in the dispatch,
- * first quad of its mesh, its part, its first vertex in the draw), and per draw that got records a slot with the byte
+ * layout): per compiled part, and per run of an item's quads in one draw, one part record of [PART_WORDS] words (pose,
+ * normal matrix, colour, overlay, light, flags, draw slot, sprite or tint colours, Iris's ids), per cube or quad run one
+ * cube record of [CUBE_WORDS] words (first quad in the dispatch, first quad of its mesh, its part, its first vertex in
+ * the draw), and per draw that got records a slot with the byte
  * ranges reserved in it, which the upload leaves out ([ReservedRanges]). Off-heap and reused from frame to frame;
  * grows by doubling. Render thread only.
  */
@@ -129,6 +130,9 @@ class PartBatch {
         const val P_FLAGS = 24
         const val P_SLOT = 25
         const val P_SPRITE = 26
+
+        /** Items have no sprite: their records hold the colours of four tint layers there (ABGR). */
+        const val P_TINTS = 26
         const val P_IDS = 30
 
         const val KIND_GENERIC = 0
@@ -139,5 +143,11 @@ class PartBatch {
         const val FLAG_IRIS_FACE_NORMAL = 16
         const val FLAG_PACKED_NORMALS = 32
         const val FLAG_TRUSTED_NORMALS = 64
+
+        /** An item submit's quads ([ItemTransform]): per-quad tint and light emission from the mesh. */
+        const val FLAG_ITEM = 128
+
+        /** An item written by Sodium's `BakedModelEncoder`: no matrix shortcuts, the quad's packed normal transformed. */
+        const val FLAG_ITEM_SODIUM = 256
     }
 }
