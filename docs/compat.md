@@ -91,6 +91,13 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
   on Vulkan works in the dev clients (0 differing vertices, §23) but stays off for players (F3 `mobium:modules`:
   `backend`) until the visual check in game (`PLAN.md`, M7 step 5); it needs `shaderFloat64`. Iris 1.11.7 does not
   start on Vulkan at all (§21).
+- GPUs without `shaderFloat64` on Vulkan, where Module 2 stays off (F3 `mobium:modules`: `backend`), from the reports
+  in the Vulkan Hardware Database (vulkan.gpuinfo.org, *shaderFloat64*, devices not supporting it per OS): Intel from
+  Ice Lake's Iris Plus (Gen11) up to Arrow Lake (Iris Xe and UHD 710–770, Iris Xe MAX, Arc A-series and Arc Pro A,
+  Meteor Lake's Arc graphics, Arc 130T/140T) and the Atom-class HD 500/505 and UHD 600/605, on Windows and on Linux
+  (Mesa's ANV), which Intel documents as by design (support article 000089817); Qualcomm Snapdragon X on Windows on
+  ARM; every Mac (MoltenVK). Nvidia's and AMD's GPUs on Windows and Linux, Intel's Xe2 (Lunar Lake's Arc 130V/140V,
+  Arc B-series) and, in most reports, Intel's Gen9 (HD and UHD 5xx–6xx of 6th to 10th gen Core) have it.
 - Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): hooks the same places as Mobium and
   is untested with it, so both modules stay off while it is installed (F3: `untested: Vitrail`).
 - Text drawn with a resource pack's antialiased (TrueType) font: vanilla draws a sign's glyphs in submission order
