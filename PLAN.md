@@ -13,10 +13,12 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 - The static cache runs on Vulkan in the released mod; both modules stay off while Vitrail is installed.
 - Module 2 runs on Vulkan with 0 differing vertices (self-check on both loaders, gametests on lavapipe in CI), but only
   with `-Dmobium.parts.vulkan`, which dev runs on Vulkan set.
-- CI is green on `master`.
-- Module 2 for items (dropped items, items in hands, frames and displays) is built on the branch `module2-items`;
-  see *Module 2 for items* below for what is left before it merges.
-- Next: the last box of step 5 (Module 2 on Vulkan for players), then step 6.
+- Module 2 for items (dropped items, items in hands, frames and displays) is on `master`, not released yet; its
+  results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
+- `self_check.py --mode parts --api vulkan` passes on both loaders with items: 0 differing vertices, pictures
+  identical, no validation messages from Mobium.
+- Next: the maintainer's look in game at Module 2 on Vulkan (the by-hand part of #39's *How to verify*, plus
+  `item_drops`), then the last box of step 5 (Module 2 on Vulkan for players), then step 6.
 
 ---
 
@@ -39,41 +41,31 @@ Module 2, the same vertex bytes as the game's own path.
          removed (`build.gradle.kts`, `VulkanSupport.allowed`, `ModuleEnvironment.vulkanParts`), after the visual check
          in game (*How to verify* of #39).
 6. **Measure and document.**
-   - [ ] Benchmark round A–D on Vulkan in the Prism instances (the graphics API set in their options), plus
-         `/mobium gatec` on Vulkan and OpenGL in one session each. Setups whose mods do not run on Vulkan are reported
-         as such (B and D need Iris, see below).
-   - [ ] `docs/compat.md` (Vulkan rows, GPUs without `shaderFloat64`), README (*Does Mobium work with Vulkan?*),
-         `changelog.md` (no release notes have mentioned Vulkan yet).
+   - [ ] Benchmark round on Vulkan in the Prism instances for setups A and C (the graphics API set in their options),
+         plus `/mobium gatec` on Vulkan and OpenGL in one session each. B and D need Iris and stay on OpenGL
+         (*Decisions*).
+   - [ ] `docs/compat.md` (Vulkan rows), README (*Does Mobium work with Vulkan?*, which still says Mobium stays off on
+         Vulkan), `changelog.md` (no release notes have mentioned Vulkan yet).
 
 **Gate D:** on Vulkan in 26.3, on both loaders, zero screenshot differences and 0 differing vertices (self-check,
 gametests on lavapipe), no validation-layer messages from Mobium; `mob_pen_live` no slower with Module 2 than without
-(at most 1.03×) in every setup that runs on Vulkan; `control` with Mobium no slower than without (at most 1.03×). Then
-release. If the gate fails, stop, write up why in the PR and agree on the next step first.
+(at most 1.03×) in setups A and C; `control` with Mobium no slower than without (at most 1.03×). Then release. If the
+gate fails, stop, write up why in the PR and agree on the next step first.
 
-**Open questions:**
-- Iris on Vulkan: Iris 1.11.7 stops the game at startup (§21), so setups B and D stay on OpenGL until Aperture (Iris's
-  Vulkan successor) or an Iris that runs on Vulkan. Sodium 0.9.2, EMF 3.3.12 and ETF 7.2.6 run on Vulkan in 26.3.
-- Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): how it changes entity vertex
-  formats and the shadow pass. It hooks the same places as Mobium (§22); until checked in game (its dev client with an
-  OptiFine-format pack), both modules stay off while it is installed.
-- Which GPUs lack `shaderFloat64` on Vulkan (Intel Arc A-series on Windows, Apple through MoltenVK, *(verify)*). If
-  many do, Module 2 needs a shader without double precision: exact integer arithmetic (`umulExtended`) instead of the
-  double residuals in `expand_parts.comp`, still 0 differing vertices in every setup.
-
----
-
-## Module 2 for items
-
-Dropped items cost frames because every visible item writes all of its baked quads on the CPU every frame (a bamboo
-item has 56 to 66 quads, drawn up to five times per stack; `docs/vanilla-notes.md` §25). Module 2 now writes them on the
-GPU like model parts (`docs/architecture.md`, *Items*).
-
-- [x] Hook, item meshes and the shader's two item paths (vanilla's `putBakedQuad`, Sodium's `BakedModelEncoder`), config
-      switch `parts.items`, exclusion by entity type.
-- [x] `part_gallery` with a row of dropped items of every item path; the benchmark scene `item_drops`.
-- [x] Self-check `--mode parts` on both loaders and on Vulkan, gametests: 0 differing vertices, pictures identical.
-- [x] `item_drops` in the dev client, Module 2 off and on: frames 3.9× (Fabric) and 3.6× (NeoForge) faster
-      (`docs/benchmarks.md`, *Dropped items*).
-- [x] `item_drops` in a benchmark round (setups A–D, 1920×1080), Module 2 off and on (`/mobium gatec 60 3 item_drops`):
-      frames 2.9× (A), 2.2× (B), 3.2× (C) and 1.7× (D) faster (`docs/benchmarks.md`, *Latest results*).
-- [ ] The maintainer's visual check (*How to verify* of the PR).
+**Decisions:**
+- **Iris on Vulkan: not part of M7.** No Iris release runs on Vulkan (1.11.7 is the newest for 26.3 and stops the game
+  there, §21; the request is open in Iris's tracker, with no Vulkan branch), and Aperture, its Vulkan successor, has
+  no release or date. Setups B and D are measured on OpenGL only. Check again when an Iris or Aperture release runs on
+  Vulkan.
+- **Vitrail: both modules stay off while it is installed.** It is a beta (0.13.0-beta for 26.2 and 26.3, Fabric and
+  NeoForge) whose open work rewrites how it writes entity vertices, where Mobium hooks too (§22). Checked after
+  Gate D against its then newest release, as its own piece of work: its dev client with an OptiFine-format pack, the
+  self-check's gallery and `--mode parts` on Vulkan; identical pictures and 0 differing vertices lift
+  `OffReason.UNTESTED`.
+- **GPUs without `shaderFloat64`: Module 2 gets a shader without double precision, the next target after Gate D.**
+  Every Intel GPU from Ice Lake's Iris Plus through Iris Xe (11th to 14th gen Core) to Arrow Lake's Arc 140T, the Arc
+  A-series, Snapdragon X and every Mac lack the feature (`docs/compat.md`, *Known differences and limits*), so Module 2 stays off on Vulkan there; 26.4
+  makes Vulkan the default. The expand pass uses doubles for correctly rounded square roots and divisions
+  (`Capabilities.glCompute`); exact integer arithmetic (`umulExtended`) instead, still 0 differing vertices in every
+  setup and on both backends. On OpenGL the same GPUs report core 4.0 and emulate doubles in the driver; how much
+  that costs Module 2 there is not measured *(verify)*.
