@@ -31,7 +31,7 @@ enum class OverlappingMod(val modId: String, val displayName: String, val module
     /** Accelerated Rendering transforms and caches entity vertices on the GPU (no 26.x build as of Oct 2026). */
     ACCELERATED_RENDERING(
         "acceleratedrendering", "Accelerated Rendering",
-        setOf(Module.STATIC_CACHE, Module.PART_TRANSFORM, Module.ANIMATION_LOD)
+        setOf(Module.STATIC_CACHE, Module.PART_TRANSFORM)
     )
 }
 

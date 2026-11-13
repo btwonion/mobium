@@ -13,7 +13,8 @@
             "dev.nyon.mobium.test.StartupGameTest",
             "dev.nyon.mobium.test.SettingsGameTest",
             "dev.nyon.mobium.test.BenchmarkScenesGameTest",
-            "dev.nyon.mobium.test.BenchWorldGameTest"
+            "dev.nyon.mobium.test.BenchWorldGameTest",
+            "dev.nyon.mobium.test.FallbackGameTest"
         ]
     }
 }

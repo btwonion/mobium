@@ -72,7 +72,6 @@ mobs on screen it can cost slightly more than it saves, which shows only at seve
 
 ### Coming later
 
-- **Animation LOD (optional):** far-away mobs reuse last frame's pose.
 - **Vulkan** support.
 
 ---

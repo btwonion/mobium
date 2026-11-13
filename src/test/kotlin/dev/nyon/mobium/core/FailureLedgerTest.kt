@@ -30,7 +30,7 @@ class FailureLedgerTest {
     @Test
     fun `clear forgets everything`() {
         val ledger = FailureLedger()
-        ledger.moduleFailed(Module.ANIMATION_LOD, "x")
+        ledger.moduleFailed(Module.PART_TRANSFORM, "x")
         repeat(FailureLedger.TYPE_FAILURE_LIMIT) { ledger.typeFailed(Module.STATIC_CACHE, "signs") }
         ledger.clear()
         assertTrue(ledger.failures.isEmpty())

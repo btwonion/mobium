@@ -12,7 +12,6 @@ switches between Mobium's path and vanilla's, never between two pictures.
 | --- | --- | --- | --- |
 | 1 · Static cache | Block entities and entities that stand still are captured once through vanilla's own submit and prepare and drawn from per-section GPU buffers until they change | `cache/` | On by default |
 | 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `parts/` | On by default where the GPU has OpenGL 4.3 compute with double precision |
-| 3 · Animation LOD | Far or tiny-on-screen mobs reuse last frame's pose | — | Not built; its config and settings exist |
 
 The static cache runs on OpenGL and on Minecraft's Vulkan backend; Module 2 on Vulkan runs only in dev clients until
 the visual check in game (`PLAN.md`, M7 step 5). While Vitrail is installed both stay off (`OffReason.UNTESTED`).
@@ -194,7 +193,7 @@ than white or different baked normals per vertex, more than four tint layers, an
 - **Module states** (`core/ModuleState.kt`, `core/ModuleStates.kt`). The pure, unit-tested `ModuleRules` resolve each
   module from the config, the A/B key, overlapping and untested mods, failures, the backend and compute support, with
   one `OffReason` when it is off (`failed`, `global_switch`, `ab_toggle`, `config`, `overlap`, `untested`, `backend`,
-  `no_compute`, `not_built`). `ModuleStates` re-resolves on every change and logs each transition; modules ask
+  `no_compute`). `ModuleStates` re-resolves on every change and logs each transition; modules ask
   `isActive()` per frame.
 - **Fallback ladder** (`core/Fallback.kt`). Per submit: anything unknown (a wrapped consumer, another format, a cube
   class Mobium does not know) takes vanilla's path. Per type: a type that fails 3 times stays vanilla. Per module: an
@@ -271,10 +270,10 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
 
 ## Config and settings
 
-`config/mobium.json` through konfig, `{"version", "config"}`, format version 5 (`config/ConfigHandler.kt`: a format
+`config/mobium.json` through konfig, `{"version", "config"}`, format version 6 (`config/ConfigHandler.kt`: a format
 change bumps `CONFIG_VERSION` and adds a migration branch; unknown keys keep failing). Contents (`config/Config.kt`):
 the global switch; Module 1's switch, memory budget and eight type switches; Module 2's switch, its item switch and
-excluded entity types; Module 3's preset (Off, Subtle, Aggressive) and exclusions. One settings screen built from vanilla's option
+excluded entity types. One settings screen built from vanilla's option
 widgets (`config/screen/MobiumSettingsScreen.kt`) edits a copy and applies it on Done; it opens from Mod Menu
 (Fabric), the NeoForge mod list, and Mobium's page in Sodium's video settings (`config/SodiumOptions.kt`, Sodium
 Config API). `en_us` and `de_de` keep identical keys (`LangKeysTest`).

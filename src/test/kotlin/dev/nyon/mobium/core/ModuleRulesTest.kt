@@ -2,15 +2,12 @@ package dev.nyon.mobium.core
 
 import dev.nyon.mobium.config.CacheConfig
 import dev.nyon.mobium.config.Config
-import dev.nyon.mobium.config.LodConfig
-import dev.nyon.mobium.config.LodPreset
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 class ModuleRulesTest {
     private val defaults = Config()
-    private val allOn = Config(lod = LodConfig(preset = LodPreset.SUBTLE))
     private val openGl = ModuleEnvironment(GraphicsBackend.OPENGL, compute = true, shaderPack = false, abOff = false)
 
     private fun reason(module: Module, config: Config = defaults, environment: ModuleEnvironment = openGl) =
@@ -26,16 +23,6 @@ class ModuleRulesTest {
     fun `part transform runs on OpenGL with compute, with or without a shader pack`() {
         assertNull(reason(Module.PART_TRANSFORM))
         assertNull(reason(Module.PART_TRANSFORM, environment = openGl.copy(shaderPack = true)))
-    }
-
-    @Test
-    fun `modules that do not exist yet say so`() {
-        assertEquals(OffReason.NOT_BUILT, reason(Module.ANIMATION_LOD, Config(lod = LodConfig(preset = LodPreset.SUBTLE))))
-    }
-
-    @Test
-    fun `animation LOD is off by default`() {
-        assertEquals(OffReason.CONFIG, reason(Module.ANIMATION_LOD, Config()))
     }
 
     @Test
@@ -84,7 +71,6 @@ class ModuleRulesTest {
         assertNull(reason(Module.STATIC_CACHE, environment = vulkan))
         assertEquals(OffReason.BACKEND, reason(Module.PART_TRANSFORM, environment = vulkan))
         assertEquals("vulkan", ModuleRules.resolve(Module.PART_TRANSFORM, Config(), vulkan).detail)
-        assertEquals(OffReason.NOT_BUILT, reason(Module.ANIMATION_LOD, allOn, vulkan))
         val allowed = vulkan.copy(vulkanParts = true)
         assertNull(reason(Module.PART_TRANSFORM, environment = allowed))
         assertEquals(OffReason.NO_COMPUTE, reason(Module.PART_TRANSFORM, environment = allowed.copy(compute = false)))
@@ -93,8 +79,8 @@ class ModuleRulesTest {
     @Test
     fun `other backends, no device yet and missing compute keep modules on vanilla`() {
         for (module in Module.entries) {
-            assertEquals(OffReason.BACKEND, reason(module, allOn, openGl.copy(backend = GraphicsBackend.OTHER)))
-            assertEquals(OffReason.BACKEND, reason(module, allOn, openGl.copy(backend = null)))
+            assertEquals(OffReason.BACKEND, reason(module, environment = openGl.copy(backend = GraphicsBackend.OTHER)))
+            assertEquals(OffReason.BACKEND, reason(module, environment = openGl.copy(backend = null)))
         }
         assertEquals(OffReason.NO_COMPUTE, reason(Module.PART_TRANSFORM, environment = openGl.copy(compute = false)))
     }

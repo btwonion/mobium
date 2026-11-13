@@ -1,4 +1,4 @@
 - update icon - now fully handmade
-- Settings: the module status list is gone (F3 `mobium:modules` shows it) and the preset no longer says "Preset" twice
+- Settings: the module status list is gone (F3 `mobium:modules` shows it), and so is the unfinished Animation LOD preset
 - The A/B key is called "Toggle Mobium" and shows just "Mobium: ON" or "Mobium: OFF" above the hotbar
 - The GPU part transform now also draws items: dropped items, items in hands, frames and displays

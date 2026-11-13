@@ -1,9 +1,7 @@
 package dev.nyon.mobium.config.screen
 
-import com.mojang.serialization.Codec
 import dev.nyon.mobium.config.CacheConfig
 import dev.nyon.mobium.config.Config
-import dev.nyon.mobium.config.LodPreset
 import dev.nyon.mobium.config.applyConfig
 import dev.nyon.mobium.config.config
 import net.minecraft.client.Minecraft
@@ -44,9 +42,6 @@ class MobiumSettingsScreen(parent: Screen) :
             toggle("mobium.settings.module_enabled", draft.parts::enabled),
             toggle("mobium.settings.parts_items", draft.parts::items)
         )
-
-        list.addHeader(Component.translatable("mobium.module.animation_lod"))
-        list.addBig(lodPreset(draft))
     }
 
     override fun addFooter() {
@@ -77,25 +72,11 @@ class MobiumSettingsScreen(parent: Screen) :
         ) { cache.memoryBudgetMb = it * MB_STEP }
     }
 
-    /** A cycle button, which puts the caption in front of the value itself (`docs/vanilla-notes.md` §14). */
-    private fun lodPreset(draft: Config): OptionInstance<LodPreset> {
-        val key = "mobium.settings.lod_preset"
-        return OptionInstance(
-            key,
-            tooltip(key),
-            { _, preset -> Component.translatable(presetKey(preset)) },
-            OptionInstance.Enum(LodPreset.entries.toList(), Codec.INT.xmap({ LodPreset.entries[it] }, { it.ordinal })),
-            draft.lod.preset
-        ) { draft.lod.preset = it }
-    }
-
     private fun <T : Any> tooltip(key: String): OptionInstance.TooltipSupplier<T> =
         OptionInstance.cachedConstantTooltip(Component.translatable("$key.tooltip"))
 
     companion object {
         /** The memory budget slider moves in steps of this many megabytes. */
         const val MB_STEP = 16
-
-        fun presetKey(preset: LodPreset) = "mobium.lod_preset.${preset.name.lowercase()}"
     }
 }
