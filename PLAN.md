@@ -15,8 +15,10 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
   with `-Dmobium.parts.vulkan`, which dev runs on Vulkan set.
 - Module 2 for items (dropped items, items in hands, frames and displays) is on `master`, not released yet; its
   results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
-- Next: the maintainer's visual check of Module 2 on Vulkan (*How to verify* of #39), then the last box of step 5
-  (Module 2 on Vulkan for players), then step 6.
+- `self_check.py --mode parts --api vulkan` passes on both loaders with items: 0 differing vertices, pictures
+  identical, no validation messages from Mobium.
+- Next: the maintainer's look in game at Module 2 on Vulkan (the by-hand part of #39's *How to verify*, plus
+  `item_drops`), then the last box of step 5 (Module 2 on Vulkan for players), then step 6.
 
 ---
 
