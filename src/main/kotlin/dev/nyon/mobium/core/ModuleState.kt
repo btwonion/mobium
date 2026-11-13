@@ -69,7 +69,6 @@ data class ModuleStatus(val module: Module, val reason: OffReason?, val detail: 
  * Module 2 expands in Iris's extended vertex format).
  * @param overlaps names, per module, an installed mod that does the same job.
  * @param untested names, per module, an installed mod that hooks the same paths and is not tested with Mobium.
- * @param vulkanParts lets Module 2 run on Vulkan while its checks there are being built (PLAN.md M7 step 5).
  * @param failures holds, per module, the message of the failure that switched it off.
  */
 data class ModuleEnvironment(
@@ -79,7 +78,6 @@ data class ModuleEnvironment(
     val abOff: Boolean,
     val overlaps: Map<Module, String> = emptyMap(),
     val untested: Map<Module, String> = emptyMap(),
-    val vulkanParts: Boolean = false,
     val failures: Map<Module, String> = emptyMap()
 )
 
@@ -101,7 +99,7 @@ object ModuleRules {
         if (!switchedOn) return off(OffReason.CONFIG)
         environment.overlaps[module]?.let { return off(OffReason.OVERLAP, it) }
         environment.untested[module]?.let { return off(OffReason.UNTESTED, it) }
-        if (!runsOn(module, environment)) return off(OffReason.BACKEND, environment.backend?.name?.lowercase() ?: "")
+        if (!runsOn(environment)) return off(OffReason.BACKEND, environment.backend?.name?.lowercase() ?: "")
         return when (module) {
             Module.STATIC_CACHE -> ModuleStatus(module, null)
             Module.PART_TRANSFORM -> if (!environment.compute) off(OffReason.NO_COMPUTE) else ModuleStatus(module, null)
@@ -109,14 +107,10 @@ object ModuleRules {
     }
 
     /**
-     * The static cache draws through Renderpearl only and runs on OpenGL and Vulkan (docs/vanilla-notes.md §22);
-     * Module 2 runs on OpenGL, and on Vulkan only with [ModuleEnvironment.vulkanParts] until its checks there are done
-     * (PLAN.md M7 step 5; whether the GPU can is the `compute` rule). No backend before the device exists.
+     * Both modules run on OpenGL and Vulkan: the static cache draws through Renderpearl only (docs/vanilla-notes.md
+     * §22), Module 2 has an expand pass for each (§23; whether the GPU can is the `compute` rule). No backend before
+     * the device exists.
      */
-    private fun runsOn(module: Module, environment: ModuleEnvironment): Boolean = when (module) {
-        Module.STATIC_CACHE ->
-            environment.backend == GraphicsBackend.OPENGL || environment.backend == GraphicsBackend.VULKAN
-        Module.PART_TRANSFORM ->
-            environment.backend == GraphicsBackend.OPENGL || (environment.backend == GraphicsBackend.VULKAN && environment.vulkanParts)
-    }
+    private fun runsOn(environment: ModuleEnvironment): Boolean =
+        environment.backend == GraphicsBackend.OPENGL || environment.backend == GraphicsBackend.VULKAN
 }
