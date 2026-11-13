@@ -86,13 +86,13 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
 
 ## Known differences and limits
 
-- Minecraft's Vulkan renderer: the static cache runs on it, checked in game on both loaders (Intel Arc 140V with Mesa's
-  ANV: pictures identical to vanilla, no validation-layer messages from Mobium; `docs/vanilla-notes.md` §22). Module 2
-  on Vulkan works in the dev clients (0 differing vertices, §23) but stays off for players (F3 `mobium:modules`:
-  `backend`) until the visual check in game (`PLAN.md`, M7 step 5); it needs `shaderFloat64`. Iris 1.11.7 does not
-  start on Vulkan at all (§21).
-- GPUs without `shaderFloat64` on Vulkan, where Module 2 stays off (F3 `mobium:modules`: `backend`), from the reports
-  in the Vulkan Hardware Database (vulkan.gpuinfo.org, *shaderFloat64*, devices not supporting it per OS): Intel from
+- Minecraft's Vulkan renderer: both modules run on it, checked in game on both loaders (Intel Arc 140V with Mesa's
+  ANV: pictures identical to vanilla, 0 differing vertices, no validation-layer messages from Mobium;
+  `docs/vanilla-notes.md` §22, §23). Module 2 needs `shaderFloat64` there. Iris 1.11.7 does not start on Vulkan at
+  all (§21).
+- GPUs without `shaderFloat64` on Vulkan, where Module 2 stays off (F3 `mobium:modules`: `no_compute`; the log line
+  "Mobium part transform on Vulkan" says why), from the reports in the Vulkan Hardware Database
+  (vulkan.gpuinfo.org, *shaderFloat64*, devices not supporting it per OS): Intel from
   Ice Lake's Iris Plus (Gen11) up to Arrow Lake (Iris Xe and UHD 710–770, Iris Xe MAX, Arc A-series and Arc Pro A,
   Meteor Lake's Arc graphics, Arc 130T/140T) and the Atom-class HD 500/505 and UHD 600/605, on Windows and on Linux
   (Mesa's ANV), which Intel documents as by design (support article 000089817); Qualcomm Snapdragon X on Windows on
