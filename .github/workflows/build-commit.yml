@@ -87,7 +87,7 @@ jobs:
           path: versions/${{ matrix.version }}-${{ matrix.loader }}/build/run/clientGameTest/screenshots/
       # The gametests a second time on Minecraft's Vulkan backend, on Mesa's lavapipe (software Vulkan, with
       # shaderFloat64): the static cache and Module 2 with its byte-for-byte validation (PLAN.md M7, Gate D). Dev runs on
-      # Vulkan leave Iris out (it stops the game there) and run Module 2 there (-Dmobium.parts.vulkan).
+      # Vulkan leave Iris out (it stops the game there).
       # The loader is pointed at lavapipe's manifest alone; its file name differs between distributions.
       - name: Install Mesa's software Vulkan
         if: matrix.loader == 'fabric'

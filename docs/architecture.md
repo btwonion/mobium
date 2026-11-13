@@ -11,10 +11,10 @@ switches between Mobium's path and vanilla's, never between two pictures.
 | Module | What it does | Package | State |
 | --- | --- | --- | --- |
 | 1 · Static cache | Block entities and entities that stand still are captured once through vanilla's own submit and prepare and drawn from per-section GPU buffers until they change | `cache/` | On by default |
-| 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `parts/` | On by default where the GPU has OpenGL 4.3 compute with double precision |
+| 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `parts/` | On by default where the GPU has compute shaders with double precision (OpenGL 4.3, or `shaderFloat64` on Vulkan) |
 
-The static cache runs on OpenGL and on Minecraft's Vulkan backend; Module 2 on Vulkan runs only in dev clients until
-the visual check in game (`PLAN.md`, M7 step 5). While Vitrail is installed both stay off (`OffReason.UNTESTED`).
+Both run on OpenGL and on Minecraft's Vulkan backend. While Vitrail is installed both stay off
+(`OffReason.UNTESTED`).
 
 - **Must-have compatibility:** Iris shader packs, and EMF/ETF including Fresh Animations. Never bypass `setupAnim`.
 - **Coexists with:** Sodium 0.9, Entity Culling, Mod Menu. Mods that do the same job (Enhanced Block Entities,
@@ -132,8 +132,8 @@ A model part keeps every CPU step up to its own `compile`: `setupAnim`, EMF's an
    `gpu/vk/VkCompute.kt`) the same shader, compiled to SPIR-V, runs as a compute dispatch in a command buffer of
    Mobium's own that Renderpearl's encoder appends to the frame right after `upload()`; three `require = 0` mixins
    (`mixins/vulkan`, `gpu/vk/VulkanSupport.kt`) enable `shaderFloat64` and give vertex buffers storage usage
-   (`docs/vanilla-notes.md` §23). Module 2 on Vulkan runs only in dev clients so far (`-Dmobium.parts.vulkan`, set by
-   `-Pmobium.graphicsBackend=vulkan`), until the visual check in game (`PLAN.md` M7 step 5).
+   (`docs/vanilla-notes.md` §23); while an installed mod keeps Module 2 on the vanilla path (Vitrail, an overlapping
+   mod), the device and its buffers stay vanilla's.
 7. **Two stages, same bytes.** Mesa's iris records a compute dispatch in a batch of its own and flushes both batches
    around it, a fixed GPU cost per frame however few parts there are. So without a shader pack the same shader runs
    compiled as a vertex shader, drawn as points with rasterisation off (the *vertex stage*, where vertex shaders may
