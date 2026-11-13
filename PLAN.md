@@ -10,15 +10,14 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 
 ## Current state
 
-- The static cache runs on Vulkan in the released mod; both modules stay off while Vitrail is installed.
-- Module 2 runs on Vulkan with 0 differing vertices (self-check on both loaders, gametests on lavapipe in CI), but only
-  with `-Dmobium.parts.vulkan`, which dev runs on Vulkan set.
+- Both modules run on Vulkan on `master`, Module 2 where the GPU has `shaderFloat64`; the released mod has only the
+  static cache there. Both stay off while Vitrail is installed.
+- Module 2 on Vulkan writes 0 differing vertices (self-check on both loaders, gametests on lavapipe in CI).
 - Module 2 for items (dropped items, items in hands, frames and displays) is on `master`, not released yet; its
   results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
 - `self_check.py --mode parts --api vulkan` passes on both loaders with items: 0 differing vertices, pictures
   identical, no validation messages from Mobium.
-- Next: the maintainer's look in game at Module 2 on Vulkan (the by-hand part of #39's *How to verify*, plus
-  `item_drops`), then the last box of step 5 (Module 2 on Vulkan for players), then step 6.
+- Next: step 6, the benchmark round on Vulkan first.
 
 ---
 
@@ -37,14 +36,13 @@ Module 2, the same vertex bytes as the game's own path.
    - [x] `PartValidation` and `PartCheck` on Vulkan; self-check `--mode parts` on Vulkan, both loaders: 0 differing
          vertices, pictures identical, no validation messages from Mobium.
    - [x] CI: the Fabric gametests a second time on Mesa's lavapipe.
-   - [ ] Module 2 on Vulkan for players: `ModuleRules` without `-Dmobium.parts.vulkan`, the property and its wiring
-         removed (`build.gradle.kts`, `VulkanSupport.allowed`, `ModuleEnvironment.vulkanParts`), after the visual check
-         in game (*How to verify* of #39).
+   - [x] Module 2 on Vulkan for players, after the visual check in game: `ModuleRules` lets it run there like the
+         static cache; while an installed mod keeps it off, the device and its buffers stay vanilla's.
 6. **Measure and document.**
    - [ ] Benchmark round on Vulkan in the Prism instances for setups A and C (the graphics API set in their options),
          plus `/mobium gatec` on Vulkan and OpenGL in one session each. B and D need Iris and stay on OpenGL
          (*Decisions*).
-   - [ ] `docs/compat.md` (Vulkan rows), README (*Does Mobium work with Vulkan?*, which still says Mobium stays off on
+   - [x] `docs/compat.md` (Vulkan rows), README (*Does Mobium work with Vulkan?*, which still says Mobium stays off on
          Vulkan), `changelog.md` (no release notes have mentioned Vulkan yet).
 
 **Gate D:** on Vulkan in 26.3, on both loaders, zero screenshot differences and 0 differing vertices (self-check,
