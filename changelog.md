@@ -2,3 +2,4 @@
 - Settings: the module status list is gone (F3 `mobium:modules` shows it), and so is the unfinished Animation LOD preset
 - The A/B key is called "Toggle Mobium" and shows just "Mobium: ON" or "Mobium: OFF" above the hotbar
 - The GPU part transform now also draws items: dropped items, items in hands, frames and displays
+- Mobium now works on Minecraft's Vulkan renderer; there the GPU part transform needs a GPU with 64-bit shader floats

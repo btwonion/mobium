@@ -24,6 +24,27 @@ While one of these is installed, the Mobium modules it overlaps stay on the vani
 | Entity Culling | Detected; no interaction expected (it decides what is extracted, Mobium how it is drawn) |
 | Mod Menu | Opens Mobium's settings |
 
+## Minecraft's Vulkan renderer
+
+Minecraft 26.3 draws with OpenGL by default and with Vulkan as an option (`docs/vanilla-notes.md` §18, §21).
+Everything else in this file describes OpenGL unless a row names Vulkan; this table says what is the same and what
+differs there, on Fabric and on NeoForge.
+
+| On Vulkan | Status |
+| --- | --- |
+| Static cache | Runs as on OpenGL: it draws through the game's own GPU layer, which covers both renderers (§22) |
+| GPU part transform | Runs where the GPU has 64-bit floats in shaders (`shaderFloat64`; the GPUs without it are listed under *Known differences and limits*), always as a compute dispatch: there is no vertex stage variant on Vulkan (§23). Without the feature it stays on the vanilla path (F3 `mobium:modules`: `no_compute`; the log line "Mobium part transform on Vulkan" says why) |
+| Sodium 0.9.2 (Fabric), 0.9.3-beta.1 (NeoForge) | Runs on Vulkan with draw paths of its own; both dev clients run with it there (§21) |
+| Entity Model Features 3.3.12, Entity Texture Features 7.2.6, Fresh Animations | Run on Vulkan; tested with both modules, see the tables below (§21–§23) |
+| Iris 1.11.7 | Does not start on Vulkan: it calls OpenGL while the game sets up its renderer and stops the game before the title screen, with no Mobium code involved (seen on Fabric, §21). Shader packs are therefore untested on Vulkan |
+| Vitrail 0.13.0-beta (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`) | Hooks the same places as Mobium and is untested with it, so both modules stay off while it is installed (F3: `untested: Vitrail`); Mobium then leaves the Vulkan device and its buffers as the game creates them (§22, §23) |
+| Enhanced Block Entities, Vanillate, Accelerated Rendering | As on OpenGL: the overlapping modules stay off; not tried on Vulkan |
+| Entity Culling | Not tested |
+
+Tested on Vulkan on one GPU: an Intel Arc 140V on Linux (Fedora 44, Mesa 26.2's ANV), plus Mesa's lavapipe (software
+Vulkan) in CI. The dev runs use Khronos' validation layer and fail on any message that Mobium's objects or calls
+raise.
+
 ## Tested: static cache
 
 How: the dev self-check (`benchmark/self_check.py`) compares Mobium's picture with vanilla's from two consecutive
@@ -39,6 +60,10 @@ fog. "Identical" means 0 changed pixels. Dev clients run the compat stack of `ve
 | + Complementary Reimagined r5.9.3 (TAA and cloud movement off for the comparison) | Captures in Iris's formats (56-byte entity, 52-byte glyph vertices); the picture matches vanilla's up to the pack's own frame-to-frame noise, which is on terrain too. The shadow-pass timers read while the pack is on and 0 without it | Not tested: Iris 1.11.7 on NeoForge crashes with this pack in `CenterDepthSampler` ("Missing uniform InSampler"), with Mobium switched off as well (`self_check.py neoforge --mode iris-without-mobium`) |
 | + Fresh Animations (1.10.3 in the dev clients, 1.11.1 in the benchmark instances) | Identical in every comparison of the gallery; EMF replaces the head models with the pack's, and the one head Fresh Animations animates stays vanilla (`containsCustomAnims`) | Identical in every comparison of the gallery, as on Fabric |
 | Entity Culling | Not tested (not in the dev environment); expected to work, see above | Not tested |
+| On Vulkan (`self_check.py --api vulkan`): Sodium, EMF, ETF, without Iris, with and without Fresh Animations | Identical in every comparison (70 checks; all 13 picture pairs of the gallery, `storage_room` from every view); no validation-layer messages from Mobium | Identical in every comparison (71 checks); no validation-layer messages from Mobium |
+
+The Fabric gametests draw their scenes with the cache on OpenGL and a second time on Vulkan (Mesa's lavapipe, CI);
+the pictures stay within the gametests' tolerance (0.1 % of the pixels) on both (§22, §23).
 
 ## Tested: GPU part transform
 
@@ -48,7 +73,8 @@ enchanting table, armour with a trim, a saddle, wolf armour, a trident and a shi
 benchmark setups. In each it compiles every part Module 2 takes over on the CPU as well, reads the GPU's vertices back
 and compares them byte for byte (`parts/PartValidation.kt`; only bytes the CPU path never writes are left out), then
 compares Mobium's picture with vanilla's behind a pause screen (EMF's animations stand still only while the game is
-paused). The Fabric gametests run the same validation on Mesa's software renderer (CI).
+paused). The Fabric gametests run the same validation on Mesa's software renderers (CI): llvmpipe on OpenGL and
+lavapipe on Vulkan.
 
 | Setup | Fabric | NeoForge |
 | --- | --- | --- |
@@ -56,16 +82,19 @@ paused). The Fabric gametests run the same validation on Mesa's software rendere
 | + Complementary Reimagined r5.9.3 | 0 differing vertices in the pens and the gallery, main and shadow pass; pictures identical in the pens, within the pack's own frame-to-frame noise in the gallery (the translucent conduit) | Not tested (Iris crashes with this pack on NeoForge, see above) |
 | + Fresh Animations 1.10.3 | 0 differing vertices (6.8M), pictures identical | 0 differing vertices (9.3M in the pens, 2.6M in the gallery), pictures identical |
 | Fresh Animations and Complementary | 0 differing vertices, pictures as with the pack alone | Not tested |
+| On Vulkan (`--mode parts --api vulkan`): vanilla models (Sodium's cube path), without Iris | 0 differing vertices (13.9M compared in the pens, 2.8M in the gallery), pictures identical, no validation-layer messages from Mobium | 0 differing vertices, pictures identical, no validation-layer messages from Mobium |
+| On Vulkan + Fresh Animations | 0 differing vertices (6.8M in the pens, 2.7M in the gallery), pictures identical | 0 differing vertices, pictures identical |
 
-The expand pass runs as a compute dispatch or in the vertex stage (`parts/ExpandPass.kt`), and `--mode parts`
+On OpenGL the expand pass runs as a compute dispatch or in the vertex stage (`parts/ExpandPass.kt`), and `--mode parts`
 validates both in every setup. Both stages: Fabric 33/33 checks (16 validations, 0 differing vertices, 0.26–9.5M
-vertices compared each), NeoForge 17/17 (8 validations, 0 differing); pictures identical as above.
+vertices compared each), NeoForge 17/17 (8 validations, 0 differing); pictures identical as above. On Vulkan it is
+always a compute dispatch (`parts/VulkanExpand.kt`): 23 of 23 checks on each loader.
 
 ### On players' GPUs
 
-All of the above ran on one GPU and driver: an Intel Arc 140V on Mesa's iris (Fedora), plus Mesa's software renderer
-in CI. The shader is written to round as Java does (`precise` operations, square roots and divisions corrected in
-double precision), but another driver may still round or fuse an operation differently, and the dev validation never
+All of the above ran on one GPU: an Intel Arc 140V on Fedora, with Mesa's iris on OpenGL and Mesa's ANV on Vulkan,
+plus Mesa's software renderers in CI. The shader is written to round as Java does (`precise` operations, square
+roots and divisions corrected in double precision), but another driver may still round or fuse an operation differently, and the dev validation never
 runs on players' machines. So Module 2 checks itself in normal play (`parts/PartCheck.kt`): for each path through the
 shader (the part's flags: matrix kind, sprite, Iris's format and face normal, normals from the CPU or trusted; Sodium's
 cube layout or vanilla's; compute or vertex stage) the first 64 parts, at most 8 per frame, are compiled on the CPU as
@@ -74,22 +103,22 @@ GPU once per staged buffer, which happens only in the first frames each path app
 parts get the CPU's bytes in that frame (the frame's other parts keep the GPU's, for that one frame), and Module 2
 switches off until restart with one toast; the log names the GPU, its driver and the first differing vertices. F3 `mobium:modules` shows how many parts the check compared
 (`Mobium GPU check: … parts in … paths compared, no difference`). `/mobium debug gpucheck` (dev only) makes the next
-comparison find a difference; `--mode parts` uses it to check the repair and the switch-off.
+comparison find a difference; `--mode parts` uses it to check the repair and the switch-off. On Vulkan, which cannot
+wait for the GPU inside a frame, the compared parts always get the CPU's bytes in their frame and the comparison
+follows a few frames later (`docs/vanilla-notes.md` §23).
 
 | GPU and driver | OS | Result |
 | --- | --- | --- |
-| Intel Arc 140V, Mesa iris | Fedora 44 | No difference (dev validation and the check, both stages; 980 parts in 21 paths in `--mode parts` on Fabric, 542 in 13 on NeoForge) |
-| Mesa llvmpipe | CI (Ubuntu) | No difference (gametests) |
+| Intel Arc 140V, Mesa iris (OpenGL) | Fedora 44 | No difference (dev validation and the check, both stages; 980 parts in 21 paths in `--mode parts` on Fabric, 542 in 13 on NeoForge) |
+| Intel Arc 140V, Mesa ANV (Vulkan) | Fedora 44 | No difference (dev validation on both loaders; the check compared 448 parts in 7 paths in `--mode parts` on Fabric) |
+| Mesa llvmpipe (OpenGL) | CI (Ubuntu) | No difference (gametests) |
+| Mesa lavapipe (Vulkan) | CI (Ubuntu) | No difference (gametests) |
 | Nvidia GeForce RTX 4070 Ti, driver not recorded | Not recorded | No difference: both runs with Mobium on in each scene of `/mobium benchmark` recorded `+parts-vertex`, so the check switched nothing off (vertex stage, vanilla cubes, no shader pack; [#32](https://github.com/btwonion/mobium/issues/32)) |
 | Nvidia GeForce RTX 4070 Laptop GPU, driver not recorded | Linux | No difference, as above ([#31](https://github.com/btwonion/mobium/issues/31)) |
-| AMD, Intel on Windows, others; Nvidia with Sodium or a shader pack | | Not tested yet; F3 `mobium:modules` and the log tell |
+| AMD, Intel on Windows, others; Nvidia with Sodium or a shader pack; on Vulkan every GPU but the Arc 140V | | Not tested yet; F3 `mobium:modules` and the log tell |
 
 ## Known differences and limits
 
-- Minecraft's Vulkan renderer: both modules run on it, checked in game on both loaders (Intel Arc 140V with Mesa's
-  ANV: pictures identical to vanilla, 0 differing vertices, no validation-layer messages from Mobium;
-  `docs/vanilla-notes.md` §22, §23). Module 2 needs `shaderFloat64` there. Iris 1.11.7 does not start on Vulkan at
-  all (§21).
 - GPUs without `shaderFloat64` on Vulkan, where Module 2 stays off (F3 `mobium:modules`: `no_compute`; the log line
   "Mobium part transform on Vulkan" says why), from the reports in the Vulkan Hardware Database
   (vulkan.gpuinfo.org, *shaderFloat64*, devices not supporting it per OS): Intel from
@@ -98,8 +127,6 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
   (Mesa's ANV), which Intel documents as by design (support article 000089817); Qualcomm Snapdragon X on Windows on
   ARM; every Mac (MoltenVK). Nvidia's and AMD's GPUs on Windows and Linux, Intel's Xe2 (Lunar Lake's Arc 130V/140V,
   Arc B-series) and, in most reports, Intel's Gen9 (HD and UHD 5xx–6xx of 6th to 10th gen Core) have it.
-- Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): hooks the same places as Mobium and
-  is untested with it, so both modules stay off while it is installed (F3: `untested: Vitrail`).
 - Text drawn with a resource pack's antialiased (TrueType) font: vanilla draws a sign's glyphs in submission order
   among all solid-phase text; overlapping half-transparent glyph edges of the 8× glow-ink outline could blend in a
   different order. Not seen with the default font, whose glyphs are fully opaque or fully transparent.
@@ -123,7 +150,8 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
   only 17 shields (dev client). With a shader pack it stays a compute dispatch: faster there in the dev client, equal
   at 1920×1080. `-Dmobium.parts.stage=compute` or `vertex` in the Java arguments picks one for comparisons and bug
   reports; both write the same bytes (`--mode parts` validates both). Other GPUs and drivers are not measured yet; on
-  them the GPU check above compares the vertices.
+  them the GPU check above compares the vertices. On Vulkan the pass is always a compute dispatch, and what it costs
+  there is not measured yet.
 - Iris counts vertices written one by one per quad; a Sodium push right after such vertices loses one from its count
   and extends the following quads from the wrong vertices (vanilla with Iris and Sodium, not Mobium). With Module 2
   both kinds of cube are expanded on the GPU, so that mix does not happen and the picture is correct. Not seen in the
