@@ -22,8 +22,7 @@ class ConfigFormatTest {
         val config = Config(
             enabled = false,
             cache = CacheConfig(memoryBudgetMb = 256, types = CacheTypes(signs = false)),
-            parts = PartsConfig(enabled = false, items = false, excludedEntities = mutableListOf("minecraft:zombie")),
-            lod = LodConfig(preset = LodPreset.SUBTLE)
+            parts = PartsConfig(enabled = false, items = false, excludedEntities = mutableListOf("minecraft:zombie"))
         )
         assertEquals(config, json.decodeFromString<Config>(json.encodeToString(config)))
     }
@@ -59,6 +58,28 @@ class ConfigFormatTest {
     }
 
     @Test
+    fun `a version 5 file keeps its settings and loses the animation LOD settings`() {
+        val tree = json.parseToJsonElement(
+            """{"enabled": true, "parts": {"items": false}, "lod": {"preset": "SUBTLE", "excludedEntities": ["minecraft:cow"]}}"""
+        )
+        assertEquals(Config(parts = PartsConfig(items = false)), migrate(json, tree, 5))
+    }
+
+    @Test
+    fun `version 3 and 4 files lose the animation LOD settings too`() {
+        val tree = json.parseToJsonElement("""{"enabled": false, "lod": {"preset": "OFF"}}""")
+        assertEquals(Config(enabled = false), migrate(json, tree, 3))
+        assertEquals(Config(enabled = false), migrate(json, tree, 4))
+    }
+
+    @Test
+    fun `the lod key no longer decodes, which routes version 5 files to the migration`() {
+        assertThrows<SerializationException> {
+            json.decodeFromString<Config>("""{"enabled": true, "lod": {"preset": "OFF"}}""")
+        }
+    }
+
+    @Test
     fun `the old prototype key no longer decodes, which routes version 3 files to the migration`() {
         assertThrows<SerializationException> {
             json.decodeFromString<Config>("""{"enabled": false, "cache": {"prototype": true}}""")
@@ -81,7 +102,6 @@ class ConfigFormatTest {
     fun `defaults follow the plan`() {
         val config = Config()
         assertTrue(config.enabled && config.cache.enabled && config.parts.enabled && config.parts.items)
-        assertEquals(LodPreset.OFF, config.lod.preset)
         assertEquals(128, config.cache.memoryBudgetMb)
         assertTrue(config.cache.types.switches().all { it.second.get() })
     }
@@ -92,7 +112,6 @@ class ConfigFormatTest {
         val copy = original.deepCopy()
         copy.cache.types.chests = false
         copy.parts.excludedEntities += "minecraft:cow"
-        copy.lod.excludedEntities += "minecraft:cow"
         assertNotEquals(original, copy)
         assertEquals(Config(), original)
     }

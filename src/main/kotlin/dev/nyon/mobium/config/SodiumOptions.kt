@@ -81,18 +81,6 @@ class SodiumOptions : ConfigEntryPoint {
                     .setBinding({ config.parts.items = it }, { config.parts.items })
             )
 
-        val lod = builder.createOptionGroup()
-            .setName(Component.translatable("mobium.module.animation_lod"))
-            .addOption(
-                builder.createEnumOption(id("lod_preset"), LodPreset::class.java)
-                    .setName(Component.translatable("mobium.settings.lod_preset"))
-                    .setTooltip(Component.translatable("mobium.settings.lod_preset.tooltip"))
-                    .setStorageHandler(save)
-                    .setElementNameProvider { Component.translatable(MobiumSettingsScreen.presetKey(it)) }
-                    .setDefaultValue(defaults.lod.preset)
-                    .setBinding({ config.lod.preset = it }, { config.lod.preset })
-            )
-
         builder.registerModOptions(Mobium.MOD_ID)
             .addPage(
                 builder.createOptionPage()
@@ -100,7 +88,6 @@ class SodiumOptions : ConfigEntryPoint {
                     .addOptionGroup(general)
                     .addOptionGroup(cache)
                     .addOptionGroup(parts)
-                    .addOptionGroup(lod)
             )
     }
 

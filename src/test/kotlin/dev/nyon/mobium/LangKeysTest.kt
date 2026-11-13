@@ -1,7 +1,6 @@
 package dev.nyon.mobium
 
 import dev.nyon.mobium.config.CacheTypes
-import dev.nyon.mobium.config.LodPreset
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.OffReason
 import kotlinx.serialization.json.Json
@@ -27,7 +26,6 @@ class LangKeysTest {
         val keys = keys("en_us")
         val built = Module.entries.map { it.translationKey } +
             OffReason.entries.map { it.translationKey } +
-            LodPreset.entries.map { "mobium.lod_preset.${it.name.lowercase()}" } +
             CacheTypes().switches().flatMap { (key, _) ->
                 listOf("mobium.settings.type.$key", "mobium.settings.type.$key.tooltip")
             }

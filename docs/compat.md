@@ -11,7 +11,7 @@ While one of these is installed, the Mobium modules it overlaps stay on the vani
 | --- | --- | --- | --- |
 | Enhanced Block Entities, Enhanced Block Entities Reloaded | `enhancedblockentities` | Static cache | Reloaded (Modrinth `ebe-reloaded`) has 26.3 builds and keeps the original id |
 | Vanillate (part of CrankShaft, a Flywheel port) | `vanillate` | Static cache, GPU part transform | CrankShaft itself (`crankshaft`) is only the engine and does not count |
-| Accelerated Rendering | `acceleratedrendering` | All three | No 26.x build yet; detected in case one appears |
+| Accelerated Rendering | `acceleratedrendering` | Both | No 26.x build yet; detected in case one appears |
 
 ## Mods Mobium works with
 

@@ -1,13 +1,11 @@
 package dev.nyon.mobium.core
 
 import dev.nyon.mobium.config.Config
-import dev.nyon.mobium.config.LodPreset
 
-/** Mobium's three modules (docs/architecture.md). [key] names them in logs, commands and translation keys. */
+/** Mobium's two modules (docs/architecture.md). [key] names them in logs, commands and translation keys. */
 enum class Module(val key: String) {
     STATIC_CACHE("static_cache"),
-    PART_TRANSFORM("part_transform"),
-    ANIMATION_LOD("animation_lod");
+    PART_TRANSFORM("part_transform");
 
     val translationKey: String
         get() = "mobium.module.$key"
@@ -44,10 +42,7 @@ enum class OffReason(val key: String) {
     BACKEND("backend"),
 
     /** The module needs compute shaders (OpenGL 4.3 with double precision in shaders). */
-    NO_COMPUTE("no_compute"),
-
-    /** The module's code does not exist yet (Module 3, animation LOD). */
-    NOT_BUILT("not_built");
+    NO_COMPUTE("no_compute");
 
     val translationKey: String
         get() = "mobium.reason.$key"
@@ -102,7 +97,6 @@ object ModuleRules {
         val switchedOn = when (module) {
             Module.STATIC_CACHE -> config.cache.enabled
             Module.PART_TRANSFORM -> config.parts.enabled
-            Module.ANIMATION_LOD -> config.lod.preset != LodPreset.OFF
         }
         if (!switchedOn) return off(OffReason.CONFIG)
         environment.overlaps[module]?.let { return off(OffReason.OVERLAP, it) }
@@ -111,7 +105,6 @@ object ModuleRules {
         return when (module) {
             Module.STATIC_CACHE -> ModuleStatus(module, null)
             Module.PART_TRANSFORM -> if (!environment.compute) off(OffReason.NO_COMPUTE) else ModuleStatus(module, null)
-            Module.ANIMATION_LOD -> off(OffReason.NOT_BUILT)
         }
     }
 
@@ -121,7 +114,7 @@ object ModuleRules {
      * (PLAN.md M7 step 5; whether the GPU can is the `compute` rule). No backend before the device exists.
      */
     private fun runsOn(module: Module, environment: ModuleEnvironment): Boolean = when (module) {
-        Module.STATIC_CACHE, Module.ANIMATION_LOD ->
+        Module.STATIC_CACHE ->
             environment.backend == GraphicsBackend.OPENGL || environment.backend == GraphicsBackend.VULKAN
         Module.PART_TRANSFORM ->
             environment.backend == GraphicsBackend.OPENGL || (environment.backend == GraphicsBackend.VULKAN && environment.vulkanParts)
