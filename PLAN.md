@@ -42,7 +42,7 @@ Module 2, the same vertex bytes as the game's own path.
    - [ ] Benchmark round on Vulkan in the Prism instances for setups A and C (the graphics API set in their options),
          plus `/mobium gatec` on Vulkan and OpenGL in one session each. B and D need Iris and stay on OpenGL
          (*Decisions*).
-   - [ ] `docs/compat.md` (Vulkan rows), README (*Does Mobium work with Vulkan?*, which still says Mobium stays off on
+   - [x] `docs/compat.md` (Vulkan rows), README (*Does Mobium work with Vulkan?*, which still says Mobium stays off on
          Vulkan), `changelog.md` (no release notes have mentioned Vulkan yet).
 
 **Gate D:** on Vulkan in 26.3, on both loaders, zero screenshot differences and 0 differing vertices (self-check,
