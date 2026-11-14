@@ -60,6 +60,11 @@ object Compat {
     private val overlapping = ArrayList<OverlappingMod>()
     private val untestedMods = ArrayList<UntestedMod>()
 
+    /** Whether [detect] has run; the loaders' mod threads run it, the render thread asks. */
+    @Volatile
+    var detected = false
+        private set
+
     fun detect() {
         versions.clear()
         CompatMod.entries.forEach { mod -> modVersion(mod.modId)?.let { versions[mod] = it } }
@@ -67,6 +72,7 @@ object Compat {
         OverlappingMod.entries.filterTo(overlapping) { modVersion(it.modId) != null }
         untestedMods.clear()
         UntestedMod.entries.filterTo(untestedMods) { modVersion(it.modId) != null }
+        detected = true
     }
 
     fun isLoaded(mod: CompatMod): Boolean = mod in versions
@@ -83,6 +89,13 @@ object Compat {
         val result = HashMap<Module, String>()
         for (mod in untestedMods) for (module in mod.modules) result.putIfAbsent(module, mod.displayName)
         return result
+    }
+
+    /** The installed mod that keeps [module] on the vanilla path for the whole session (overlapping or untested), or null. */
+    fun keepsOff(module: Module): String? {
+        for (mod in overlapping) if (module in mod.modules) return mod.displayName
+        for (mod in untestedMods) if (module in mod.modules) return mod.displayName
+        return null
     }
 
     fun describe(): String {

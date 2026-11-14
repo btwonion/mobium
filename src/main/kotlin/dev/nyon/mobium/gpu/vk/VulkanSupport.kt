@@ -6,6 +6,8 @@ import com.mojang.renderpearl.backend.vulkan.VulkanFeatureSets
 import com.mojang.renderpearl.backend.vulkan.init.FeatureSet
 import com.mojang.renderpearl.backend.vulkan.init.VulkanFeature
 import dev.nyon.mobium.Mobium
+import dev.nyon.mobium.core.Compat
+import dev.nyon.mobium.core.Module
 import org.lwjgl.vulkan.VK10
 
 /**
@@ -14,13 +16,20 @@ import org.lwjgl.vulkan.VK10
  * source usage on vertex buffers, which the expand pass writes and the check copies out. Three mixins in `mixins/vulkan` provide them, each `require = 0`: when one
  * does not apply, [available] stays false and Module 2 stays off on Vulkan with a reason instead of the game crashing.
  *
- * Vanilla's buffers change only in sessions where Module 2 can run on Vulkan ([storageVertexBuffers]), and only while
- * Module 2 on Vulkan is being built ([allowed], PLAN.md M7 steps 4 and 5) at all.
+ * Vanilla's device and buffers change only in sessions where Module 2 can run on Vulkan: never while an installed mod
+ * keeps it on the vanilla path ([heldBack]), and the buffers only on a device with 64-bit floats
+ * ([storageVertexBuffers]).
  */
 object VulkanSupport {
-    /** Module 2 on Vulkan before its checks are done (PLAN.md M7 step 5): `-Dmobium.parts.vulkan=true`, dev clients on Vulkan. */
-    val allowed: Boolean
-        get() = System.getProperty("mobium.parts.vulkan").toBoolean()
+    /**
+     * Why Mobium leaves vanilla's feature sets and buffer usages alone in this session, or null: an installed mod
+     * keeps Module 2 on the vanilla path (`Compat.keepsOff`), or the device is created before the mods are detected.
+     * Decided once, when the backend first asks for the optional feature sets.
+     */
+    private val heldBack: String? by lazy {
+        if (!Compat.detected) "the device was created before the mods were detected"
+        else Compat.keepsOff(Module.PART_TRANSFORM)?.let { "$it is installed" }
+    }
 
     /**
      * `shaderFloat64`, offered to `VulkanBackend` as an optional feature set: enabled where the GPU has it. Built on
@@ -48,20 +57,20 @@ object VulkanSupport {
 
     /** Module 2's expand pass can run on this Vulkan device. */
     val available: Boolean
-        get() = allowed && float64 && storageUsage
+        get() = heldBack == null && float64 && storageUsage
 
     /** Why [available] is false, for the log. */
     fun describe(): String = when {
-        !allowed -> "not enabled (-Dmobium.parts.vulkan)"
+        heldBack != null -> "not used ($heldBack)"
         !float64 -> "no shaderFloat64 (the GPU lacks it, or the feature set hook did not apply)"
         !storageUsage -> "the storage usage hook did not apply"
         else -> "available"
     }
 
-    /** `VulkanFeatureSets.optionalFeatureSets()`: adds [FLOAT64] while Module 2 on Vulkan is [allowed]. */
+    /** `VulkanFeatureSets.optionalFeatureSets()`: adds [FLOAT64] unless Module 2 is [heldBack]. */
     @JvmStatic
     fun optionalFeatureSets(sets: Set<FeatureSet>): Set<FeatureSet> {
-        if (!allowed) return sets
+        if (heldBack != null) return sets
         val extended = HashSet(sets)
         extended += FLOAT64
         return extended
@@ -71,10 +80,11 @@ object VulkanSupport {
     @JvmStatic
     fun onDeviceCreated(enabled: FeatureSet) {
         float64 = enabled.contains(FLOAT64)
-        if (!allowed || !float64) return
-        storageVertexBuffers = true
-        storageUsage = VulkanConst.bufferUsageToVk(GpuBuffer.USAGE_VERTEX) and VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT != 0
-        if (!storageUsage) storageVertexBuffers = false
+        if (heldBack == null && float64) {
+            storageVertexBuffers = true
+            storageUsage = VulkanConst.bufferUsageToVk(GpuBuffer.USAGE_VERTEX) and VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT != 0
+            if (!storageUsage) storageVertexBuffers = false
+        }
         Mobium.LOGGER.info("Mobium part transform on Vulkan: {}", describe())
     }
 

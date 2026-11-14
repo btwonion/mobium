@@ -14,11 +14,8 @@ import dev.nyon.mobium.cache.Signs
 import dev.nyon.mobium.cache.Skulls
 import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
-import dev.nyon.mobium.core.Capabilities
-import dev.nyon.mobium.core.GraphicsBackend
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
-import dev.nyon.mobium.core.OffReason
 import dev.nyon.mobium.debug.DebugLines
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.parts.ExpandPass
@@ -128,7 +125,6 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
      * against the picture with Module 2 off.
      */
     private fun checkParts(context: ClientGameTestContext, singleplayer: TestSingleplayerContext, scene: String) {
-        if (!module2Runs(context)) return
         singleplayer.server.runCommand("tick freeze")
         setParts(context, false)
         context.waitTicks(SETTLE_TICKS)
@@ -168,25 +164,10 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
     }
 
     /**
-     * Whether Module 2 runs on this backend. On Vulkan it runs only with `-Dmobium.parts.vulkan` (dev runs on Vulkan
-     * set it) until its checks there are done (PLAN.md M7 step 5); without, it must be off with `backend`, and the
-     * callers skip Module 2's checks.
-     */
-    private fun module2Runs(context: ClientGameTestContext): Boolean = context.computeOnClient<Boolean, RuntimeException> {
-        if (Capabilities.current?.backend != GraphicsBackend.VULKAN) return@computeOnClient true
-        val status = ModuleStates.status(Module.PART_TRANSFORM)
-        if (status.active) return@computeOnClient true
-        check(status.reason == OffReason.BACKEND) { "Module 2 on Vulkan: ${status.describe()}" }
-        LOGGER.info("Module 2 is off on Vulkan ({}), its checks are skipped", status.describe())
-        false
-    }
-
-    /**
      * A short `/mobium gatec` in [scene] (null: without the argument, `mob_pen_live`): the scene with Module 2 off and
      * on, Gate C's numbers, Module 2 restored.
      */
     private fun checkGateC(context: ClientGameTestContext, scene: String?) {
-        if (!module2Runs(context)) return
         val command = if (scene == null) "mobium gatec $BENCH_SECONDS 1" else "mobium gatec $BENCH_SECONDS 1 $scene"
         val gate = runPlan(context, command, "gatec-")
         val rows = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',') }

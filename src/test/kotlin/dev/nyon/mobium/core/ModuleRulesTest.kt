@@ -66,14 +66,11 @@ class ModuleRulesTest {
     }
 
     @Test
-    fun `the static cache runs on OpenGL and Vulkan, Module 2 on Vulkan only while allowed`() {
+    fun `both modules run on OpenGL and Vulkan, Module 2 where the GPU has compute`() {
         val vulkan = openGl.copy(backend = GraphicsBackend.VULKAN)
-        assertNull(reason(Module.STATIC_CACHE, environment = vulkan))
-        assertEquals(OffReason.BACKEND, reason(Module.PART_TRANSFORM, environment = vulkan))
-        assertEquals("vulkan", ModuleRules.resolve(Module.PART_TRANSFORM, Config(), vulkan).detail)
-        val allowed = vulkan.copy(vulkanParts = true)
-        assertNull(reason(Module.PART_TRANSFORM, environment = allowed))
-        assertEquals(OffReason.NO_COMPUTE, reason(Module.PART_TRANSFORM, environment = allowed.copy(compute = false)))
+        for (module in Module.entries) assertNull(reason(module, environment = vulkan))
+        assertNull(reason(Module.STATIC_CACHE, environment = vulkan.copy(compute = false)))
+        assertEquals(OffReason.NO_COMPUTE, reason(Module.PART_TRANSFORM, environment = vulkan.copy(compute = false)))
     }
 
     @Test

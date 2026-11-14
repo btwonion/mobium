@@ -39,8 +39,6 @@ val launchArguments = buildList {
 }
 val launchProperties = buildMap {
     if (graphicsBackend != null) put("mobium.graphicsBackend", graphicsBackend)
-    // Module 2 on Vulkan is off for players until its checks there are done (PLAN.md M7 step 5); dev runs test it.
-    if (graphicsBackend == "vulkan") put("mobium.parts.vulkan", "true")
     if (vulkanValidation) put("mobium.vulkanValidation", "true")
 }
 // The layer stops reporting a message after 10 repeats by default, so vanilla's could hide Mobium's of the same kind.

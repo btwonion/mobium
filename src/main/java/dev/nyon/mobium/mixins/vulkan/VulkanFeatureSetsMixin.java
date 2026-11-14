@@ -12,7 +12,8 @@ import java.util.Set;
 /**
  * Module 2 on Vulkan needs 64-bit floats in shaders, which Renderpearl does not enable: offers an optional feature set
  * with {@code shaderFloat64}, which {@code VulkanBackend} enables where the GPU has it, like its own optional sets
- * ({@code docs/vanilla-notes.md} §18). Only while Module 2 on Vulkan is allowed; otherwise the sets are vanilla's.
+ * ({@code docs/vanilla-notes.md} §18). Not while an installed mod keeps Module 2 on the vanilla path
+ * ({@code VulkanSupport}); then the sets are vanilla's.
  * {@code require = 0}: without the hook the feature stays off and so does Module 2 on Vulkan.
  */
 @Mixin(VulkanFeatureSets.class)
