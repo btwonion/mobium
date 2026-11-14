@@ -26,8 +26,10 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 **Goal:** both modules on Minecraft's Vulkan backend, with the same guarantee as on OpenGL: the same pixels and, for
 Module 2, the same vertex bytes as the game's own path.
 
-1. **26.4.** `26.4-snapshot-6` still has no compute and no storage buffers in Renderpearl and drops push descriptors
-   (§20). Check the newest snapshot again before porting to 26.4.
+1. **26.4.** `26.4-snapshot-8` still has no compute and no storage buffers in Renderpearl and drops push descriptors;
+   everything Module 2's Vulkan path hooks or calls is as in 26.3. New around it: CPU devices such as lavapipe need
+   `-Drenderpearl.vulkan.allowcpudevice`, and "Default" picks Vulkan or OpenGL at random at each start (§20). Check
+   the newest build again before porting to 26.4.
 2. **Tooling.** Done: dev clients, self-check (`--api vulkan`) and gametests on Vulkan with the validation layer,
    `ExpandProfile` on Renderpearl's timestamps (§21).
 3. **Module 1 on Vulkan.** Done: pixel-identical on both loaders, no validation messages from Mobium (§22).
@@ -51,10 +53,13 @@ gametests on lavapipe), no validation-layer messages from Mobium; `mob_pen_live`
 gate fails, stop, write up why in the PR and agree on the next step first.
 
 **Decisions:**
-- **Iris on Vulkan: not part of M7.** No Iris release runs on Vulkan (1.11.7 is the newest for 26.3 and stops the game
-  there, §21; the request is open in Iris's tracker, with no Vulkan branch), and Aperture, its Vulkan successor, has
-  no release or date. Setups B and D are measured on OpenGL only. Check again when an Iris or Aperture release runs on
-  Vulkan.
+- **Iris on Vulkan: not part of M7.** No Iris release draws on Vulkan: 1.11.7 is the newest for 26.3 (none for 26.4);
+  with Vulkan chosen in `options.txt` it switches its own mixins off, and started on Vulkan by launch argument it
+  stops the game (§21). Iris's branch `26.3-new` (1.12.0, unreleased) has a Vulkan backend and hooks
+  classes Module 2 hooks or calls: `VulkanFeatureSets`, `VulkanDevice`, `VulkanCommandEncoder` (§21). Aperture has no
+  public repository, release or date. Setups B and D are measured on OpenGL only. When an Iris release draws on Vulkan:
+  the self-check with it on Vulkan, both modules, before B and D are measured there. Not tried either: Mobium on
+  Vulkan with Iris 1.11.7 installed and switched off by `options.txt`.
 - **Vitrail: both modules stay off while it is installed.** It is a beta (0.13.0-beta for 26.2 and 26.3, Fabric and
   NeoForge) whose open work rewrites how it writes entity vertices, where Mobium hooks too (§22). Checked after
   Gate D against its then newest release, as its own piece of work: its dev client with an OptiFine-format pack, the
