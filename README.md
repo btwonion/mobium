@@ -98,7 +98,7 @@ usual.
 | Mod | Status |
 | --- | --- |
 | Sodium | Works; Mobium adds a page to Sodium's video settings |
-| Iris with shader packs | Works, shadow pass included; tested with Complementary Reimagined. Iris itself does not run on Vulkan |
+| Iris with shader packs | Works, shadow pass included; tested with Complementary Reimagined. On Vulkan Iris draws no shader packs yet, and Mobium works as without Iris |
 | Entity Model Features / Entity Texture Features, Fresh Animations | Works |
 | Mod Menu | Opens Mobium's settings |
 | Enhanced Block Entities, Vanillate, Accelerated Rendering | These do the same job; Mobium switches off its overlapping part |
@@ -129,8 +129,9 @@ Yes, on OpenGL and on Minecraft's Vulkan renderer alike. Two things differ on Vu
   Intel's newest (Arc B-series, Lunar Lake's Arc 130V and 140V). Other recent Intel graphics (Iris Xe, the Arc
   A-series, Arc 130T and 140T), Snapdragon X and Macs do not: there only the static cache runs, and the game writes
   the vertices of mobs and items itself.
-- Shader packs: Iris does not run on Vulkan yet. Vitrail, a shader pack mod for the Vulkan renderer, is not tested
-  with Mobium yet, so Mobium stays off while Vitrail is installed.
+- Iris's shader packs do not work on Vulkan yet: with Iris installed the game runs without them there, and Mobium
+  works as it does without Iris. Vitrail, a shader pack mod for the Vulkan renderer, is not tested with Mobium yet,
+  so Mobium stays off while Vitrail is installed.
 
 On Vulkan Mobium is tested on one graphics chip so far, an Intel Arc 140V on Linux. F3 `mobium:modules` shows what
 runs on yours.
