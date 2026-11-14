@@ -198,6 +198,7 @@ object SelfCheck {
         results += "NOTE graphics: ${Capabilities.current?.describe() ?: running}"
         val wanted = System.getProperty("mobium.graphicsBackend")
         if (wanted != null && wanted != "default") check("graphics API", running.equals(wanted, ignoreCase = true), "asked for $wanted, running on $running")
+        if (Compat.isLoaded(CompatMod.IRIS)) irisState()
         if (VulkanValidation.requested && running == "Vulkan") {
             val detail = when {
                 !VulkanValidation.layerPresent -> "${VulkanValidation.LAYER} is not installed (Fedora: vulkan-validation-layers)"
@@ -209,6 +210,28 @@ object SelfCheck {
                 check("Vulkan validation check catches a message from Mobium's code (probe)", VulkanValidation.probe())
             }
         }
+    }
+
+    /** Iris installed and running; the shader pack checks need both. */
+    private fun irisRuns(): Boolean = Compat.isLoaded(CompatMod.IRIS) && IrisCheck.running()
+
+    /**
+     * With Iris installed, whether it runs. Iris 1.11.7 switches its own mixins off when options.txt chooses Vulkan
+     * (`self_check.py --from-options`, docs/vanilla-notes.md §21) and then never initialises; Mobium still finds it by
+     * mod id, so its calls into Iris have to answer "no shader pack" there.
+     */
+    private fun irisState() {
+        if (IrisCheck.running()) return
+        results += "NOTE Iris is installed but does not run (its mixins are off on Vulkan); the shader pack checks are skipped"
+        // The pipeline is Iris's vanilla one, which its PipelineManager creates on first use and no reload replaces.
+        val answers = "shader pack ${IrisCompat.isShaderPackInUse()}, shadow pass ${IrisCompat.isRenderingShadowPass()}, " +
+            "pipeline ${IrisCompat.pipeline()?.javaClass?.simpleName}, rendering level ${IrisCompat.isRenderingLevel()}"
+        check(
+            "Iris not running: IrisCompat reports no shader pack",
+            !IrisCompat.isShaderPackInUse() && !IrisCompat.isRenderingShadowPass() && !IrisCompat.isRenderingLevel() &&
+                IrisCompat.pipeline()?.javaClass?.simpleName == "VanillaRenderingPipeline",
+            answers
+        )
     }
 
     /** Mobium's validation messages fail the check; the others are noted and listed in `validation.txt`. */
@@ -396,7 +419,7 @@ object SelfCheck {
         minecraft.createWorldOpenFlows().openWorld(WORLD) { }
         yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
         yield(ticks(40))
-        if (buildScene(minecraft, GALLERY) && Compat.isLoaded(CompatMod.IRIS)) {
+        if (buildScene(minecraft, GALLERY) && irisRuns()) {
             val pack = IrisCheck.firstPack()
             if (pack == null) {
                 check("shader pack present", false, "no zip in shaderpacks/")
@@ -765,7 +788,7 @@ object SelfCheck {
                 yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
             }
             if (mobs) recordMobs(minecraft, scene, "c")
-            val pack = if (mobs && Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            val pack = if (mobs && irisRuns()) IrisCheck.firstPack() else null
             if (pack == null) {
                 results += "NOTE no shader pack, setup D skipped"
             } else {
@@ -871,7 +894,7 @@ object SelfCheck {
             // Compute against the vertex stage with the models of all four setups: A, B (the shader pack), D (and
             // Fresh Animations), C (Fresh Animations alone).
             recordExpand(minecraft, scene, "a", STAGES)
-            val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            val pack = if (irisRuns()) IrisCheck.firstPack() else null
             var restore: (() -> Unit)? = null
             if (pack != null) {
                 restore = IrisCheck.select(pack, emptyMap())
@@ -904,7 +927,7 @@ object SelfCheck {
                 yield(ticks(10))
                 yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
                 recordExpand(minecraft, scene, "c")
-                val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+                val pack = if (irisRuns()) IrisCheck.firstPack() else null
                 if (pack != null) {
                     val restore = IrisCheck.select(pack, emptyMap())
                     yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
@@ -1067,14 +1090,14 @@ object SelfCheck {
         // Animations), C (Fresh Animations without the pack); in each the mob pens and the part gallery.
         partsScenes(minecraft, "vanilla models")
         /*? if fabric {*/
-        val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+        val pack = if (irisRuns()) IrisCheck.firstPack() else null
         /*?} else {*/
         /*// Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 (see inWorld).
         val pack: String? = null
         *//*?}*/
         var restorePack: (() -> Unit)? = null
         if (pack == null) {
-            results += "NOTE no shader pack (none in shaderpacks/, or NeoForge), the shader pack checks were skipped"
+            results += "NOTE no shader pack (none in shaderpacks/, NeoForge, or Iris not running), the shader pack checks were skipped"
         } else {
             restorePack = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
             yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
@@ -1437,6 +1460,7 @@ object SelfCheck {
         yield(ticks(TICKS_PER_SECOND))
         val lines = debugLines()
         check("F3 mobium:modules shows the state", lines.any { "static_cache active" in it }, lines.joinToString(" / "))
+        results += "NOTE F3 mobium:modules: ${lines.joinToString(" / ")}"
         screenshot(minecraft, "f3-modules")
         yield(until("screenshot f3-modules", 10) { shotDone })
 
@@ -1544,7 +1568,7 @@ object SelfCheck {
         lightElsewhere(minecraft)
         entityLinks(minecraft)
 
-        if (Compat.isLoaded(CompatMod.IRIS)) {
+        if (irisRuns()) {
             /*? if fabric {*/
             shaderPack(minecraft)
             /*?} else {*/

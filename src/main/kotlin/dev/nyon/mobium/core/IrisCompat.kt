@@ -17,7 +17,8 @@ object IrisCompat {
     fun isRenderingShadowPass(): Boolean = IrisApi.getInstance().isRenderingShadowPass
 
     /**
-     * The rendering pipeline Iris uses right now (null before the first level). Iris replaces it on every reload,
+     * The rendering pipeline Iris uses right now (its `VanillaRenderingPipeline` until a level or pack loads, and
+     * for good while Iris does not run on Vulkan, docs/vanilla-notes.md §21). Iris replaces it on every reload,
      * shader pack switch and pack option change (`Iris.reload` → `PipelineManager.destroyPipeline`), so its identity
      * tells when vertex formats and entity ids may have changed. Not part of Iris's API; Iris 1.11.7.
      */
