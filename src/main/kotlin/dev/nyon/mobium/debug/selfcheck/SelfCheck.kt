@@ -30,6 +30,7 @@ import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
 import dev.nyon.mobium.core.Fallback
+import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.core.OffReason
@@ -197,6 +198,7 @@ object SelfCheck {
         results += "NOTE graphics: ${Capabilities.current?.describe() ?: running}"
         val wanted = System.getProperty("mobium.graphicsBackend")
         if (wanted != null && wanted != "default") check("graphics API", running.equals(wanted, ignoreCase = true), "asked for $wanted, running on $running")
+        if (Compat.isLoaded(CompatMod.IRIS)) irisState()
         if (VulkanValidation.requested && running == "Vulkan") {
             val detail = when {
                 !VulkanValidation.layerPresent -> "${VulkanValidation.LAYER} is not installed (Fedora: vulkan-validation-layers)"
@@ -208,6 +210,28 @@ object SelfCheck {
                 check("Vulkan validation check catches a message from Mobium's code (probe)", VulkanValidation.probe())
             }
         }
+    }
+
+    /** Iris installed and running; the shader pack checks need both. */
+    private fun irisRuns(): Boolean = Compat.isLoaded(CompatMod.IRIS) && IrisCheck.running()
+
+    /**
+     * With Iris installed, whether it runs. Iris 1.11.7 switches its own mixins off when options.txt chooses Vulkan
+     * (`self_check.py --from-options`, docs/vanilla-notes.md §21) and then never initialises; Mobium still finds it by
+     * mod id, so its calls into Iris have to answer "no shader pack" there.
+     */
+    private fun irisState() {
+        if (IrisCheck.running()) return
+        results += "NOTE Iris is installed but does not run (its mixins are off on Vulkan); the shader pack checks are skipped"
+        // The pipeline is Iris's vanilla one, which its PipelineManager creates on first use and no reload replaces.
+        val answers = "shader pack ${IrisCompat.isShaderPackInUse()}, shadow pass ${IrisCompat.isRenderingShadowPass()}, " +
+            "pipeline ${IrisCompat.pipeline()?.javaClass?.simpleName}, rendering level ${IrisCompat.isRenderingLevel()}"
+        check(
+            "Iris not running: IrisCompat reports no shader pack",
+            !IrisCompat.isShaderPackInUse() && !IrisCompat.isRenderingShadowPass() && !IrisCompat.isRenderingLevel() &&
+                IrisCompat.pipeline()?.javaClass?.simpleName == "VanillaRenderingPipeline",
+            answers
+        )
     }
 
     /** Mobium's validation messages fail the check; the others are noted and listed in `validation.txt`. */
@@ -1073,7 +1097,7 @@ object SelfCheck {
         *//*?}*/
         var restorePack: (() -> Unit)? = null
         if (pack == null) {
-            results += "NOTE no shader pack (none in shaderpacks/, or NeoForge), the shader pack checks were skipped"
+            results += "NOTE no shader pack (none in shaderpacks/, NeoForge, or Iris not running), the shader pack checks were skipped"
         } else {
             restorePack = ShaderPackCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
             yield(until("shader pack $pack in use", 120) { ShaderPackCheck.inUse() })
@@ -1442,6 +1466,7 @@ object SelfCheck {
         yield(ticks(TICKS_PER_SECOND))
         val lines = debugLines()
         check("F3 mobium:modules shows the state", lines.any { "static_cache active" in it }, lines.joinToString(" / "))
+        results += "NOTE F3 mobium:modules: ${lines.joinToString(" / ")}"
         screenshot(minecraft, "f3-modules")
         yield(until("screenshot f3-modules", 10) { shotDone })
 
@@ -1551,7 +1576,7 @@ object SelfCheck {
 
         if (ShaderPackCheck.vitrail) {
             shaderPack(minecraft)
-        } else if (Compat.isLoaded(CompatMod.IRIS)) {
+        } else if (irisRuns()) {
             /*? if fabric {*/
             shaderPack(minecraft)
             /*?} else {*/

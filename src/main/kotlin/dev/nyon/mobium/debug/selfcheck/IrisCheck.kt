@@ -10,6 +10,12 @@ import java.nio.file.StandardCopyOption
  * `Iris.reload`; the pack options live in `shaderpacks/<pack>.txt`). Only call after checking that Iris is loaded.
  */
 internal object IrisCheck {
+    /**
+     * Whether Iris has initialised: its config exists from `Iris.onEarlyInitialize` on, which one of its own mixins
+     * calls. With Vulkan in options.txt Iris 1.11.7 applies none of those (docs/vanilla-notes.md §21).
+     */
+    fun running(): Boolean = Iris.getIrisConfig() != null
+
     /** The first shader pack zip in the game's `shaderpacks` folder, or null. */
     fun firstPack(): String? {
         val directory = Iris.getShaderpacksDirectory()

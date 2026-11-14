@@ -65,8 +65,9 @@ internal object VitrailCheck {
 internal object ShaderPackCheck {
     val vitrail: Boolean by lazy { dev.nyon.mobium.core.Compat.modVersion("vitrail") != null }
 
+    /** Iris installed and running: with Vulkan in options.txt Iris 1.11.7 stays dormant ([IrisCheck.running]). */
     private val iris: Boolean
-        get() = dev.nyon.mobium.core.Compat.isLoaded(dev.nyon.mobium.core.CompatMod.IRIS)
+        get() = dev.nyon.mobium.core.Compat.isLoaded(dev.nyon.mobium.core.CompatMod.IRIS) && IrisCheck.running()
 
     /** A mod that loads shader packs is installed. */
     val available: Boolean

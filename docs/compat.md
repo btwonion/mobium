@@ -98,8 +98,10 @@ comparison find a difference; `--mode parts` uses it to check the repair and the
   (Mesa's ANV), which Intel documents as by design (support article 000089817); Qualcomm Snapdragon X on Windows on
   ARM; every Mac (MoltenVK). Nvidia's and AMD's GPUs on Windows and Linux, Intel's Xe2 (Lunar Lake's Arc 130V/140V,
   Arc B-series) and, in most reports, Intel's Gen9 (HD and UHD 5xx–6xx of 6th to 10th gen Core) have it.
-- Vitrail (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): hooks the same places as Mobium and
-  is untested with it, so both modules stay off while it is installed (F3: `untested: Vitrail`).
+- Vitrail 0.13.0-beta (OptiFine-format shader packs on the Vulkan renderer, mod id `vitrail`): the part transform
+  works beside it: without a shader pack as usual, with one it leaves models to the game by itself. The static cache
+  stays off while it is installed (F3: `untested: Vitrail`): under a pack its objects would be missing or lit wrongly
+  (`docs/vanilla-notes.md` §27).
 - Text drawn with a resource pack's antialiased (TrueType) font: vanilla draws a sign's glyphs in submission order
   among all solid-phase text; overlapping half-transparent glyph edges of the 8× glow-ink outline could blend in a
   different order. Not seen with the default font, whose glyphs are fully opaque or fully transparent.

@@ -12,6 +12,7 @@
     python3 benchmark/self_check.py fabric --mode expand-cost   # Module 2's fixed cost per frame in display_build
     python3 benchmark/self_check.py --mode benchmark   # /mobium benchmark in a world made with the built-in pack
     python3 benchmark/self_check.py fabric --api vulkan   # on Vulkan, with Khronos' validation layer
+    python3 benchmark/self_check.py fabric --api vulkan --from-options   # Vulkan chosen in options.txt, Iris installed
     python3 benchmark/self_check.py fabric --api vulkan --vitrail --mode parts   # with Vitrail; packs load through it
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
@@ -24,6 +25,10 @@ the game. A game window opens while it runs; leave it alone. Needs the benchmark
 other one. On Vulkan the checking modes also enable the validation layer (mobium.vulkanValidation; Fedora package
 vulkan-validation-layers) and fail on any of its messages that come from Mobium (validation.txt lists them all); the
 measuring modes run without it, as does --no-validation.
+
+--from-options chooses the API the way a player does, in options.txt (preferredGraphicsBackend) instead of by launch
+argument, and keeps Iris on the dev classpath on Vulkan too: Iris 1.11.7 reads the option before the game starts and,
+on Vulkan, switches its own mixins off (docs/vanilla-notes.md §21). The option's old value is put back afterwards.
 """
 
 import argparse
@@ -44,7 +49,21 @@ TIMEOUT_SECONDS = 20 * 60
 MEASURING = {"profile", "profile-mobs", "expand-cost", "gateb"}
 
 
-def run(loader: str, mode: str, api: str, validation: bool, extra: list[str]) -> bool:
+def set_options(options: Path, values: dict[str, str]) -> dict[str, str | None]:
+    """Sets keys in options.txt; returns their previous values (None: the key was missing)."""
+    lines = options.read_text().splitlines() if options.exists() else []
+    previous: dict[str, str | None] = {key: None for key in values}
+    for i, line in enumerate(lines):
+        key, _, value = line.partition(":")
+        if key in values:
+            previous[key] = value
+            lines[i] = f"{key}:{values[key]}"
+    lines += [f"{key}:{value}" for key, value in values.items() if previous[key] is None]
+    options.write_text("\n".join(lines) + "\n")
+    return previous
+
+
+def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, extra: list[str]) -> bool:
     task, game = LOADERS[loader]
     saves = game / "saves"
     saves.mkdir(parents=True, exist_ok=True)
@@ -63,6 +82,13 @@ def run(loader: str, mode: str, api: str, validation: bool, extra: list[str]) ->
 
     properties = [f"-Pmobium.graphicsBackend={api}"] + (["-Pmobium.vulkanValidation=true"] if validation else []) + extra
     on = f"{api}{' with validation' if validation else ''}{' with Vitrail' if extra else ''}"
+    restore: dict[str, str | None] = {}
+    if from_options:
+        properties.append("-Pmobium.graphicsBackendFrom=options")
+        on += " from options.txt"
+        # The game turns the option back to default or opengl after a start that did not end cleanly (§21).
+        previous = set_options(game / "options.txt", {"preferredGraphicsBackend": f'"{api}"', "startedCleanly": "true"})
+        restore = {"preferredGraphicsBackend": previous["preferredGraphicsBackend"] or '"default"'}
     print(f"{loader}: running {task} on {on} (a game window opens and closes by itself)", flush=True)
     try:
         subprocess.run([str(ROOT / "gradlew"), task, "-q", *properties], cwd=ROOT, timeout=TIMEOUT_SECONDS,
@@ -70,6 +96,10 @@ def run(loader: str, mode: str, api: str, validation: bool, extra: list[str]) ->
     except subprocess.TimeoutExpired:
         print(f"{loader}: no result after {TIMEOUT_SECONDS // 60} min")
         return False
+    finally:
+        # Left at vulkan, the option would switch Iris's mixins off in later runs on OpenGL too.
+        if restore:
+            set_options(game / "options.txt", restore)
     report = directory / "report.txt"
     if not report.exists():
         print(f"{loader}: no report; see {game / 'logs/latest.log'}")
@@ -107,6 +137,8 @@ def main() -> None:
                              "the refusal without the pack and the pack staying off elsewhere")
     parser.add_argument("--api", default="opengl", choices=["opengl", "vulkan"],
                         help="graphics API of the dev client (default: opengl)")
+    parser.add_argument("--from-options", action="store_true",
+                        help="choose the API in options.txt instead of by launch argument; on Vulkan Iris stays installed")
     parser.add_argument("--no-validation", action="store_true",
                         help="vulkan: without the validation layer (the measuring modes never use it)")
     parser.add_argument("--vitrail", action="store_true",
@@ -127,7 +159,8 @@ def main() -> None:
     if args.vitrail_cache and not args.vitrail:
         parser.error("--vitrail-cache needs --vitrail")
     extra = (["-Pmobium.vitrail=true"] if args.vitrail else []) + (["-Pmobium.vitrailCache=true"] if args.vitrail_cache else [])
-    results = [run(loader, mode, args.api, validation, extra) for loader in (args.loaders or list(LOADERS))]
+    results = [run(loader, mode, args.api, validation, args.from_options, extra)
+               for loader in (args.loaders or list(LOADERS))]
     sys.exit(0 if all(results) else 1)
 
 

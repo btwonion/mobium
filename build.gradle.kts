@@ -31,7 +31,10 @@ version = "$majorVersion${if (beta != 0) "-beta$beta" else ""}-$mcVersion+$loade
 // -Pmobium.vulkanValidation for Khronos' validation layer (docs/vanilla-notes.md §21). Both also go in as system
 // properties, so that the self-check and the gametests can check what the game runs on: Minecraft falls back to the
 // other API when the chosen one fails to start.
+// -Pmobium.graphicsBackendFrom=options leaves out the launch argument: the game then takes the API from the run folder's
+// options.txt (preferredGraphicsBackend), as a player's game does (self_check.py --from-options writes it there).
 val graphicsBackend: String? = findProperty("mobium.graphicsBackend")?.toString()
+val backendFromOptions = findProperty("mobium.graphicsBackendFrom")?.toString() == "options"
 val vulkanValidation = findProperty("mobium.vulkanValidation")?.toString()?.let { it != "false" } ?: false
 // Vitrail (OptiFine-format shader packs on the Vulkan renderer) on the dev runtime classpath: -Pmobium.vitrail. It
 // draws on Vulkan only and needs Sodium (docs/vanilla-notes.md §27). -Pmobium.vitrailCache lets the static cache run
@@ -39,7 +42,7 @@ val vulkanValidation = findProperty("mobium.vulkanValidation")?.toString()?.let 
 val vitrail = findProperty("mobium.vitrail")?.toString()?.let { it != "false" } ?: false
 val vitrailCache = findProperty("mobium.vitrailCache")?.toString()?.let { it != "false" } ?: false
 val launchArguments = buildList {
-    if (graphicsBackend != null) addAll(listOf("--graphicsBackend", graphicsBackend))
+    if (graphicsBackend != null && !backendFromOptions) addAll(listOf("--graphicsBackend", graphicsBackend))
     if (vulkanValidation) add("--vulkanValidation")
 }
 val launchProperties = buildMap {
@@ -291,9 +294,10 @@ dependencies {
 
     prop("vers.deps.sodiumApi") { "modstitchModCompileOnly"("net.caffeinemc:sodium-$loader-api:$it") }
     compatDependency("sodium") { "maven.modrinth:sodium:$it" }
-    // Iris 1.11.7 calls OpenGL while Minecraft starts its renderer and so stops the game on Vulkan
-    // (docs/vanilla-notes.md §21): dev runs on Vulkan go without it.
-    compatDependency("iris", runtime = graphicsBackend != "vulkan") { "maven.modrinth:iris:$it" }
+    // Iris 1.11.7 calls OpenGL while Minecraft starts its renderer and so stops the game on Vulkan chosen by launch
+    // argument; with Vulkan in options.txt it switches its own mixins off (docs/vanilla-notes.md §21). Dev runs on
+    // Vulkan go without it unless the API comes from options.txt.
+    compatDependency("iris", runtime = graphicsBackend != "vulkan" || backendFromOptions) { "maven.modrinth:iris:$it" }
     compatDependency("etf") { "maven.modrinth:entitytexturefeatures:$it" }
     compatDependency("emf") { "maven.modrinth:entity-model-features:$it" }
     compatDependency("vitrail", runtime = vitrail) { "maven.modrinth:vitrail-shaders:$it" }
