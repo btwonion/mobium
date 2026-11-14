@@ -67,3 +67,27 @@ gate fails, stop, write up why in the PR and agree on the next step first.
   (`Capabilities.glCompute`); exact integer arithmetic (`umulExtended`) instead, still 0 differing vertices in every
   setup and on both backends. On OpenGL the same GPUs report core 4.0 and emulate doubles in the driver; how much
   that costs Module 2 there is not measured *(verify)*.
+
+---
+
+## Module 2 without 64-bit floats
+
+Module 2's expand pass used doubles for its correctly rounded square roots and divisions, so on Vulkan GPUs without
+`shaderFloat64` (*Decisions*, third entry) Module 2 stayed off. The shader now has a second arithmetic that computes
+them bit by bit in 32-bit integers and writes the same bytes (`docs/architecture.md`, *Two arithmetics, same bytes*;
+`docs/vanilla-notes.md` §26). Doubles still run where shaders have them; integers elsewhere.
+
+- [x] Integer square root, division and Iris's rsqrt in `expand_parts.comp` (`MOBIUM_INTEGER`), compared with Java for
+      every float and 4 · 10⁹ divisions without a difference.
+- [x] `ExpandPass.arithmetic` with `forcedArithmetic` for the checks and `-Dmobium.parts.arithmetic=integer`
+      (self-check `--arithmetic integer`) for a session as on a GPU without doubles; on Vulkan `VulkanSupport` runs
+      Module 2 without `shaderFloat64`; the GPU check samples each arithmetic as its own path.
+- [x] Self-check `--mode parts` with both arithmetics in both stages, on OpenGL and Vulkan, both loaders, plus Vulkan
+      sessions without `shaderFloat64`; the gametests with both arithmetics: 0 differing vertices, pictures identical,
+      no validation messages from Mobium (`docs/vanilla-notes.md` §26, *Results*).
+- [ ] The maintainer's visual check (*How to verify* of the PR).
+- [ ] On a real GPU without `shaderFloat64` (an Intel Iris Xe or Arc A-series laptop on Vulkan): the self-check's
+      `--mode parts --api vulkan`, or in normal play F3 `mobium:modules` showing the GPU check without a difference.
+- [ ] In a benchmark round: `expand-cost` and `mob_pen_live` with both arithmetics on GPUs with doubles (the Arc 140V,
+      an Nvidia and an AMD card). If the integer arithmetic is no slower anywhere, it replaces the double one, and
+      the `shaderFloat64` feature set and its mixin go.

@@ -33,6 +33,9 @@ version = "$majorVersion${if (beta != 0) "-beta$beta" else ""}-$mcVersion+$loade
 // other API when the chosen one fails to start.
 val graphicsBackend: String? = findProperty("mobium.graphicsBackend")?.toString()
 val vulkanValidation = findProperty("mobium.vulkanValidation")?.toString()?.let { it != "false" } ?: false
+// -Pmobium.partsArithmetic=integer: Module 2's expand pass as on a GPU without 64-bit floats in shaders (on Vulkan the
+// device is created without shaderFloat64; docs/vanilla-notes.md §26).
+val partsArithmetic: String? = findProperty("mobium.partsArithmetic")?.toString()
 val launchArguments = buildList {
     if (graphicsBackend != null) addAll(listOf("--graphicsBackend", graphicsBackend))
     if (vulkanValidation) add("--vulkanValidation")
@@ -40,6 +43,7 @@ val launchArguments = buildList {
 val launchProperties = buildMap {
     if (graphicsBackend != null) put("mobium.graphicsBackend", graphicsBackend)
     if (vulkanValidation) put("mobium.vulkanValidation", "true")
+    if (partsArithmetic != null) put("mobium.parts.arithmetic", partsArithmetic)
 }
 // The layer stops reporting a message after 10 repeats by default, so vanilla's could hide Mobium's of the same kind.
 val launchEnvironment = if (vulkanValidation) mapOf("VK_LAYER_DUPLICATE_MESSAGE_LIMIT" to "1000000") else mapOf()

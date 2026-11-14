@@ -240,7 +240,7 @@ object PartTransform {
         }
         parts++
         quads += quadTotal
-        if (validating || PartCheck.sample(PartCheck.path(flags, anySodiumLayout, ExpandPass.lastStage))) {
+        if (validating || PartCheck.sample(PartCheck.path(flags, anySodiumLayout, ExpandPass.lastStage, ExpandPass.lastArithmetic))) {
             PartValidation.begin(staged, draw, (target.`mobium$drawBytesBefore`() + offset) / vertexSize, quadTotal * 4, format, sprite)
             checkPart = true
         }
@@ -419,7 +419,7 @@ object PartTransform {
      * differences, for the self-check's and the gametests' reports.
      */
     private fun compareWithCpu(staged: StagedVertexBuffer, vertexBuffer: GpuBuffer) {
-        PartValidation.check(staged, vertexBuffer, repair = !validating, stage = ExpandPass.stageName(ExpandPass.lastStage))
+        PartValidation.check(staged, vertexBuffer, repair = !validating, stage = ExpandPass.stageName(ExpandPass.lastStage, ExpandPass.lastArithmetic))
     }
 
     /**

@@ -22,14 +22,16 @@ enum class GraphicsBackend {
 /**
  * What the GPU and the active backend can do, as far as the modules care.
  *
- * @param glCompute is true when the OpenGL context has compute shaders and SSBOs (core 4.3 or both ARB extensions)
- * and double precision in shaders (core 4.0), which Module 2's expand pass uses for correctly rounded square roots and
- * divisions. False on Vulkan, see [vulkanCompute].
+ * @param glCompute is true when the OpenGL context has compute shaders and SSBOs (core 4.3 or both ARB extensions).
+ * False on Vulkan, see [vulkanCompute].
  * @param glVertexStores is true when, on top of [glCompute], vertex shaders may write three shader storage buffers
  * (`GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS`, which OpenGL lets be 0), so that the expand pass can run as a point draw.
  * @param multiDrawIndirect is Renderpearl's own `DeviceFeatures.multiDrawIndirect()`.
- * @param vulkanCompute is true on Vulkan when the device has `shaderFloat64` enabled and vertex buffers can be storage
- * buffers ([VulkanSupport.available]); compute shaders themselves are core Vulkan.
+ * @param vulkanCompute is true on Vulkan when vertex buffers can be storage buffers ([VulkanSupport.available]);
+ * compute shaders themselves are core Vulkan.
+ * @param shaderDoubles is true when Module 2's expand shader may use 64-bit floats for its correctly rounded square
+ * roots and divisions: on OpenGL with [glCompute] and core 4.0 or `ARB_gpu_shader_fp64` (every 4.3 context), on Vulkan
+ * where the device has `shaderFloat64` enabled. Without them it computes these in integers (docs/vanilla-notes.md §26).
  */
 class Capabilities(
     @JvmField val backend: GraphicsBackend,
@@ -40,14 +42,15 @@ class Capabilities(
     @JvmField val glCompute: Boolean,
     @JvmField val glVertexStores: Boolean,
     @JvmField val multiDrawIndirect: Boolean,
-    @JvmField val vulkanCompute: Boolean = false
+    @JvmField val vulkanCompute: Boolean = false,
+    @JvmField val shaderDoubles: Boolean = false
 ) {
     val compute: Boolean
         get() = glCompute || vulkanCompute
 
     fun describe(): String =
-        "$backendName on $deviceName ($vendor, $driverInfo); compute: ${yesNo(compute)}, vertex-stage stores: " +
-            "${yesNo(glVertexStores)}, multi-draw indirect: ${yesNo(multiDrawIndirect)}"
+        "$backendName on $deviceName ($vendor, $driverInfo); compute: ${yesNo(compute)}, shader doubles: " +
+            "${yesNo(shaderDoubles)}, vertex-stage stores: ${yesNo(glVertexStores)}, multi-draw indirect: ${yesNo(multiDrawIndirect)}"
 
     private fun yesNo(value: Boolean) = if (value) "yes" else "no"
 
@@ -61,6 +64,7 @@ class Capabilities(
             val info = RenderSystem.getDevice().deviceInfo
             val backend = GraphicsBackend.fromName(info.backendName())
             val glCompute = backend == GraphicsBackend.OPENGL && hasGlCompute()
+            val glDoubles = glCompute && hasGlDoubles()
             val capabilities = Capabilities(
                 backend,
                 info.backendName(),
@@ -70,7 +74,8 @@ class Capabilities(
                 glCompute,
                 glCompute && hasGlVertexStores(),
                 info.features().multiDrawIndirect(),
-                backend == GraphicsBackend.VULKAN && VulkanSupport.available
+                backend == GraphicsBackend.VULKAN && VulkanSupport.available,
+                glDoubles || (backend == GraphicsBackend.VULKAN && VulkanSupport.float64)
             )
             current = capabilities
             return capabilities
@@ -79,8 +84,12 @@ class Capabilities(
         // Renderpearl creates the LWJGL capabilities on the render thread (GlDevice constructor), so they are current here.
         private fun hasGlCompute(): Boolean = runCatching {
             val caps = GL.getCapabilities()
-            (caps.OpenGL43 || (caps.GL_ARB_compute_shader && caps.GL_ARB_shader_storage_buffer_object)) &&
-                (caps.OpenGL40 || caps.GL_ARB_gpu_shader_fp64)
+            caps.OpenGL43 || (caps.GL_ARB_compute_shader && caps.GL_ARB_shader_storage_buffer_object)
+        }.getOrDefault(false)
+
+        private fun hasGlDoubles(): Boolean = runCatching {
+            val caps = GL.getCapabilities()
+            caps.OpenGL40 || caps.GL_ARB_gpu_shader_fp64
         }.getOrDefault(false)
 
         private fun hasGlVertexStores(): Boolean = runCatching {

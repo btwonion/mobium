@@ -12,6 +12,7 @@
     python3 benchmark/self_check.py fabric --mode expand-cost   # Module 2's fixed cost per frame in display_build
     python3 benchmark/self_check.py --mode benchmark   # /mobium benchmark in a world made with the built-in pack
     python3 benchmark/self_check.py fabric --api vulkan   # on Vulkan, with Khronos' validation layer
+    python3 benchmark/self_check.py fabric --mode parts --api vulkan --arithmetic integer   # as without shaderFloat64
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
 both languages, Sodium's page, and in the benchmark world's storage_room the A/B key, F3 and a forced module failure,
@@ -22,7 +23,9 @@ the game. A game window opens while it runs; leave it alone. Needs the benchmark
 --api picks the graphics API (Gradle property mobium.graphicsBackend); the self-check fails when the game runs on the
 other one. On Vulkan the checking modes also enable the validation layer (mobium.vulkanValidation; Fedora package
 vulkan-validation-layers) and fail on any of its messages that come from Mobium (validation.txt lists them all); the
-measuring modes run without it, as does --no-validation.
+measuring modes run without it, as does --no-validation. --arithmetic integer starts the game as on a GPU without
+64-bit floats in shaders (Gradle property mobium.partsArithmetic): Module 2's expand pass computes in integers only, and
+on Vulkan the device is created without shaderFloat64, so the validation layer reports any shader that needs it.
 """
 
 import argparse
@@ -43,7 +46,7 @@ TIMEOUT_SECONDS = 20 * 60
 MEASURING = {"profile", "profile-mobs", "expand-cost", "gateb"}
 
 
-def run(loader: str, mode: str, api: str, validation: bool) -> bool:
+def run(loader: str, mode: str, api: str, validation: bool, arithmetic: str) -> bool:
     task, game = LOADERS[loader]
     saves = game / "saves"
     saves.mkdir(parents=True, exist_ok=True)
@@ -61,7 +64,9 @@ def run(loader: str, mode: str, api: str, validation: bool) -> bool:
     (directory / "request").write_text(mode)
 
     properties = [f"-Pmobium.graphicsBackend={api}"] + (["-Pmobium.vulkanValidation=true"] if validation else [])
-    on = f"{api}{' with validation' if validation else ''}"
+    if arithmetic:
+        properties.append(f"-Pmobium.partsArithmetic={arithmetic}")
+    on = f"{api}{' with validation' if validation else ''}{f', {arithmetic} arithmetic' if arithmetic else ''}"
     print(f"{loader}: running {task} on {on} (a game window opens and closes by itself)", flush=True)
     try:
         subprocess.run([str(ROOT / "gradlew"), task, "-q", *properties], cwd=ROOT, timeout=TIMEOUT_SECONDS,
@@ -106,6 +111,8 @@ def main() -> None:
                              "the refusal without the pack and the pack staying off elsewhere")
     parser.add_argument("--api", default="opengl", choices=["opengl", "vulkan"],
                         help="graphics API of the dev client (default: opengl)")
+    parser.add_argument("--arithmetic", default="", choices=["", "integer"],
+                        help="integer: Module 2's expand pass as on a GPU without 64-bit floats in shaders")
     parser.add_argument("--no-validation", action="store_true",
                         help="vulkan: without the validation layer (the measuring modes never use it)")
     parser.add_argument("--scene", default="", help="profile-mobs: another benchmark scene than mob_pen_live "
@@ -116,7 +123,7 @@ def main() -> None:
         parser.error(f"unknown loader {', '.join(unknown)}; use {' or '.join(LOADERS)}")
     mode = f"{args.mode} {args.scene}" if args.scene else args.mode
     validation = args.api == "vulkan" and not args.no_validation and args.mode not in MEASURING
-    results = [run(loader, mode, args.api, validation) for loader in (args.loaders or list(LOADERS))]
+    results = [run(loader, mode, args.api, validation, args.arithmetic) for loader in (args.loaders or list(LOADERS))]
     sys.exit(0 if all(results) else 1)
 
 
