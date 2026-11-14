@@ -55,11 +55,13 @@ gate fails, stop, write up why in the PR and agree on the next step first.
   there, §21; the request is open in Iris's tracker, with no Vulkan branch), and Aperture, its Vulkan successor, has
   no release or date. Setups B and D are measured on OpenGL only. Check again when an Iris or Aperture release runs on
   Vulkan.
-- **Vitrail: both modules stay off while it is installed.** It is a beta (0.13.0-beta for 26.2 and 26.3, Fabric and
-  NeoForge) whose open work rewrites how it writes entity vertices, where Mobium hooks too (§22). Checked after
-  Gate D against its then newest release, as its own piece of work: its dev client with an OptiFine-format pack, the
-  self-check's gallery and `--mode parts` on Vulkan; identical pictures and 0 differing vertices lift
-  `OffReason.UNTESTED`.
+- **Vitrail: Module 2 runs beside it, the static cache stays off while it is installed.** Checked with 0.13.0-beta,
+  its newest release for 26.3, on both loaders on Vulkan with Complementary Reimagined (§27): without a pack both
+  modules match vanilla; with a pack Vitrail's own entity format keeps Module 2 on the CPU path by itself, while the
+  cached objects vanish, because the pack's composites cover the level target the cache draws into. Supporting the
+  cache there needs its buckets drawn through Vitrail's entity door (`RenderTypeFeatureRenderer.executeGroup`), which
+  Vitrail offers no API for. Check again with each Vitrail release (`-Pmobium.vitrail`, `self_check.py --vitrail
+  --vitrail-cache`).
 - **GPUs without `shaderFloat64`: Module 2 gets a shader without double precision, the next target after Gate D.**
   Every Intel GPU from Ice Lake's Iris Plus through Iris Xe (11th to 14th gen Core) to Arrow Lake's Arc 140T, the Arc
   A-series, Snapdragon X and every Mac lack the feature (`docs/compat.md`, *Known differences and limits*), so Module 2 stays off on Vulkan there; 26.4

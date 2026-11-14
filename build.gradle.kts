@@ -33,6 +33,11 @@ version = "$majorVersion${if (beta != 0) "-beta$beta" else ""}-$mcVersion+$loade
 // other API when the chosen one fails to start.
 val graphicsBackend: String? = findProperty("mobium.graphicsBackend")?.toString()
 val vulkanValidation = findProperty("mobium.vulkanValidation")?.toString()?.let { it != "false" } ?: false
+// Vitrail (OptiFine-format shader packs on the Vulkan renderer) on the dev runtime classpath: -Pmobium.vitrail. It
+// draws on Vulkan only and needs Sodium (docs/vanilla-notes.md §27). -Pmobium.vitrailCache lets the static cache run
+// beside it in the dev clients (core/Compat.kt), which is how the check of §27 is repeated with a newer Vitrail.
+val vitrail = findProperty("mobium.vitrail")?.toString()?.let { it != "false" } ?: false
+val vitrailCache = findProperty("mobium.vitrailCache")?.toString()?.let { it != "false" } ?: false
 val launchArguments = buildList {
     if (graphicsBackend != null) addAll(listOf("--graphicsBackend", graphicsBackend))
     if (vulkanValidation) add("--vulkanValidation")
@@ -40,6 +45,7 @@ val launchArguments = buildList {
 val launchProperties = buildMap {
     if (graphicsBackend != null) put("mobium.graphicsBackend", graphicsBackend)
     if (vulkanValidation) put("mobium.vulkanValidation", "true")
+    if (vitrailCache) put("mobium.vitrailCache", "true")
 }
 // The layer stops reporting a message after 10 repeats by default, so vanilla's could hide Mobium's of the same kind.
 val launchEnvironment = if (vulkanValidation) mapOf("VK_LAYER_DUPLICATE_MESSAGE_LIMIT" to "1000000") else mapOf()
@@ -290,6 +296,7 @@ dependencies {
     compatDependency("iris", runtime = graphicsBackend != "vulkan") { "maven.modrinth:iris:$it" }
     compatDependency("etf") { "maven.modrinth:entitytexturefeatures:$it" }
     compatDependency("emf") { "maven.modrinth:entity-model-features:$it" }
+    compatDependency("vitrail", runtime = vitrail) { "maven.modrinth:vitrail-shaders:$it" }
 
     modstitchApi(libs.konfig)
     modstitchJiJ(libs.konfig)
