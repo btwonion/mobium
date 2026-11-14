@@ -251,8 +251,10 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
   dev client with a request file; inside the game it walks through the checks (screens opened the loader's way, both
   languages, the Sodium page, and in the benchmark world key presses, commands and pixel comparisons against vanilla),
   writes `<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched and closes the
-  game. On Vulkan it runs with the validation layer and fails on any message Mobium's objects or calls raise. `--mode`
-  runs one part instead:
+  game. On Vulkan it runs with the validation layer and fails on any message Mobium's objects or calls raise.
+  `--from-options` chooses the API in `options.txt` as players do instead of by launch argument, which keeps Iris
+  installed on Vulkan, where it does not run (`docs/vanilla-notes.md` §21); the shader pack steps are skipped while
+  Iris does not run. `--mode` runs one part instead:
   - `gallery`: the `cache_gallery` scene only (every cached type, effects, shader pack, Fresh Animations); failed count
     checks name why an object was not cached.
   - `parts`: Module 2's GPU vertices against the CPU's and pictures against vanilla in `mob_pen_live` and

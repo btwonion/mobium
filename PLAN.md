@@ -58,8 +58,8 @@ gate fails, stop, write up why in the PR and agree on the next step first.
   stops the game (§21). Iris's branch `26.3-new` (1.12.0, unreleased) has a Vulkan backend and hooks
   classes Module 2 hooks or calls: `VulkanFeatureSets`, `VulkanDevice`, `VulkanCommandEncoder` (§21). Aperture has no
   public repository, release or date. Setups B and D are measured on OpenGL only. When an Iris release draws on Vulkan:
-  the self-check with it on Vulkan, both modules, before B and D are measured there. Not tried either: Mobium on
-  Vulkan with Iris 1.11.7 installed and switched off by `options.txt`.
+  the self-check with it on Vulkan, both modules, before B and D are measured there. With Iris 1.11.7 installed and
+  Vulkan chosen in `options.txt`, Iris stays dormant and both modules draw as vanilla (`self_check.py --from-options`).
 - **Vitrail: both modules stay off while it is installed.** It is a beta (0.13.0-beta for 26.2 and 26.3, Fabric and
   NeoForge) whose open work rewrites how it writes entity vertices, where Mobium hooks too (§22). Checked after
   Gate D against its then newest release, as its own piece of work: its dev client with an OptiFine-format pack, the
