@@ -97,8 +97,9 @@ installed.
 
 All of the above ran on one GPU: an Intel Arc 140V on Fedora, with Mesa's iris on OpenGL and Mesa's ANV on Vulkan,
 plus Mesa's software renderers in CI. The shader is written to round as Java does (`precise` operations, square
-roots and divisions corrected in double precision), but another driver may still round or fuse an operation differently, and the dev validation never
-runs on players' machines. So Module 2 checks itself in normal play (`parts/PartCheck.kt`): for each path through the
+roots and divisions corrected in double precision), but another driver may still round or fuse an operation
+differently, and the dev validation never runs on players' machines. So Module 2 checks itself in normal play
+(`parts/PartCheck.kt`): for each path through the
 shader (the part's flags: matrix kind, sprite, Iris's format and face normal, normals from the CPU or trusted; Sodium's
 cube layout or vanilla's; compute or vertex stage) the first 64 parts, at most 8 per frame, are compiled on the CPU as
 well and compared byte for byte after the expand pass, as in the dev validation. Frames with such parts wait for the
