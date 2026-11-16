@@ -392,7 +392,8 @@ publishMods {
     curseforge {
         projectId = "1759818"
         accessToken = providers.environmentVariable("CURSEFORGE_API_KEY")
-        minecraftVersions.addAll(supportedMcVersions.mapNotNull { if (it.contains('-')) null else it })
+        // CurseForge has one game version for all of a version's snapshots: 26.4-snapshot-8 goes up as 26.4-snapshot
+        minecraftVersions.addAll(supportedMcVersions.map { it.replace(Regex("-snapshot-\\d+$"), "-snapshot") })
         client = true
         server = false
 
