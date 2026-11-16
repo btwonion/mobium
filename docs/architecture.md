@@ -13,7 +13,7 @@ switches between Mobium's path and vanilla's, never between two pictures.
 | 1 · Static cache | Block entities and entities that stand still are captured once through vanilla's own submit and prepare and drawn from per-section GPU buffers until they change | `cache/` | On by default |
 | 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `parts/` | On by default where the GPU has compute shaders (OpenGL 4.3, or Vulkan) |
 
-Both run on OpenGL and on Minecraft's Vulkan backend. While Vitrail is installed both stay off
+Both run on OpenGL and on Minecraft's Vulkan backend. While Vitrail is installed the static cache stays off
 (`OffReason.UNTESTED`).
 
 - **Must-have compatibility:** Iris shader packs, and EMF/ETF including Fresh Animations. Never bypass `setupAnim`.
@@ -132,8 +132,8 @@ A model part keeps every CPU step up to its own `compile`: `setupAnim`, EMF's an
    `gpu/vk/VkCompute.kt`) the same shader, compiled to SPIR-V, runs as a compute dispatch in a command buffer of
    Mobium's own that Renderpearl's encoder appends to the frame right after `upload()`; three `require = 0` mixins
    (`mixins/vulkan`, `gpu/vk/VulkanSupport.kt`) give vertex buffers storage usage and enable `shaderFloat64` where the
-   GPU has it (`docs/vanilla-notes.md` §23); while an installed mod keeps Module 2 on the vanilla path (Vitrail, an
-   overlapping mod), the device and its buffers stay vanilla's.
+   GPU has it (`docs/vanilla-notes.md` §23); while an installed mod keeps Module 2 on the vanilla path (an overlapping
+   mod), the device and its buffers stay vanilla's.
 7. **Two stages, same bytes.** Mesa's iris records a compute dispatch in a batch of its own and flushes both batches
    around it, a fixed GPU cost per frame however few parts there are. So without a shader pack the same shader runs
    compiled as a vertex shader, drawn as points with rasterisation off (the *vertex stage*, where vertex shaders may
@@ -261,8 +261,10 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
   dev client with a request file; inside the game it walks through the checks (screens opened the loader's way, both
   languages, the Sodium page, and in the benchmark world key presses, commands and pixel comparisons against vanilla),
   writes `<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched and closes the
-  game. On Vulkan it runs with the validation layer and fails on any message Mobium's objects or calls raise. `--mode`
-  runs one part instead:
+  game. On Vulkan it runs with the validation layer and fails on any message Mobium's objects or calls raise.
+  `--from-options` chooses the API in `options.txt` as players do instead of by launch argument, which keeps Iris
+  installed on Vulkan, where it does not run (`docs/vanilla-notes.md` §21); the shader pack steps are skipped while
+  Iris does not run. `--mode` runs one part instead:
   - `gallery`: the `cache_gallery` scene only (every cached type, effects, shader pack, Fresh Animations); failed count
     checks name why an object was not cached.
   - `parts`: Module 2's GPU vertices against the CPU's and pictures against vanilla in `mob_pen_live` and

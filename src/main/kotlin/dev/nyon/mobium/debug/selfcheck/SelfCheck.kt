@@ -200,6 +200,7 @@ object SelfCheck {
         results += "NOTE graphics: ${Capabilities.current?.describe() ?: running}"
         val wanted = System.getProperty("mobium.graphicsBackend")
         if (wanted != null && wanted != "default") check("graphics API", running.equals(wanted, ignoreCase = true), "asked for $wanted, running on $running")
+        if (Compat.isLoaded(CompatMod.IRIS)) irisState()
         if (VulkanValidation.requested && running == "Vulkan") {
             val detail = when {
                 !VulkanValidation.layerPresent -> "${VulkanValidation.LAYER} is not installed (Fedora: vulkan-validation-layers)"
@@ -211,6 +212,28 @@ object SelfCheck {
                 check("Vulkan validation check catches a message from Mobium's code (probe)", VulkanValidation.probe())
             }
         }
+    }
+
+    /** Iris installed and running; the shader pack checks need both. */
+    private fun irisRuns(): Boolean = Compat.isLoaded(CompatMod.IRIS) && IrisCheck.running()
+
+    /**
+     * With Iris installed, whether it runs. Iris 1.11.7 switches its own mixins off when options.txt chooses Vulkan
+     * (`self_check.py --from-options`, docs/vanilla-notes.md §21) and then never initialises; Mobium still finds it by
+     * mod id, so its calls into Iris have to answer "no shader pack" there.
+     */
+    private fun irisState() {
+        if (IrisCheck.running()) return
+        results += "NOTE Iris is installed but does not run (its mixins are off on Vulkan); the shader pack checks are skipped"
+        // The pipeline is Iris's vanilla one, which its PipelineManager creates on first use and no reload replaces.
+        val answers = "shader pack ${IrisCompat.isShaderPackInUse()}, shadow pass ${IrisCompat.isRenderingShadowPass()}, " +
+            "pipeline ${IrisCompat.pipeline()?.javaClass?.simpleName}, rendering level ${IrisCompat.isRenderingLevel()}"
+        check(
+            "Iris not running: IrisCompat reports no shader pack",
+            !IrisCompat.isShaderPackInUse() && !IrisCompat.isRenderingShadowPass() && !IrisCompat.isRenderingLevel() &&
+                IrisCompat.pipeline()?.javaClass?.simpleName == "VanillaRenderingPipeline",
+            answers
+        )
     }
 
     /** Mobium's validation messages fail the check; the others are noted and listed in `validation.txt`. */
@@ -398,19 +421,19 @@ object SelfCheck {
         minecraft.createWorldOpenFlows().openWorld(WORLD) { }
         yield(until("world loaded", 180) { minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null })
         yield(ticks(40))
-        if (buildScene(minecraft, GALLERY) && Compat.isLoaded(CompatMod.IRIS)) {
-            val pack = IrisCheck.firstPack()
+        if (buildScene(minecraft, GALLERY) && ShaderPackCheck.available) {
+            val pack = ShaderPackCheck.firstPack()
             if (pack == null) {
                 check("shader pack present", false, "no zip in shaderpacks/")
             } else {
-                val restore = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
-                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                val restore = ShaderPackCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+                yield(until("shader pack $pack in use", 120) { ShaderPackCheck.inUse() })
                 yield(ticks(20 * TICKS_PER_SECOND))
                 check("shader pack $pack rendered for 20 s with Mobium off", !StaticCache.active, ModuleStates.status(Module.STATIC_CACHE).describe())
                 screenshot(minecraft, "iris-without-mobium")
                 yield(until("screenshot iris-without-mobium", 10) { shotDone })
                 restore()
-                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+                yield(until("shader pack off", 120) { !ShaderPackCheck.inUse() })
             }
         }
         applyConfig(saved)
@@ -767,15 +790,15 @@ object SelfCheck {
                 yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
             }
             if (mobs) recordMobs(minecraft, scene, "c")
-            val pack = if (mobs && Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            val pack = if (mobs && ShaderPackCheck.available) ShaderPackCheck.firstPack() else null
             if (pack == null) {
                 results += "NOTE no shader pack, setup D skipped"
             } else {
-                val restore = IrisCheck.select(pack, emptyMap())
-                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                val restore = ShaderPackCheck.select(pack, emptyMap())
+                yield(until("shader pack $pack in use", 120) { ShaderPackCheck.inUse() })
                 recordMobs(minecraft, scene, "d")
                 restore()
-                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+                yield(until("shader pack off", 120) { !ShaderPackCheck.inUse() })
             }
             if (mobs && fresh != null) {
                 repository.removePack(fresh)
@@ -873,11 +896,11 @@ object SelfCheck {
             // Compute against the vertex stage with the models of all four setups: A, B (the shader pack), D (and
             // Fresh Animations), C (Fresh Animations alone).
             recordExpand(minecraft, scene, "a", STAGES)
-            val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+            val pack = if (ShaderPackCheck.available) ShaderPackCheck.firstPack() else null
             var restore: (() -> Unit)? = null
             if (pack != null) {
-                restore = IrisCheck.select(pack, emptyMap())
-                yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                restore = ShaderPackCheck.select(pack, emptyMap())
+                yield(until("shader pack $pack in use", 120) { ShaderPackCheck.inUse() })
                 recordExpand(minecraft, scene, "b", STAGES)
             }
             if (fresh != null) {
@@ -889,7 +912,7 @@ object SelfCheck {
             }
             if (restore != null) {
                 restore()
-                yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+                yield(until("shader pack off", 120) { !ShaderPackCheck.inUse() })
             }
             if (fresh != null) {
                 recordExpand(minecraft, scene, "c", STAGES)
@@ -906,13 +929,13 @@ object SelfCheck {
                 yield(ticks(10))
                 yield(until("resource pack $fresh loaded", 120) { minecraft.gui.overlay() == null })
                 recordExpand(minecraft, scene, "c")
-                val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+                val pack = if (ShaderPackCheck.available) ShaderPackCheck.firstPack() else null
                 if (pack != null) {
-                    val restore = IrisCheck.select(pack, emptyMap())
-                    yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+                    val restore = ShaderPackCheck.select(pack, emptyMap())
+                    yield(until("shader pack $pack in use", 120) { ShaderPackCheck.inUse() })
                     recordExpand(minecraft, scene, "d")
                     restore()
-                    yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+                    yield(until("shader pack off", 120) { !ShaderPackCheck.inUse() })
                 }
                 repository.removePack(fresh)
                 minecraft.options.updateResourcePacks(repository)
@@ -1078,17 +1101,17 @@ object SelfCheck {
         // Animations), C (Fresh Animations without the pack); in each the mob pens and the part gallery.
         partsScenes(minecraft, "vanilla models")
         /*? if fabric {*/
-        val pack = if (Compat.isLoaded(CompatMod.IRIS)) IrisCheck.firstPack() else null
+        val pack = if (ShaderPackCheck.available) ShaderPackCheck.firstPack() else null
         /*?} else {*/
-        /*// Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 (see inWorld).
-        val pack: String? = null
+        /*// Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 (see inWorld); Vitrail loads it.
+        val pack: String? = if (ShaderPackCheck.vitrail) ShaderPackCheck.firstPack() else null
         *//*?}*/
         var restorePack: (() -> Unit)? = null
         if (pack == null) {
-            results += "NOTE no shader pack (none in shaderpacks/, or NeoForge), the shader pack checks were skipped"
+            results += "NOTE no shader pack (none in shaderpacks/, NeoForge, or Iris not running), the shader pack checks were skipped"
         } else {
-            restorePack = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
-            yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+            restorePack = ShaderPackCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+            yield(until("shader pack $pack in use", 120) { ShaderPackCheck.inUse() })
             yield(ticks(5 * TICKS_PER_SECOND))
             partsScenes(minecraft, "vanilla models, shader pack")
         }
@@ -1104,7 +1127,7 @@ object SelfCheck {
         }
         if (restorePack != null) {
             restorePack()
-            yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+            yield(until("shader pack off", 120) { !ShaderPackCheck.inUse() })
             yield(ticks(3 * TICKS_PER_SECOND))
         }
         if (fresh != null) {
@@ -1184,6 +1207,9 @@ object SelfCheck {
         for ((scene, file) in listOf(MOB_SCENE to "pens", PART_GALLERY to "gallery")) {
             if (!buildScene(minecraft, scene)) continue
             val name = "$setup, $scene"
+            // While a pack draws through Vitrail, builders have its entity format, which Module 2 leaves to the CPU
+            // (docs/vanilla-notes.md §27): no part may be taken there.
+            val vitrailPack = ShaderPackCheck.vitrail && ShaderPackCheck.inUse()
             // Both stages where the GPU has the vertex stage (which one runs depends on the shader pack), compute else;
             // each with both arithmetics where shaders have 64-bit floats (which one runs depends on the GPU), with
             // integers else.
@@ -1194,10 +1220,15 @@ object SelfCheck {
                     ExpandPass.forcedStage = stage
                     ExpandPass.forcedArithmetic = arithmetic
                     val variant = ExpandPass.stageName(stage, arithmetic)
-                    validateParts("$name, $variant", expectParts = true)
+                    validateParts("$name, $variant", expectParts = !vitrailPack)
+                    // With no part taken the expand pass does not run, so lastStage and lastArithmetic are stale.
+                    if (vitrailPack) continue
                     check("parts, $name, $variant: the expand pass ran as asked", ExpandPass.lastStage == stage && ExpandPass.lastArithmetic == arithmetic,
                         ExpandPass.stageName(ExpandPass.lastStage, ExpandPass.lastArithmetic))
                 }
+            }
+            if (vitrailPack) {
+                check("parts, $name: no part taken in Vitrail's vertex format", PartValidation.compared == 0L, PartValidation.summary() + "; " + PartTransform.debugLine())
             }
             ExpandPass.forcedStage = -1
             ExpandPass.forcedArithmetic = -1
@@ -1457,6 +1488,7 @@ object SelfCheck {
         yield(ticks(TICKS_PER_SECOND))
         val lines = debugLines()
         check("F3 mobium:modules shows the state", lines.any { "static_cache active" in it }, lines.joinToString(" / "))
+        results += "NOTE F3 mobium:modules: ${lines.joinToString(" / ")}"
         screenshot(minecraft, "f3-modules")
         yield(until("screenshot f3-modules", 10) { shotDone })
 
@@ -1564,7 +1596,9 @@ object SelfCheck {
         lightElsewhere(minecraft)
         entityLinks(minecraft)
 
-        if (Compat.isLoaded(CompatMod.IRIS)) {
+        if (ShaderPackCheck.vitrail) {
+            shaderPack(minecraft)
+        } else if (irisRuns()) {
             /*? if fabric {*/
             shaderPack(minecraft)
             /*?} else {*/
@@ -1673,18 +1707,18 @@ object SelfCheck {
     }
 
     /**
-     * With the first shader pack in `shaderpacks/`: the cache captures in Iris's extended vertex formats and its
-     * picture matches vanilla's. The pack's temporal anti-aliasing and cloud movement would make two frames differ on
+     * With the first shader pack in `shaderpacks/`, loaded through Iris or Vitrail ([ShaderPackCheck]): the cache
+     * captures in the loader's extended vertex formats and its picture matches vanilla's. The pack's temporal anti-aliasing and cloud movement would make two frames differ on
      * their own, so they are switched off in the pack's options for the check (restored afterwards).
      */
     private suspend fun SequenceScope<Wait>.shaderPack(minecraft: Minecraft) {
-        val pack = IrisCheck.firstPack()
+        val pack = ShaderPackCheck.firstPack()
         if (pack == null) {
             results += "NOTE no shader pack in shaderpacks/, the shader pack checks were skipped"
             return
         }
-        val restore = IrisCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
-        yield(until("shader pack $pack in use", 120) { IrisCompat.isShaderPackInUse() })
+        val restore = ShaderPackCheck.select(pack, mapOf("TAA_DEFINE" to "0", "CLOUD_SPEED_MULT" to "0"))
+        yield(until("shader pack $pack in use", 120) { ShaderPackCheck.inUse() })
         yield(ticks(5 * TICKS_PER_SECOND))
         yield(until("world settled (shader pack)", 120) { SceneBuilder.isQuiet(minecraft) })
         yield(ticks(TICKS_PER_SECOND))
@@ -1694,21 +1728,27 @@ object SelfCheck {
         yield(upTo("shader pack: entities cached", 30) { entityCounts() == GALLERY_ENTITIES })
         check("shader pack: entities cached", entityCounts() == GALLERY_ENTITIES, "${entityCounts()}; ${StaticCache.debugLine()}")
         val sizes = StaticCache.vertexSizes()
-        check("shader pack: captures use Iris's vertex formats", sizes.isNotEmpty() && 36 !in sizes && 28 !in sizes, "vertex sizes $sizes")
-        // Iris's shadow pass has timers of its own; its stages run inside it, so they add up to at most its total.
-        Sections.forceTimers = true
-        yield(ticks(3 * TICKS_PER_SECOND))
-        val shadow = Sections.averageMillis(Sections.SHADOW)
-        val parts = Sections.averageMillis(Sections.SHADOW_EXTRACT) + Sections.averageMillis(Sections.SHADOW_SUBMIT) +
-            Sections.averageMillis(Sections.SHADOW_PREPARE) + Sections.averageMillis(Sections.SHADOW_DRAW)
+        // Iris extends the entity and the text format (36 and 28 bytes), Vitrail the entity format only (§27).
         check(
-            "shader pack: shadow pass timed",
-            shadow > 0.0 && Sections.averageMillis(Sections.SHADOW_PREPARE) > 0.0 &&
-                Sections.averageMillis(Sections.SHADOW_DRAW) > 0.0 && parts <= shadow,
-            shadowTimings()
+            "shader pack: captures use ${ShaderPackCheck.loader}'s vertex formats",
+            sizes.isNotEmpty() && 36 !in sizes && (ShaderPackCheck.vitrail || 28 !in sizes), "vertex sizes $sizes"
         )
-        results += "NOTE shadow pass in the gallery: ${shadowTimings()}"
-        Sections.forceTimers = false
+        if (!ShaderPackCheck.vitrail) {
+            // Iris's shadow pass has timers of its own; its stages run inside it, so they add up to at most its total.
+            Sections.forceTimers = true
+            yield(ticks(3 * TICKS_PER_SECOND))
+            val shadow = Sections.averageMillis(Sections.SHADOW)
+            val parts = Sections.averageMillis(Sections.SHADOW_EXTRACT) + Sections.averageMillis(Sections.SHADOW_SUBMIT) +
+                Sections.averageMillis(Sections.SHADOW_PREPARE) + Sections.averageMillis(Sections.SHADOW_DRAW)
+            check(
+                "shader pack: shadow pass timed",
+                shadow > 0.0 && Sections.averageMillis(Sections.SHADOW_PREPARE) > 0.0 &&
+                    Sections.averageMillis(Sections.SHADOW_DRAW) > 0.0 && parts <= shadow,
+                shadowTimings()
+            )
+            results += "NOTE shadow pass in the gallery: ${shadowTimings()}"
+            Sections.forceTimers = false
+        }
         comparePair(minecraft, "shader pack: gallery", "shaderpack-gallery")
         // Shader packs add noise of their own from frame to frame (dithering); two vanilla frames show how much.
         KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
@@ -1725,7 +1765,7 @@ object SelfCheck {
         KeyMapping.click(MobiumKeys.AB_TOGGLE.defaultKey)
         yield(ticks(TICKS_PER_SECOND))
         restore()
-        yield(until("shader pack off", 120) { !IrisCompat.isShaderPackInUse() })
+        yield(until("shader pack off", 120) { !ShaderPackCheck.inUse() })
         yield(ticks(2 * TICKS_PER_SECOND))
         check("cache back on vanilla formats", StaticCache.active && StaticCache.vertexSizes().all { it == 36 || it == 28 }, "vertex sizes ${StaticCache.vertexSizes()}")
         Sections.forceTimers = true

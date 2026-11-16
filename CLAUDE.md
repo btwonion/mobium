@@ -93,8 +93,9 @@ Vulkan.
   `resourcepacks/FreshAnimations_v1.10.3.zip` in `versions/26.3-fabric/run/` and `run/`; the self-check uses them when
   present.
 - **Vulkan:** `--api vulkan` needs Khronos' validation layer (Fedora `vulkan-validation-layers`; without root,
-  `VK_ADD_LAYER_PATH`, `docs/vanilla-notes.md` §21). Iris stays off the dev classpath on Vulkan, where it stops the
-  game at startup.
+  `VK_ADD_LAYER_PATH`, `docs/vanilla-notes.md` §21). Iris stays off the dev classpath on Vulkan chosen by launch
+  argument, where it stops the game at startup; `--from-options` chooses Vulkan in `options.txt` and keeps Iris, which
+  then does not run.
 - **Known issue outside Mobium:** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
   `CenterDepthSampler`, also with Mobium off (`self_check.py neoforge --mode iris-without-mobium`); the self-check
   skips the shader pack there.
