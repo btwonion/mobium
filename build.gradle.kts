@@ -365,6 +365,9 @@ val changelogText = buildString {
 
 val supportedMcVersions: List<String> =
     property("vers.supportedMcVersions")!!.toString().split(',').map(String::trim).filter(String::isNotEmpty)
+val curseforgeMcVersions: List<String> =
+    findProperty("vers.curseforgeMcVersions")?.toString()?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)
+        ?: supportedMcVersions
 
 publishMods {
     displayName = "v${project.version}"
@@ -392,7 +395,8 @@ publishMods {
     curseforge {
         projectId = "1759818"
         accessToken = providers.environmentVariable("CURSEFORGE_API_KEY")
-        minecraftVersions.addAll(supportedMcVersions.mapNotNull { if (it.contains('-')) null else it })
+        // CurseForge has no game version per snapshot: a snapshot target names its own (vers.curseforgeMcVersions)
+        minecraftVersions.addAll(curseforgeMcVersions)
         client = true
         server = false
 
