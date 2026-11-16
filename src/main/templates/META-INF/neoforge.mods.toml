@@ -12,7 +12,7 @@ authors = "${mod_author}"
 description = '''
 ${mod_description}
 '''
-iconFile = "${icon}"
+logoFile = "${icon}"
 displayURL = "https://github.com/${repo}"
 
 [[dependencies.${mod_id}]]
