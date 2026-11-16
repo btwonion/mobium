@@ -4,15 +4,17 @@
     python3 benchmark/bench_round.py              # setups A, B, C, D in turn, about 3.5 hours
     python3 benchmark/bench_round.py A D          # some setups only
     python3 benchmark/bench_round.py --dry-run    # checks and plans, launches nothing
-    python3 benchmark/bench_round.py --quick A    # smoke test: one short /mobium stages, results in build/
+    python3 benchmark/bench_round.py --quick A    # smoke test: short runs of the plan's commands, results in build/
     python3 benchmark/bench_round.py --api vulkan # setups A and C on Vulkan, about 2 hours
+    python3 benchmark/bench_full.py               # everything the gate and the release need, in one go
 
 --api picks the graphics API (default opengl): for each setup the script sets it in the instance's options.txt
 (preferredGraphicsBackend, as a player chooses it in the video settings) and puts the old value back afterwards. On
-Vulkan only setups A and C run: B and D need Iris, which draws no shader pack there (PLAN.md, Decisions). A game that
+Vulkan only setups A and C run: B and D need Iris, which draws no shader pack there (PLAN.md, Decisions). Vulkan has
+no vertex-stage expand pass, so its plans leave out /mobium stages and measure Gate D's `control` instead. A game that
 fails to start on the chosen API carries on with the other one without saying so; the script reads the backend of
-every run from summary.csv and names the runs on the wrong one, which then have to run again. A Vulkan round's
-folder ends in -vulkan.
+every run from summary.csv and names the runs on the wrong one, which then have to run again, as does a setup with a
+command that did not start a run. A Vulkan round's folder ends in -vulkan.
 
 For each setup it writes the setup's plan (PLANS) to the instance's mobium-bench/autorun, starts the instance through
 Prism's command line straight into the "Mobium Bench" world, and waits until Mobium has run every command and closed
@@ -50,22 +52,38 @@ PRISM = ["flatpak", "run", "org.prismlauncher.PrismLauncher"]
 IDLE_TIME = ["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.IdleMonitor", "--object-path",
              "/org/gnome/Mutter/IdleMonitor/Core", "--method", "org.gnome.Mutter.IdleMonitor.GetIdletime"]
 
-# Per setup: the client commands of the round, in order (docs/benchmarks.md "Tools"), and their length in minutes.
+# Per API and setup: the client commands of the round, in order (docs/benchmarks.md "Tools"). On Vulkan /mobium stages
+# is refused (no vertex-stage expand pass); instead its round measures Gate D's `control`: the static cache with over
+# without (gateb, setup A) and Module 2 with over without (gatec in control). B and D need Iris, which draws no shader
+# pack on Vulkan (PLAN.md, Decisions).
 PLANS = {
-    "A": ["mobium suite", "mobium gatec", "mobium stages", "mobium stages 60 3 display_build",
-          "mobium gatec 60 3 item_drops"],
-    "B": ["mobium suite", "mobium stages", "mobium gatec 60 3 item_drops"],
-    "C": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
-    "D": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
+    "opengl": {
+        "A": ["mobium suite", "mobium gatec", "mobium stages", "mobium stages 60 3 display_build",
+              "mobium gatec 60 3 item_drops"],
+        "B": ["mobium suite", "mobium stages", "mobium gatec 60 3 item_drops"],
+        "C": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
+        "D": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
+    },
+    "vulkan": {
+        "A": ["mobium suite", "mobium gatec", "mobium gatec 60 3 item_drops", "mobium gatec 60 3 control",
+              "mobium gateb"],
+        "C": ["mobium suite", "mobium gatec", "mobium gatec 60 3 item_drops", "mobium gatec 60 3 control"],
+    },
 }
-QUICK_PLAN = ["mobium stages 5 1 display_build"]
-APIS = ("opengl", "vulkan")
-# B and D need Iris, which draws no shader pack on Vulkan (PLAN.md, Decisions).
-VULKAN_SETUPS = ["A", "C"]
+# --quick: a short run of each kind of command the API's plans use.
+QUICK_PLANS = {
+    "opengl": ["mobium stages 5 1 display_build"],
+    "vulkan": ["mobium suite 5 1 control", "mobium gatec 5 1", "mobium gateb 5 1"],
+}
+APIS = tuple(PLANS)
 API_OPTION = "preferredGraphicsBackend"
+# Each command's length in minutes.
 MINUTES = {"mobium suite": 26, "mobium gatec": 8, "mobium stages": 8, "mobium stages 60 3 display_build": 8,
-           "mobium gatec 60 3 item_drops": 8, QUICK_PLAN[0]: 2}
+           "mobium gatec 60 3 item_drops": 8, "mobium gatec 60 3 control": 8, "mobium gateb": 16,
+           "mobium stages 5 1 display_build": 2, "mobium suite 5 1 control": 2, "mobium gatec 5 1": 2,
+           "mobium gateb 5 1": 3}
 START_MINUTES = 5
+REFUSED = "did not start a run"
 
 
 def setups_by_letter() -> dict[str, tuple[str, str]]:
@@ -201,16 +219,16 @@ def launch(folder: str) -> None:
     )
 
 
-def run_setup(letter: str, game: Path, folder: str, display: str) -> bool:
+def run_setup(letter: str, plan: list[str], game: Path, folder: str, display: str) -> bool:
     """Runs one setup's plan; true when Mobium reported it done."""
     bench = game / "mobium-bench"
     bench.mkdir(exist_ok=True)
     done = bench / "autorun-done"
     done.unlink(missing_ok=True)
-    request = [f"world={WORLD}", f"display={display}", *[f"command={command}" for command in PLANS[letter]]]
+    request = [f"world={WORLD}", f"display={display}", *[f"command={command}" for command in plan]]
     (bench / "autorun").write_text("\n".join(request) + "\n")
-    minutes = START_MINUTES + sum(MINUTES.get(command, 10) for command in PLANS[letter])
-    print(f"{letter}: starting {folder} ({', '.join(PLANS[letter])}; about {minutes - START_MINUTES} min)", flush=True)
+    minutes = START_MINUTES + sum(MINUTES.get(command, 10) for command in plan)
+    print(f"{letter}: starting {folder} ({', '.join(plan)}; about {minutes - START_MINUTES} min)", flush=True)
     launch(folder)
     deadline = time.time() + minutes * 1.5 * 60
     started = False
@@ -264,6 +282,12 @@ def collect(letter: str, game: Path, since: datetime, target: Path) -> list[Path
         if rows:
             (out / "summary.csv").write_text("\n".join([lines[0], *rows]) + "\n")
     return plans
+
+
+def refused_commands(done: Path) -> list[str]:
+    """The commands Mobium's autorun noted as not starting a run (refused; the reason is in chat and the log)."""
+    return [line[20:] for line in done.read_text().splitlines() if line.endswith(f"{REFUSED} (see chat in the log)")] \
+        if done.exists() else []
 
 
 def throttled_runs(summary: Path) -> list[str]:
@@ -323,7 +347,8 @@ def print_medians(plan: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("setups", nargs="*",
-                        help=f"setup letters (default: {' '.join(PLANS)}; on Vulkan {' '.join(VULKAN_SETUPS)})")
+                        help=f"setup letters (default: {' '.join(PLANS['opengl'])}; "
+                             f"on Vulkan {' '.join(PLANS['vulkan'])})")
     parser.add_argument("--api", choices=APIS, default="opengl", help="graphics API of the round (default: opengl)")
     parser.add_argument("--display", default="AOC", help="part of the benchmark monitor's name (default: AOC)")
     parser.add_argument("--machine", default="thinkpad-x9", help="machine name for the results folder")
@@ -333,20 +358,20 @@ def main() -> None:
                         help="checkout of mobium-benchmarks (default: next to Mobium's checkout, cloned when missing)")
     parser.add_argument("--dry-run", action="store_true", help="only the checks and the plans")
     parser.add_argument("--quick", action="store_true",
-                        help=f"smoke test: only '{QUICK_PLAN[0]}' per setup, results in versions/26.3-fabric/build/")
+                        help="smoke test: short runs of the plan's commands per setup, results in "
+                             "versions/26.3-fabric/build/; throttled runs do not fail it")
     args = parser.parse_args()
 
     vulkan = args.api == "vulkan"
-    letters = [setup.upper() for setup in args.setups] or (VULKAN_SETUPS if vulkan else list(PLANS))
-    if args.quick:
-        for letter in PLANS:
-            PLANS[letter] = QUICK_PLAN
-    unknown = [letter for letter in letters if letter not in PLANS]
+    plans = PLANS[args.api]
+    letters = [setup.upper() for setup in args.setups] or list(plans)
+    unknown = [letter for letter in letters if letter not in PLANS["opengl"]]
     if unknown:
-        parser.error(f"unknown setups {unknown}; use {' '.join(PLANS)}")
-    if vulkan and (iris := [letter for letter in letters if letter not in VULKAN_SETUPS]):
-        parser.error(f"setups {' '.join(iris)} need Iris, which draws no shader pack on Vulkan; "
-                     f"use {' '.join(VULKAN_SETUPS)}")
+        parser.error(f"unknown setups {unknown}; use {' '.join(PLANS['opengl'])}")
+    if vulkan and (iris := [letter for letter in letters if letter not in plans]):
+        parser.error(f"setups {' '.join(iris)} need Iris, which draws no shader pack on Vulkan; use {' '.join(plans)}")
+    if args.quick:
+        plans = {letter: QUICK_PLANS[args.api] for letter in plans}
     instances = (args.prism or prism_instances.default_prism_dir()) / "instances"
     found = setups_by_letter()
     kit = prism_instances.kit_build(args.kit) if args.kit.is_dir() else None
@@ -383,12 +408,12 @@ def main() -> None:
         target = target.with_name(f"{target.name}-{kit}")
         if target.exists():
             problems.append(f"{target} exists already; move it or pass another --machine")
-    total = sum(START_MINUTES + sum(MINUTES.get(command, 10) for command in PLANS[letter]) for letter in letters)
+    total = sum(START_MINUTES + sum(MINUTES.get(command, 10) for command in plans[letter]) for letter in letters)
     on = "Vulkan" if vulkan else "OpenGL"
     print(f"Round {' '.join(letters)} with Mobium {kit} on {on}, about {total // 60} h {total % 60} min; "
           f"monitor '{args.display}'; results in {target}")
     for letter in letters:
-        print(f"  {letter} ({games[letter][0]}): {', '.join(PLANS[letter])}")
+        print(f"  {letter} ({games[letter][0]}): {', '.join(plans[letter])}")
     if problems:
         raise SystemExit("Not started:\n  " + "\n  ".join(problems))
     if args.dry_run:
@@ -397,12 +422,13 @@ def main() -> None:
     finished = []
     throttled = {}
     wrong_api = {}
+    refused = {}
     for letter in letters:
         folder, game = games[letter]
         started = datetime.now()
         previous = choose_api(game, args.api)
         try:
-            ok = run_setup(letter, game, folder, args.display)
+            ok = run_setup(letter, plans[letter], game, folder, args.display)
         finally:
             # The instance's next start, by hand or in another round, runs on the API it had before.
             prism_instances.set_keys(game / "options.txt", ":", {API_OPTION: previous or '"default"'})
@@ -421,20 +447,28 @@ def main() -> None:
                   f"{game / 'logs/latest.log'}, 'Using graphics backend'):")
             for run in runs:
                 print(f"    {run}")
+        if commands := refused_commands(game / "mobium-bench" / "autorun-done"):
+            refused[letter] = commands
+            print(f"  {letter}: {len(commands)} commands did not start a run (see chat in {game / 'logs/latest.log'}):")
+            for command in commands:
+                print(f"    {command}")
         if not ok:
             break
         finished.append(letter)
         time.sleep(30)
     print(f"Finished {' '.join(finished) or 'nothing'}; results in {target}")
-    again = sorted(set(throttled) | set(wrong_api))
+    # A smoke test asks whether the commands run on this API; a throttled run answers that as well.
+    again = sorted(set(wrong_api) | set(refused) | (set() if args.quick else set(throttled)))
     if again:
-        print(f"Run {' '.join(again)} again: their throttled runs or runs on the other API do not count "
-              f"(python3 benchmark/bench_round.py {' '.join(again)}{' --api vulkan' if vulkan else ''})")
+        print(f"Run {' '.join(again)} again: their throttled runs, runs on the other API or commands that did not "
+              f"start do not count (python3 benchmark/bench_round.py {' '.join(again)}"
+              f"{' --api vulkan' if vulkan else ''}{' --quick' if args.quick else ''})")
     if not args.quick and any(path.is_file() for path in target.rglob("*")):
         stopped = [letter for letter in letters if letter not in finished]
         notes = [f"{' '.join(stopped)} not finished"] if stopped else []
         notes += [f"throttled runs in {' '.join(throttled)}"] if throttled else []
         notes += [f"runs not on {on} in {' '.join(wrong_api)}"] if wrong_api else []
+        notes += [f"commands not started in {' '.join(refused)}"] if refused else []
         publish(data, target, f"{target.name}: {' '.join(letters)} on {on} with build {kit}"
                 + (f" ({'; '.join(notes)})" if notes else ""))
     sys.exit(0 if len(finished) == len(letters) and not again else 1)

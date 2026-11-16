@@ -189,29 +189,46 @@ benchmarked.
 Every function switches you to spectator mode, teleports you to the scene's camera position and rotation, and builds
 the scene two seconds later in the same place (each scene replaces the previous one). Wait for "Scene … is ready".
 
+### Running everything at once
+
+`python3 benchmark/bench_full.py` does everything the gate and the release need in one unattended run (about six
+hours; `--dry-run` for the checks and plans): it builds the bench kit (`benchKit`, plus `runBenchWorld` when the world
+is missing), installs it with `prism_instances.py`, runs the smoke test on Vulkan (`bench_round.py --quick --api
+vulkan`), then the round on Vulkan (A and C) unless the smoke test failed, then the round on OpenGL (A–D). Each round
+pushes its data as it ends; a failed round does not stop the next. At the end it lists each step's outcome and Gate
+D's benchmark numbers from the Vulkan round: `mob_pen_live` with over without Module 2 in A and C, `control` with over
+without Module 2 in A and C and with over without the static cache in A, each at most 1.03×.
+
 ### Running a round unattended
 
 `python3 benchmark/bench_round.py` runs setups A–D one after another without anyone at the keyboard (about three and
-a half hours; `A D` for some setups, `--dry-run` to see the plan, `--quick` for a five-minute smoke test). Before it
+a half hours; `A D` for some setups, `--dry-run` to see the plan, `--quick` for a smoke test: a short run of each kind
+of command in the plans, which fails on a command that does not start or a run on the other API, not on throttled
+runs). Before it
 starts it checks mains power, an external monitor, that every instance has the bench kit's Mobium jar and that none of
 them is running. For each setup it writes the plan (`PLANS` in the script: `/mobium suite`, `/mobium stages` and
 `/mobium gatec 60 3 item_drops` in A–D, `/mobium gatec` in A, C and D, and in A also
-`/mobium stages 60 3 display_build`) to the instance's `mobium-bench/autorun` and starts the instance with Prism's
-command line straight into the world. The game opens on the display the desktop chooses (the laptop's own screen);
-as soon as it has started, before the world loads, Mobium (`bench/BenchAutorun.kt`) moves the fullscreen window to the
-monitor whose name contains `--display` (default `AOC`) at 1920×1080, and checks it again before the first command.
+`/mobium stages 60 3 display_build`; on Vulkan below) to the instance's `mobium-bench/autorun` and starts the
+instance with Prism's command line straight into the world. The game opens on the display the desktop chooses (the
+laptop's own screen); as soon as it has started, before the world loads, Mobium (`bench/BenchAutorun.kt`) moves the
+fullscreen window to the monitor whose name contains `--display` (default `AOC`) at 1920×1080, and checks it again
+before the first command.
 Then it runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it measured
 on, and when the window lost or regained focus) and closes the game. The script prints each focus change with the
 keyboard or mouse input around it, from GNOME's idle monitor (`org.gnome.Mutter.IdleMonitor`, polled every 5 s): without
 input a program took the focus, with input someone at the computer. Afterwards the script copies the round's files into
 `<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (`-<build>` appended when an earlier round of the day is
 there), prints the medians, and commits and pushes the round. Runs with `throttled_frames` are named after each setup,
-at the end and in the commit message; such a setup has to run again (`bench_round.py B`). Nobody may use the computer
-while it runs: the game owns the monitor, anything else running costs frame time, and a click anywhere takes the focus
-from the game, which then runs at 10 FPS.
+at the end and in the commit message; such a setup has to run again (`bench_round.py B`), as does a setup with a
+command that did not start a run (`autorun-done`: "did not start a run"; the reason is in chat). Nobody may use the
+computer while it runs: the game owns the monitor, anything else running costs frame time, and a click anywhere takes
+the focus from the game, which then runs at 10 FPS.
 
 `--api vulkan` runs the round on Minecraft's Vulkan renderer: setups A and C (about two hours), since B and D need
-Iris, which draws no shader pack on Vulkan (`PLAN.md`, *Decisions*). For each setup the script chooses the API in the
+Iris, which draws no shader pack on Vulkan (`PLAN.md`, *Decisions*). Vulkan has no vertex-stage expand pass, so
+`/mobium stages` is refused there; its plans are `/mobium suite`, `/mobium gatec`, `/mobium gatec 60 3 item_drops` and
+`/mobium gatec 60 3 control` in A and C, and in A also `/mobium gateb`, which with the last gatec gives Gate D's
+`control` numbers. For each setup the script chooses the API in the
 instance's `options.txt` as a player does in the video settings (`preferredGraphicsBackend`, with `startedCleanly`
 set, since after an unclean start the game turns `vulkan` into `default`; `docs/vanilla-notes.md` §21) and puts the
 old value back afterwards; without the option the round runs on OpenGL, set the same way. A game that fails to start
