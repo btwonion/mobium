@@ -19,6 +19,7 @@ stonecutter {
     shared {
         version("26.3-fabric", "26.3")
         version("26.3-neoforge", "26.3")
+        version("26.4-fabric", "26.4")
         vcsVersion = "26.3-fabric"
     }
     create(rootProject)

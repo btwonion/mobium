@@ -24,6 +24,7 @@
         "EntityRenderStateMixin",
         "FeatureRenderDispatcherAccessor",
         "FrontendGpuDeviceAccessor",
+        "GlBufferMixin",
         "ItemFeatureRendererMixin",
         "ItemStackRenderStateAccessor",
         "ItemSubmitMixin",

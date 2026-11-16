@@ -25,6 +25,8 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.Options
 import net.minecraft.client.gui.components.debug.DebugScreenEntries
 import net.minecraft.client.gui.components.debug.DebugScreenEntryStatus
+//? if >=26.4
+//import net.minecraft.client.core.registries.BuiltInClientRegistries
 import net.minecraft.core.BlockPos
 import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.Registries
@@ -216,16 +218,19 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
     /** Shows the `mobium:timings` F3 entry on the live mob scene and checks that it is drawn. */
     private fun checkDebugEntry(context: ClientGameTestContext) {
         context.runOnClient<RuntimeException> {
+            //? if >=26.4 {
+            /*checkNotNull(BuiltInClientRegistries.DEBUG_SCREEN_ENTRY.getValue(DebugLines.KEY)) { "mobium:timings is not registered" }
+            *///?} else
             checkNotNull(DebugScreenEntries.getEntry(DebugLines.ID)) { "mobium:timings is not registered" }
             if (it.gui.hud.isHidden) it.gui.hud.toggle()
-            it.debugEntries.setStatus(DebugLines.ID, DebugScreenEntryStatus.ALWAYS_ON)
+            it.debugEntries.setStatus(DebugLines.KEY, DebugScreenEntryStatus.ALWAYS_ON)
         }
         context.waitTicks(SETTLE_TICKS)
         context.runOnClient<RuntimeException> {
             check(Sections.frame - Sections.debugShownFrame <= 2) { "mobium:timings was not displayed" }
         }
         context.takeScreenshot("debug_timings")
-        context.runOnClient<RuntimeException> { it.debugEntries.setStatus(DebugLines.ID, DebugScreenEntryStatus.NEVER) }
+        context.runOnClient<RuntimeException> { it.debugEntries.setStatus(DebugLines.KEY, DebugScreenEntryStatus.NEVER) }
     }
 
     /**

@@ -12,8 +12,11 @@ import org.spongepowered.asm.mixin.gen.Invoker;
  */
 @Mixin(DebugScreenEntries.class)
 public interface DebugScreenEntriesAccessor {
+    // 26.4 registers F3 entries in a client registry (MobiumEntrypoint); the accessor is empty there.
+    //? if <26.4 {
     @Invoker("register")
     static Identifier mobium$register(Identifier identifier, DebugScreenEntry entry) {
         throw new AssertionError();
     }
+    //?}
 }

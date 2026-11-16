@@ -1,7 +1,7 @@
 package dev.nyon.mobium.parts
 
 import com.mojang.renderpearl.api.buffers.GpuBuffer
-import com.mojang.renderpearl.backend.opengl.GlBuffer
+import dev.nyon.mobium.gpu.gl.GlBufferHandle
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer
 import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
@@ -162,8 +162,8 @@ object ExpandPass {
     fun dispatch(batch: PartBatch, vertexBuffer: GpuBuffer) {
         val arithmetic = arithmetic
         lastArithmetic = arithmetic
-        if (vertexBuffer is GlBuffer) {
-            dispatchGl(batch, vertexBuffer.handle(), arithmetic)
+        if (vertexBuffer is GlBufferHandle) {
+            dispatchGl(batch, vertexBuffer.`mobium$handle`(), arithmetic)
         } else {
             lastStage = STAGE_COMPUTE
             VulkanExpand.dispatch(batch, vertexBuffer as VulkanGpuBuffer, arithmetic)

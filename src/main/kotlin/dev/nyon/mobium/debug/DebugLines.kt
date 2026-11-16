@@ -2,6 +2,11 @@ package dev.nyon.mobium.debug
 
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer
 import net.minecraft.client.gui.components.debug.DebugScreenEntry
+//? if >=26.4 {
+/*import net.minecraft.client.core.registries.ClientRegistries
+import net.minecraft.client.gui.components.debug.DebugGroup
+import net.minecraft.resources.ResourceKey
+*///?}
 import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.chunk.LevelChunk
@@ -14,6 +19,18 @@ import java.util.Locale
 object DebugLines : DebugScreenEntry {
     @JvmField
     val ID: Identifier = Identifier.fromNamespaceAndPath("mobium", "timings")
+
+    // What the entry is registered and switched on with: the id in 26.3, a key of the client registry in 26.4; and the
+    // group that keeps its lines together.
+    //? if >=26.4 {
+    /*@JvmField
+    val KEY: ResourceKey<DebugScreenEntry> = ResourceKey.create(ClientRegistries.DEBUG_SCREEN_ENTRY, ID)
+    private val GROUP: DebugGroup = DebugGroup.Builder.titleless().build()
+    *///?} else {
+    @JvmField
+    val KEY: Identifier = ID
+    private val GROUP: Identifier = ID
+    //?}
 
     override fun display(
         displayer: DebugScreenDisplayer,
@@ -45,7 +62,7 @@ object DebugLines : DebugScreenEntry {
             )
         }
         // One column for all of them, as for mobium:modules.
-        displayer.addToGroup(ID, lines)
+        displayer.addToGroup(GROUP, lines)
     }
 
     private fun ms(section: Int) = String.format(Locale.ROOT, "%.2f", Sections.averageMillis(section))

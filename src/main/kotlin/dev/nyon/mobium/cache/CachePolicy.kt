@@ -197,8 +197,8 @@ object Signs : CacheRule("signs") {
         return flags
     }
 
-    private fun needsOutlineCheck(text: SignText) =
-        text.hasGlowingText() && text.color.textColor != DyeColor.BLACK.textColor
+    // Black is the only dye whose text colour is black, so this is vanilla's test on both versions.
+    private fun needsOutlineCheck(text: SignText) = text.hasGlowingText() && text.color != DyeColor.BLACK
 
     /**
      * No obfuscated glyphs (random every frame) and no sprite or player-head glyphs (`ObjectContents` switch the
@@ -207,6 +207,10 @@ object Signs : CacheRule("signs") {
      */
     private fun isPlain(text: SignText, filtered: Boolean): Boolean {
         for (message in text.getMessages(filtered)) {
+            // 26.4's visit stops after a number of steps; visitUnbounded is 26.3's visit.
+            //? if >=26.4 {
+            /*if (message.visitUnbounded(PlainCheck, Style.EMPTY).isPresent) return false
+            *///?} else
             if (message.visit(PlainCheck, Style.EMPTY).isPresent) return false
         }
         return true

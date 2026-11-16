@@ -7,7 +7,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
 import com.mojang.renderpearl.api.vertex.VertexFormat
 import com.mojang.renderpearl.api.buffers.GpuBuffer
-import com.mojang.renderpearl.backend.opengl.GlBuffer
+import dev.nyon.mobium.gpu.gl.GlBufferHandle
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.core.Compat
@@ -27,7 +27,6 @@ import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.EntityType
 import net.minecraft.util.ARGB
-import net.minecraft.util.Mth
 import org.joml.Matrix3f
 import org.joml.Matrix4f
 import org.joml.Vector3f
@@ -254,7 +253,9 @@ object PartTransform {
     internal fun reserve(builder: BufferBuilder, quads: Int, iris: Boolean): Int {
         val offset = (builder as PartTarget).`mobium$reserve`(quads * 4)
         // Iris counts each vertex at the next endLastVertex to extend it, except after a Sodium push; an empty push
-        // marks the reserved vertices as pushed (Iris's push TAIL hook), as Sodium's cube path would have.
+        // marks the reserved vertices as pushed (Iris's push TAIL hook), as Sodium's cube path would have. Neither has a
+        // build for 26.4, where the target compiles against their 26.3 builds.
+        //? if <26.4
         if (iris) (builder as VertexBufferWriter).push(MemoryStack.stackGet(), emptyPush, 0, builder.`mobium$format`())
         return offset
     }
@@ -360,11 +361,12 @@ object PartTransform {
         normals[negative] = packNormal(-normal.x, -normal.y, -normal.z)
     }
 
-    // BufferBuilder.normalIntValue per component; the fourth byte stays 0.
+    // BufferBuilder.normalIntValue per component; the fourth byte stays 0. Its Mth.clamp (26.3) and Math.clamp (26.4)
+    // return the same float for every input, NaN and -0.0 included.
     private fun packNormal(x: Float, y: Float, z: Float): Int =
         normalByte(x) or (normalByte(y) shl 8) or (normalByte(z) shl 16)
 
-    private fun normalByte(c: Float): Int = (Mth.clamp(c, -1.0f, 1.0f) * 127.0f).toInt() and 0xFF
+    private fun normalByte(c: Float): Int = (Math.clamp(c, -1.0f, 1.0f) * 127.0f).toInt() and 0xFF
 
     internal fun batchOf(staged: StagedVertexBuffer): PartBatch {
         val holder = staged as PartStaged
@@ -453,12 +455,12 @@ object PartTransform {
      * were compiled by vanilla as well; from the next frame on the module is off.
      */
     private fun blank(batch: PartBatch, vertexBuffer: GpuBuffer) {
-        if (vertexBuffer is GlBuffer) {
+        if (vertexBuffer is GlBufferHandle) {
             for (slot in 0 until batch.draws.size) {
                 val base = (batch.draws[slot] as PartDraw).`mobium$vertexOffset`().toLong()
                 val ranges = batch.reserved(slot)
                 for (i in 0 until ranges.count) {
-                    GlCompute.clear(vertexBuffer.handle(), base + ranges.start(i), (ranges.end(i) - ranges.start(i)).toLong())
+                    GlCompute.clear(vertexBuffer.`mobium$handle`(), base + ranges.start(i), (ranges.end(i) - ranges.start(i)).toLong())
                 }
             }
             return

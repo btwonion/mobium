@@ -44,6 +44,10 @@ val vitrailCache = findProperty("mobium.vitrailCache")?.toString()?.let { it != 
 // -Pmobium.partsArithmetic=integer: Module 2's expand pass as on a GPU without 64-bit floats in shaders (on Vulkan the
 // device is created without shaderFloat64; docs/vanilla-notes.md §26).
 val partsArithmetic: String? = findProperty("mobium.partsArithmetic")?.toString()
+// -Pmobium.vulkanCpuDevice: 26.4 skips CPU Vulkan devices such as Mesa's lavapipe (CI's Vulkan gametests) unless the
+// system property renderpearl.vulkan.allowcpudevice is set (docs/vanilla-notes.md §20). Not by default: with it, a
+// machine that lists lavapipe before an integrated GPU would draw on lavapipe.
+val vulkanCpuDevice = findProperty("mobium.vulkanCpuDevice")?.toString()?.let { it != "false" } ?: false
 val launchArguments = buildList {
     if (graphicsBackend != null && !backendFromOptions) addAll(listOf("--graphicsBackend", graphicsBackend))
     if (vulkanValidation) add("--vulkanValidation")
@@ -53,6 +57,7 @@ val launchProperties = buildMap {
     if (vulkanValidation) put("mobium.vulkanValidation", "true")
     if (vitrailCache) put("mobium.vitrailCache", "true")
     if (partsArithmetic != null) put("mobium.parts.arithmetic", partsArithmetic)
+    if (vulkanCpuDevice) put("renderpearl.vulkan.allowcpudevice", "true")
 }
 // The layer stops reporting a message after 10 repeats by default, so vanilla's could hide Mobium's of the same kind.
 val launchEnvironment = if (vulkanValidation) mapOf("VK_LAYER_DUPLICATE_MESSAGE_LIMIT" to "1000000") else mapOf()
@@ -229,6 +234,11 @@ base {
 stonecutter {
     listOf("neoforge", "fabric").map { it to (loader == it) }
         .forEach { (name, isCurrent) -> constants[name] = isCurrent }
+
+    // Classes that moved package; src/ names them as the active version does (docs/vanilla-notes.md §28).
+    replacements.string(current.parsed >= "26.4") {
+        replace("com.mojang.renderpearl.api.vertex.VertexFormat", "com.mojang.blaze3d.vertex.VertexFormat")
+    }
 }
 
 repositories {
@@ -280,11 +290,14 @@ dependencies {
         }
     }
 
-    // Mobium must load without these; they are compiled against and put on the dev runtime classpath only.
+    // Mobium must load without these; they are compiled against and put on the dev runtime classpath only. A target
+    // whose Minecraft version they have no builds for yet compiles against older ones and leaves them off the runtime
+    // classpath (vers.compatRuntime=false).
+    val compatRuntime = prop("vers.compatRuntime") { it != "false" } ?: true
     fun compatDependency(id: String, runtime: Boolean = true, artifactGetter: (String) -> String) {
         prop("vers.deps.$id") { modVersion ->
             "modstitchModCompileOnly"(artifactGetter(modVersion))
-            if (runtime) "modstitchModLocalRuntime"(artifactGetter(modVersion))
+            if (runtime && compatRuntime) "modstitchModLocalRuntime"(artifactGetter(modVersion))
         }
     }
 

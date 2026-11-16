@@ -7,7 +7,10 @@ import net.irisshaders.iris.uniforms.CapturedRenderingState
 import net.irisshaders.iris.vertices.ImmediateState
 import net.irisshaders.iris.vertices.IrisVertexFormats
 
-/** Calls into Iris's public API. Only call these after checking `Compat.isLoaded(CompatMod.IRIS)`. */
+/**
+ * Calls into Iris's public API. Only call these after checking `Compat.isLoaded(CompatMod.IRIS)`. The 26.4 target
+ * compiles against Iris for 26.3 (there is none for 26.4), where Iris cannot load.
+ */
 object IrisCompat {
     fun isShaderPackInUse(): Boolean = IrisApi.getInstance().isShaderPackInUse
 
@@ -25,6 +28,9 @@ object IrisCompat {
     fun pipeline(): Any? = Iris.getPipelineManager().pipelineNullable
 
     /** Iris's 56-byte entity format (`IrisVertexFormats.ENTITY`), which builders get while a pack renders the level. */
+    //? if >=26.4 {
+    /*fun entityFormat(): VertexFormat = throw UnsupportedOperationException("Iris has no build for 26.4")
+    *///?} else
     fun entityFormat(): VertexFormat = IrisVertexFormats.ENTITY
 
     /** `ImmediateState.isRenderingLevel`: whether Iris extends vertices for the level (and replaces their normals). */
