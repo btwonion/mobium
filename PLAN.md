@@ -17,8 +17,8 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
   results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
 - `self_check.py --mode parts --api vulkan` passes on both loaders with items: 0 differing vertices, pictures
   identical, no validation messages from Mobium.
-- A `26.4-fabric` target builds against `26.4-snapshot-8` and is not released (Fabric only: NeoForge has no 26.4
-  build; nor do Sodium, Iris, EMF, ETF and Vitrail). Its gametests and the self-check pass on OpenGL and on Vulkan:
+- A `26.4-fabric` target builds against `26.4-snapshot-8` (Fabric only: NeoForge has no 26.4 build; nor do Sodium,
+  Iris, EMF, ETF and Vitrail). Its gametests and the self-check pass on OpenGL and on Vulkan:
   0 differing vertices, pictures as on 26.3, no validation messages from Mobium (`docs/vanilla-notes.md` §28).
 - Next: step 6, the benchmark round on Vulkan first.
 

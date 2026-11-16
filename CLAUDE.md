@@ -106,10 +106,9 @@ Vulkan.
   skips the shader pack there.
 - **26.4 snapshot target:** `26.4-fabric` builds against one snapshot (`vers.mcVersion` and the range in its
   `gradle.properties`; NeoForge has no 26.4 build). Sodium, Iris, EMF, ETF and Vitrail have no 26.4 builds either: it
-  compiles against their 26.3 builds and runs without them. It builds and tests like the others, but `releaseMod`
-  leaves it out (`vers.release=false`). 26.4's "Default" picks Vulkan or OpenGL at random at every start, so runs name
-  the API (`-Pmobium.graphicsBackend`), and Vulkan on lavapipe needs `-Pmobium.vulkanCpuDevice`. For a new snapshot,
-  check every hook again as `docs/vanilla-notes.md` §28 did.
+  compiles against their 26.3 builds and runs without them. 26.4's "Default" picks Vulkan or OpenGL at random at every
+  start, so runs name the API (`-Pmobium.graphicsBackend`), and Vulkan on lavapipe needs `-Pmobium.vulkanCpuDevice`.
+  For a new snapshot, check every hook again as `docs/vanilla-notes.md` §28 did.
 - **Benchmark data** lives in `../mobium-benchmarks` (`btwonion/mobium-benchmarks`); `bench_round.py` pulls and pushes
   it. Rebuild the Prism instances after code changes as `docs/benchmarks.md` (*Tools*) says.
 

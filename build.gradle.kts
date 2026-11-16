@@ -335,17 +335,13 @@ if (!isFabric) {
     kotlin.sourceSets.named("test") { kotlin.exclude("dev/nyon/mobium/gpu/vk/**") }
 }
 
-// Snapshot targets (vers.release=false) build and test like the others; releaseMod leaves them out.
-val release = prop("vers.release") { it != "false" } ?: true
 tasks {
     register("releaseMod") {
         description = "Release mod to GitHub, Modrinth, CurseForge and Maven"
         group = "publishing"
 
-        if (release) {
-            dependsOn("publishMods")
-            dependsOn("publish")
-        }
+        dependsOn("publishMods")
+        dependsOn("publish")
     }
 
     withType<KotlinCompile> {

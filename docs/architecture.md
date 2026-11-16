@@ -337,7 +337,7 @@ Vulkan backend in `vulkan/`), shaders in
 | Author, repository | `btwonion`, `btwonion/mobium`; Modrinth `mobium`, CurseForge `mobium-perf` |
 | License | GPL-3.0 |
 | Loaders | Fabric (and Quilt) and NeoForge from one source tree (Stonecutter, modstitch); client only |
-| Targets | `26.3-fabric`, `26.3-neoforge`, and `26.4-fabric` for the 26.4 snapshots, not released (`settings.gradle.kts`) |
+| Targets | `26.3-fabric`, `26.3-neoforge`, and `26.4-fabric` for the 26.4 snapshots (`settings.gradle.kts`) |
 | Languages | Kotlin for all logic, Java for mixins; Java 25 |
 | Config | konfig, `config/mobium.json` |
 | Translations | `en_us.json`, `de_de.json` with identical keys |
