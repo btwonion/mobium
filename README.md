@@ -19,9 +19,10 @@ Features still decide how everything looks: Mobium changes how geometry reaches 
 | 500 mobs with Fresh Animations | 101 FPS | 136 FPS | **+35 %** |
 | 500 mobs with Fresh Animations and Complementary Reimagined | 13.6 FPS | 16.4 FPS | **+20 %** |
 
-Average FPS on a laptop with Intel Arc 140V graphics, Sodium, 1920×1080. The more chests, signs, item frames, mobs
-and dropped items are on screen, the more Mobium gains; an empty field gets neither faster nor slower. With 500 plain
-mobs this laptop's graphics chip is the limit, so the gain there follows its clock (+7 % to +19 % between sessions).
+Average FPS on a laptop with Intel Arc 140V graphics, Sodium, OpenGL, 1920×1080. The more chests, signs, item frames,
+mobs and dropped items are on screen, the more Mobium gains; an empty field gets neither faster nor slower. With 500
+plain mobs this laptop's graphics chip is the limit, so the gain there follows its clock (+7 % to +19 % between
+sessions).
 
 ### 📊 Benchmarks wanted
 
@@ -66,13 +67,9 @@ writes their faces. Mobium checks this on your GPU and lets the game draw as usu
 disagree.
 
 The gain is largest where writing vertices is expensive: many mobs, piles of dropped items, Fresh Animations or a
-shader pack. With only a few
-mobs on screen it can cost slightly more than it saves, which shows only at several hundred FPS. It needs OpenGL 4.3
-(current Windows and Linux drivers; not macOS).
-
-### Coming later
-
-- **Vulkan** support.
+shader pack. With only a few mobs on screen it can cost slightly more than it saves, which shows only at several
+hundred FPS. On OpenGL it needs version 4.3 (current Windows and Linux drivers; not macOS); it runs on Minecraft's
+Vulkan renderer too (see the FAQ).
 
 ---
 
@@ -97,10 +94,14 @@ usual.
 | Mod | Status |
 | --- | --- |
 | Sodium | Works; Mobium adds a page to Sodium's video settings |
-| Iris with shader packs | Works, shadow pass included; tested with Complementary Reimagined |
+| Iris with shader packs | Works, shadow pass included; tested with Complementary Reimagined. On Vulkan Iris draws no shader packs yet, and Mobium works as without Iris |
 | Entity Model Features / Entity Texture Features, Fresh Animations | Works |
 | Mod Menu | Opens Mobium's settings |
 | Enhanced Block Entities, Vanillate, Accelerated Rendering | These do the same job; Mobium switches off its overlapping part |
+| Vitrail (shader packs on Vulkan) | Partly: the GPU part transform works; the static cache stays off while Vitrail is installed |
+
+Details, tested versions and known limits:
+[docs/compat.md](https://github.com/btwonion/mobium/blob/master/docs/compat.md).
 
 ---
 
@@ -118,8 +119,16 @@ screenshot taken with Mobium on and one with it off.
 
 **Does Mobium work with Vulkan?**
 
-Not yet. Mobium needs OpenGL, the game's default renderer; on Vulkan it stays off and the game draws everything itself.
-Vulkan support is planned.
+Yes, on OpenGL and on Minecraft's Vulkan renderer alike. Two things differ on Vulkan:
+
+- Iris's shader packs do not work on Vulkan yet: with Iris installed the game runs without them there, and Mobium
+  works as it does without Iris.
+- Vitrail, a shader pack mod for the Vulkan renderer: Mobium's GPU part transform works with it; its static cache stays
+  off while Vitrail is installed.
+
+On Vulkan Mobium is tested on one graphics chip so far, an Intel Arc 140V on Linux. Graphics chips without 64-bit floats
+in shaders (Iris Xe, the Arc A-series, Snapdragon X) get the GPU part transform as well, computed another way with the
+same result; that way is checked on the Arc 140V, not yet on such a chip. F3 `mobium:modules` shows what runs on yours.
 
 ---
 
