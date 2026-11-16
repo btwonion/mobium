@@ -40,6 +40,9 @@ jobs:
             loader: fabric
           - version: "26.3"
             loader: neoforge
+          # The 26.4 snapshot, Fabric only: NeoForge has no 26.4 build yet
+          - version: "26.4"
+            loader: fabric
 
     steps:
       - uses: actions/checkout@v7
@@ -68,13 +71,16 @@ jobs:
         run: |
           xvfb-run -a -s "-screen 0 1920x1080x24" eglinfo -B -p x11 || true
           xvfb-run -a -s "-screen 0 1920x1080x24" glxinfo -B || true
+      # The API is named in both gametest runs: 26.4's "Default" picks Vulkan or OpenGL at random at every start.
       - name: Build, unit tests and client gametests
         if: matrix.loader == 'fabric'
         timeout-minutes: 25
         env:
           SDL_VIDEO_FORCE_EGL: "1"
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build --stacktrace
+        run: >-
+          xvfb-run -a -s "-screen 0 1920x1080x24"
+          ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build -Pmobium.graphicsBackend=opengl --stacktrace
       - name: Build and unit tests
         if: matrix.loader != 'fabric'
         run: ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:build --stacktrace
@@ -102,6 +108,7 @@ jobs:
         run: xvfb-run -a -s "-screen 0 1920x1080x24" vulkaninfo --summary || true
       # The same SDL and Mesa settings as the OpenGL run: should Vulkan not start, Minecraft falls back to OpenGL,
       # which then starts too, and StartupGameTest fails at once instead of the game waiting until the timeout.
+      # mobium.vulkanCpuDevice: 26.4 skips CPU devices such as lavapipe without it.
       - name: Client gametests on Vulkan (lavapipe)
         if: matrix.loader == 'fabric'
         timeout-minutes: 25
@@ -110,7 +117,8 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: >-
           xvfb-run -a -s "-screen 0 1920x1080x24"
-          ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:runClientGameTest -Pmobium.graphicsBackend=vulkan --stacktrace
+          ./gradlew :${{ matrix.version }}-${{ matrix.loader }}:runClientGameTest -Pmobium.graphicsBackend=vulkan
+          -Pmobium.vulkanCpuDevice --stacktrace
       - name: Store Vulkan gametest screenshots
         if: always() && matrix.loader == 'fabric'
         uses: actions/upload-artifact@v7

@@ -55,7 +55,9 @@ tasks.register("postUpdate") {
                 color = color,
                 fields = listOf(
                     Field(
-                        "Supported versions", stonecutter.tree.nodes.map { it.project.property("vers.supportedMcVersions").toString().split(',') }
+                        "Supported versions", stonecutter.tree.nodes
+                            .filter { it.project.findProperty("vers.release")?.toString() != "false" }
+                            .map { it.project.property("vers.supportedMcVersions").toString().split(',') }
                             .flatten().toSet().joinToString(), false
                     ),
                     Field(

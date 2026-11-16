@@ -57,6 +57,12 @@ import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer
 import net.minecraft.client.gui.components.debug.DebugScreenEntryStatus
+//? if >=26.4 {
+/*import net.minecraft.client.gui.components.debug.DebugCustomRenderer
+import net.minecraft.client.gui.components.debug.DebugFact
+import net.minecraft.client.gui.components.debug.DebugGroup
+import java.util.function.Consumer
+*///?}
 import net.minecraft.client.gui.components.events.ContainerEventHandler
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.components.toasts.SystemToast
@@ -1197,9 +1203,15 @@ object SelfCheck {
 
     /** A pause screen that draws nothing: the game pauses, the world stays visible and unblurred. */
     private class StillScreen : Screen(Component.empty()) {
+        //? if >=26.4 {
+        /*override fun extractRenderState(graphics: GuiGraphicsExtractor) {}
+
+        override fun extractBackground(graphics: GuiGraphicsExtractor) {}
+        *///?} else {
         override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {}
 
         override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {}
+        //?}
     }
 
     /** The mob pens and the part gallery: [validateParts] and [comparePaused] in each. */
@@ -1483,7 +1495,7 @@ object SelfCheck {
         serverCommand(minecraft, "tick unfreeze")
         yield(ticks(TICKS_PER_SECOND))
 
-        minecraft.debugEntries.setStatus(ModuleLines.ID, DebugScreenEntryStatus.ALWAYS_ON)
+        minecraft.debugEntries.setStatus(ModuleLines.KEY, DebugScreenEntryStatus.ALWAYS_ON)
         hud.toggle()
         yield(ticks(TICKS_PER_SECOND))
         val lines = debugLines()
@@ -1513,7 +1525,7 @@ object SelfCheck {
         compare("chests still drawn after the failure (vanilla)", takeCapture("capture-after-failure"), vanillaImage)
         hud.toggle()
 
-        minecraft.debugEntries.setStatus(ModuleLines.ID, DebugScreenEntryStatus.NEVER)
+        minecraft.debugEntries.setStatus(ModuleLines.KEY, DebugScreenEntryStatus.NEVER)
         mobiumImage.close()
         vanillaImage.close()
     }
@@ -1865,6 +1877,17 @@ object SelfCheck {
                 lines += line
             }
 
+            //? if >=26.4 {
+            /*override fun addToGroup(group: DebugGroup, lines: Collection<String>) {
+                lines.forEach(::addPriorityLine)
+            }
+
+            override fun addToGroup(group: DebugGroup, lines: String) = addPriorityLine(lines)
+
+            override fun addFactToGroup(group: DebugGroup, name: String, builder: Consumer<DebugFact>) {}
+
+            override fun addToGroup(group: DebugGroup, customRenderer: DebugCustomRenderer) {}
+            *///?} else {
             override fun addLine(line: String) {
                 lines += line
             }
@@ -1874,6 +1897,7 @@ object SelfCheck {
             }
 
             override fun addToGroup(group: Identifier, lines: String) = addLine(lines)
+            //?}
         }
         ModuleLines.display(displayer, null, null, null)
         return lines

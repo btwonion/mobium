@@ -26,15 +26,21 @@ object CaptureConsumer {
     private val storage = HashMap<RenderType, ByteBufferBuilder>()
     private val builders = LinkedHashMap<RenderType, BufferBuilder>()
 
+    /** The format each builder writes in; 26.4's `MeshData` no longer names it. */
+    private val formats = HashMap<RenderType, VertexFormat>()
+
     @JvmStatic
     fun vertexBuilder(renderType: RenderType): VertexConsumer = builders.getOrPut(renderType) {
         val bytes = storage.getOrPut(renderType) { ByteBufferBuilder(INITIAL_CAPACITY) }
-        BufferBuilder(bytes, renderType.primitiveTopology(), renderType.format())
+        val format = renderType.format()
+        formats[renderType] = format
+        BufferBuilder(bytes, renderType.primitiveTopology(), format)
     }
 
     fun begin() {
         check(!active) { "Capture already running" }
         builders.clear()
+        formats.clear()
         active = true
     }
 
@@ -53,7 +59,7 @@ object CaptureConsumer {
                     MemoryUtil.memCopy(source, copy)
                     val state = mesh.drawState()
                     meshes += CapturedMesh(
-                        renderType, copy, state.vertexCount(), state.format(), state.primitiveTopology()
+                        renderType, copy, state.vertexCount(), formats.getValue(renderType), state.primitiveTopology()
                     )
                 }
             }
@@ -62,6 +68,7 @@ object CaptureConsumer {
             throw e
         } finally {
             builders.clear()
+            formats.clear()
         }
         return meshes
     }
@@ -71,6 +78,7 @@ object CaptureConsumer {
         active = false
         for (builder in builders.values) builder.build()?.close()
         builders.clear()
+        formats.clear()
     }
 }
 

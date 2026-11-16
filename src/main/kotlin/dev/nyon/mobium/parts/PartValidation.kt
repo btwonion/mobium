@@ -7,7 +7,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer
 import com.mojang.renderpearl.api.buffers.GpuBuffer
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
 import com.mojang.renderpearl.api.vertex.VertexFormat
-import com.mojang.renderpearl.backend.opengl.GlBuffer
+import dev.nyon.mobium.gpu.gl.GlBufferHandle
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.gpu.gl.GlCompute
@@ -169,8 +169,8 @@ object PartValidation {
      * with [repair] (normal play, [PartCheck]) a difference switches Module 2 off and the frame draws the CPU's bytes.
      */
     fun check(staged: StagedVertexBuffer, vertexBuffer: GpuBuffer, repair: Boolean, stage: String) {
-        if (vertexBuffer is GlBuffer) {
-            checkGl(staged, vertexBuffer.handle(), repair)
+        if (vertexBuffer is GlBufferHandle) {
+            checkGl(staged, vertexBuffer.`mobium$handle`(), repair)
             finish(lastDiffering, lastUnmatched, repair, stage)
         } else {
             checkVulkan(staged, vertexBuffer as VulkanGpuBuffer, repair, stage)

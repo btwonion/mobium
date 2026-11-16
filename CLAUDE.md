@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Mobium is a client-side Minecraft performance mod (Kotlin, mixins in Java) that draws entities and block entities
 from GPU buffers instead of rebuilding them on the CPU every frame. One source tree targets both loaders
 (Fabric/Quilt and NeoForge) via [Stonecutter](https://stonecutter.kikugie.dev/); [modstitch](https://github.com/isXander/modstitch)
-hides the Loom/ModDevGradle differences. Targets are declared in `settings.gradle.kts` (`26.3` × fabric/neoforge).
+hides the Loom/ModDevGradle differences. Targets are declared in `settings.gradle.kts` (`26.3` × fabric/neoforge, and
+`26.4-fabric` for the 26.4 snapshots).
 The structure follows `btwonion/autodrop`; check it first when unsure how something is done.
 
 **Start with `PLAN.md`.** It holds the current target (Vulkan): tick its checkboxes as tasks land and treat its gate as
@@ -21,6 +22,7 @@ Requires JDK 25 (same as CI).
 ```bash
 ./gradlew build                            # all targets; what CI runs. Jars land in versions/<target>/build/libs/
 ./gradlew :26.3-fabric:build               # a single target
+./gradlew :26.4-fabric:build -Pmobium.graphicsBackend=opengl   # the snapshot target; name the API there (below)
 ./gradlew :26.3-fabric:test                # unit tests only (src/test, pure Kotlin)
 ./gradlew :26.3-fabric:runClient           # dev client, Fabric (Sodium, Iris, EMF, ETF on the dev classpath)
 ./gradlew :26.3-neoforge:runMainClient     # dev client, NeoForge (game dir: run/)
@@ -33,6 +35,7 @@ python3 benchmark/bench_round.py           # unattended round A–D in those ins
                                            # CSVs pushed to btwonion/mobium-benchmarks (checkout ../mobium-benchmarks)
 python3 benchmark/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
 python3 benchmark/self_check.py fabric --api vulkan # the same on Vulkan, with the validation layer
+python3 benchmark/self_check.py --minecraft 26.4 --api vulkan   # the snapshot target (needs :26.4-fabric:runBenchWorld)
 ./gradlew :26.3-fabric:runClient -Pmobium.graphicsBackend=vulkan  # any run task on Vulkan; -Pmobium.vulkanValidation
 ```
 
@@ -73,6 +76,8 @@ benchmark commands, protocol and results: `docs/benchmarks.md`.
 - Edit only `src/`; `versions/*/build/generated/stonecutter` is generated.
 - Shared mod properties are in `gradle.properties`; per-target Minecraft version, version range and dependency
   versions (`vers.deps.*`, `modstitch.platform`) are in `versions/<target>/gradle.properties`.
+- A class that only moved package between versions is swapped by a string replacement in `build.gradle.kts`
+  (`stonecutter { replacements }`) instead of `//? if` lines in every file that imports it.
 
 ## Architecture
 
@@ -99,6 +104,12 @@ Vulkan.
 - **Known issue outside Mobium:** Iris 1.11.7 on NeoForge crashes with Complementary Reimagined r5.9.3 in
   `CenterDepthSampler`, also with Mobium off (`self_check.py neoforge --mode iris-without-mobium`); the self-check
   skips the shader pack there.
+- **26.4 snapshot target:** `26.4-fabric` builds against one snapshot (`vers.mcVersion` and the range in its
+  `gradle.properties`; NeoForge has no 26.4 build). Sodium, Iris, EMF, ETF and Vitrail have no 26.4 builds either: it
+  compiles against their 26.3 builds and runs without them. It builds and tests like the others, but `releaseMod`
+  leaves it out (`vers.release=false`). 26.4's "Default" picks Vulkan or OpenGL at random at every start, so runs name
+  the API (`-Pmobium.graphicsBackend`), and Vulkan on lavapipe needs `-Pmobium.vulkanCpuDevice`. For a new snapshot,
+  check every hook again as `docs/vanilla-notes.md` §28 did.
 - **Benchmark data** lives in `../mobium-benchmarks` (`btwonion/mobium-benchmarks`); `bench_round.py` pulls and pushes
   it. Rebuild the Prism instances after code changes as `docs/benchmarks.md` (*Tools*) says.
 

@@ -15,12 +15,18 @@
     python3 benchmark/self_check.py fabric --api vulkan --from-options   # Vulkan chosen in options.txt, Iris installed
     python3 benchmark/self_check.py fabric --api vulkan --vitrail --mode parts   # with Vitrail; packs load through it
     python3 benchmark/self_check.py fabric --mode parts --api vulkan --arithmetic integer   # as without shaderFloat64
+    python3 benchmark/self_check.py --minecraft 26.4 --api vulkan   # the 26.4 snapshot target (Fabric only)
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
 both languages, Sodium's page, and in the benchmark world's storage_room the A/B key, F3 and a forced module failure,
 with pixel comparisons against vanilla), saves screenshots and report.txt to <game dir>/mobium-selfcheck/ and closes
 the game. A game window opens while it runs; leave it alone. Needs the benchmark world from
-./gradlew :26.3-fabric:runBenchWorld. Exit code 0 when every check passed.
+./gradlew :26.3-fabric:runBenchWorld (with --minecraft 26.4: :26.4-fabric:runBenchWorld). Exit code 0 when every check
+passed.
+
+--minecraft 26.4 runs the snapshot target, which has Fabric only and none of Sodium, Iris, EMF, ETF and Vitrail (no
+26.4 builds), so the steps that need them are skipped. Name the API there: 26.4's "Default" picks Vulkan or OpenGL at
+random at every start, and Vulkan on Mesa's lavapipe also needs -Pmobium.vulkanCpuDevice (docs/vanilla-notes.md §20).
 
 --api picks the graphics API (Gradle property mobium.graphicsBackend); the self-check fails when the game runs on the
 other one. On Vulkan the checking modes also enable the validation layer (mobium.vulkanValidation; Fedora package
@@ -41,11 +47,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WORLD = ROOT / "versions/26.3-fabric/build/bench-world/Mobium Bench"
 PACK = ROOT / "benchmark/mobium-bench"
-LOADERS = {
-    "fabric": (":26.3-fabric:runClient", ROOT / "versions/26.3-fabric/run"),
-    "neoforge": (":26.3-neoforge:runMainClient", ROOT / "run"),
+# Per Minecraft version: each loader's run task and game directory.
+TARGETS = {
+    "26.3": {
+        "fabric": (":26.3-fabric:runClient", ROOT / "versions/26.3-fabric/run"),
+        "neoforge": (":26.3-neoforge:runMainClient", ROOT / "run"),
+    },
+    "26.4": {
+        "fabric": (":26.4-fabric:runClient", ROOT / "versions/26.4-fabric/run"),
+    },
 }
 TIMEOUT_SECONDS = 20 * 60
 # Modes that measure time: the validation layer would distort them.
@@ -66,16 +77,23 @@ def set_options(options: Path, values: dict[str, str]) -> dict[str, str | None]:
     return previous
 
 
-def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, extra: list[str], arithmetic: str) -> bool:
-    task, game = LOADERS[loader]
+def bench_world(minecraft: str) -> Path:
+    """The benchmark world runBenchWorld saved on this version's Fabric target."""
+    return ROOT / f"versions/{minecraft}-fabric/build/bench-world/Mobium Bench"
+
+
+def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, extra: list[str], arithmetic: str,
+        minecraft: str) -> bool:
+    task, game = TARGETS[minecraft][loader]
+    world = bench_world(minecraft)
     saves = game / "saves"
     saves.mkdir(parents=True, exist_ok=True)
-    if not (saves / WORLD.name).exists():
-        if not WORLD.is_dir():
-            raise SystemExit(f"{WORLD} not found; run ./gradlew :26.3-fabric:runBenchWorld first")
-        shutil.copytree(WORLD, saves / WORLD.name, ignore=shutil.ignore_patterns("session.lock"))
+    if not (saves / world.name).exists():
+        if not world.is_dir():
+            raise SystemExit(f"{world} not found; run ./gradlew :{minecraft}-fabric:runBenchWorld first")
+        shutil.copytree(world, saves / world.name, ignore=shutil.ignore_patterns("session.lock"))
     # The world keeps its own copy of the datapack; the scenes may have changed since it was made.
-    pack = saves / WORLD.name / "datapacks" / PACK.name
+    pack = saves / world.name / "datapacks" / PACK.name
     shutil.rmtree(pack, ignore_errors=True)
     shutil.copytree(PACK, pack)
     directory = game / "mobium-selfcheck"
@@ -122,7 +140,7 @@ def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("loaders", nargs="*", help=f"any of {', '.join(LOADERS)} (default: all)")
+    parser.add_argument("loaders", nargs="*", help="fabric or neoforge (default: every loader the version has)")
     parser.add_argument("--mode", default="", choices=["", "gallery", "iris-without-mobium", "profile", "profile-mobs", "parts", "gateb", "expand-cost",
                                                      "benchmark"],
                         help="gallery: only the cache_gallery checks (quicker); "
@@ -141,6 +159,8 @@ def main() -> None:
                              "benchmark: the players' /mobium benchmark with 5-second runs, in a Superflat world made through "
                              "Create New World with the built-in Mobium Benchmark pack, plus /mobium stop, leaving the world, "
                              "the refusal without the pack and the pack staying off elsewhere")
+    parser.add_argument("--minecraft", default="26.3", choices=list(TARGETS),
+                        help="the target's Minecraft version (default: 26.3); 26.4 is the snapshot target, Fabric only")
     parser.add_argument("--api", default="opengl", choices=["opengl", "vulkan"],
                         help="graphics API of the dev client (default: opengl)")
     parser.add_argument("--from-options", action="store_true",
@@ -157,9 +177,10 @@ def main() -> None:
     parser.add_argument("--scene", default="", help="profile-mobs: another benchmark scene than mob_pen_live "
                         "(vanilla models only, static cache off); expand-cost: another scene than display_build")
     args = parser.parse_args()
-    unknown = [loader for loader in args.loaders if loader not in LOADERS]
+    loaders = TARGETS[args.minecraft]
+    unknown = [loader for loader in args.loaders if loader not in loaders]
     if unknown:
-        parser.error(f"unknown loader {', '.join(unknown)}; use {' or '.join(LOADERS)}")
+        parser.error(f"no {', '.join(unknown)} target for {args.minecraft}; use {' or '.join(loaders)}")
     mode = f"{args.mode} {args.scene}" if args.scene else args.mode
     validation = args.api == "vulkan" and not args.no_validation and args.mode not in MEASURING
     if args.vitrail and args.api != "vulkan":
@@ -167,8 +188,8 @@ def main() -> None:
     if args.vitrail_cache and not args.vitrail:
         parser.error("--vitrail-cache needs --vitrail")
     extra = (["-Pmobium.vitrail=true"] if args.vitrail else []) + (["-Pmobium.vitrailCache=true"] if args.vitrail_cache else [])
-    results = [run(loader, mode, args.api, validation, args.from_options, extra, args.arithmetic)
-               for loader in (args.loaders or list(LOADERS))]
+    results = [run(loader, mode, args.api, validation, args.from_options, extra, args.arithmetic, args.minecraft)
+               for loader in (args.loaders or list(loaders))]
     sys.exit(0 if all(results) else 1)
 
 

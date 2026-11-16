@@ -15,6 +15,10 @@ import net.fabricmc.fabric.api.resource.v1.ResourceLoader
 import net.fabricmc.fabric.api.resource.v1.pack.PackActivationType
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.resources.Identifier
+//? if >=26.4 {
+/*import net.minecraft.client.core.registries.BuiltInClientRegistries
+import net.minecraft.core.Registry
+*///?}
 
 object MobiumEntrypoint : ClientModInitializer {
     override fun onInitializeClient() {
@@ -22,8 +26,14 @@ object MobiumEntrypoint : ClientModInitializer {
 
         ClientLifecycleEvents.CLIENT_STARTED.register { Mobium.onClientStarted() }
         ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ -> dispatcher.register(BenchCommand.create()) }
+        // 26.4 keeps F3 entries in a client registry, which Fabric API freezes only after the mods' initialisers.
+        //? if >=26.4 {
+        /*Registry.register(BuiltInClientRegistries.DEBUG_SCREEN_ENTRY, DebugLines.KEY, DebugLines)
+        Registry.register(BuiltInClientRegistries.DEBUG_SCREEN_ENTRY, ModuleLines.KEY, ModuleLines)
+        *///?} else {
         DebugScreenEntriesAccessor.`mobium$register`(DebugLines.ID, DebugLines)
         DebugScreenEntriesAccessor.`mobium$register`(ModuleLines.ID, ModuleLines)
+        //?}
         MobiumKeys.ALL.forEach(KeyMappingHelper::registerKeyMapping)
         // NORMAL: listed under Create New World → Data Packs, off in new and existing worlds alike.
         ResourceLoader.registerBuiltinPack(

@@ -17,6 +17,9 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
   results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
 - `self_check.py --mode parts --api vulkan` passes on both loaders with items: 0 differing vertices, pictures
   identical, no validation messages from Mobium.
+- A `26.4-fabric` target builds against `26.4-snapshot-8` and is not released (Fabric only: NeoForge has no 26.4
+  build; nor do Sodium, Iris, EMF, ETF and Vitrail). Its gametests pass on OpenGL and on Vulkan: 0 differing
+  vertices, pictures as on 26.3 (`docs/vanilla-notes.md` §28).
 - Next: step 6, the benchmark round on Vulkan first.
 
 ---
@@ -28,8 +31,8 @@ Module 2, the same vertex bytes as the game's own path.
 
 1. **26.4.** `26.4-snapshot-8` still has no compute and no storage buffers in Renderpearl and drops push descriptors;
    everything Module 2's Vulkan path hooks or calls is as in 26.3. New around it: CPU devices such as lavapipe need
-   `-Drenderpearl.vulkan.allowcpudevice`, and "Default" picks Vulkan or OpenGL at random at each start (§20). Check
-   the newest build again before porting to 26.4.
+   `-Drenderpearl.vulkan.allowcpudevice`, and "Default" picks Vulkan or OpenGL at random at each start (§20). The
+   `26.4-fabric` target follows the snapshots (§28); check every hook again with each new one.
 2. **Tooling.** Done: dev clients, self-check (`--api vulkan`) and gametests on Vulkan with the validation layer,
    `ExpandProfile` on Renderpearl's timestamps (§21).
 3. **Module 1 on Vulkan.** Done: pixel-identical on both loaders, no validation messages from Mobium (§22).
