@@ -34,6 +34,7 @@ python3 benchmark/prism_instances.py       # creates/updates the Prism instances
 python3 benchmark/bench_round.py           # unattended round A–D in those instances (about 3.5 h; --quick, --dry-run),
                                            # CSVs pushed to btwonion/mobium-benchmarks (checkout ../mobium-benchmarks)
 python3 benchmark/bench_round.py --api vulkan   # the same on Vulkan: setups A and C (about 2 h)
+python3 benchmark/bench_full.py            # all of it unattended: kit, instances, Vulkan smoke + round, OpenGL round
 python3 benchmark/self_check.py [fabric|neoforge]   # in-game self-check of a PR's "How to verify" on the dev clients
 python3 benchmark/self_check.py fabric --api vulkan # the same on Vulkan, with the validation layer
 python3 benchmark/self_check.py --minecraft 26.4 --api vulkan   # the snapshot target (needs :26.4-fabric:runBenchWorld)

@@ -20,8 +20,8 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 - A `26.4-fabric` target builds against `26.4-snapshot-8` (Fabric only: NeoForge has no 26.4 build; nor do Sodium,
   Iris, EMF, ETF and Vitrail). Its gametests and the self-check pass on OpenGL and on Vulkan:
   0 differing vertices, pictures as on 26.3, no validation messages from Mobium (`docs/vanilla-notes.md` §28).
-- Next: step 6, the benchmark round on Vulkan (`bench_round.py --api vulkan`, setups A and C) and a round A–D on
-  OpenGL, both on a bench kit built from `master`.
+- Next: step 6, `python3 benchmark/bench_full.py` on `master`: the round on Vulkan (setups A and C) and a round A–D
+  on OpenGL in one unattended run, with Gate D's benchmark numbers at the end.
 
 ---
 
@@ -46,9 +46,8 @@ Module 2, the same vertex bytes as the game's own path.
          static cache; while an installed mod keeps it off, the device and its buffers stay vanilla's.
 6. **Measure and document.**
    - [ ] Benchmark round on Vulkan in the Prism instances for setups A and C (`bench_round.py --api vulkan` sets the
-         graphics API in their options),
-         plus `/mobium gatec` on Vulkan and OpenGL in one session each. B and D need Iris and stay on OpenGL
-         (*Decisions*).
+         graphics API in their options; `bench_full.py` runs it with the OpenGL round), plus `/mobium gatec` on
+         Vulkan and OpenGL in one session each. B and D need Iris and stay on OpenGL (*Decisions*).
    - [x] `docs/compat.md` (Vulkan rows), README (*Does Mobium work with Vulkan?*, which still says Mobium stays off on
          Vulkan), `changelog.md` (no release notes have mentioned Vulkan yet).
 
