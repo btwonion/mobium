@@ -14,6 +14,7 @@
     python3 benchmark/self_check.py fabric --api vulkan   # on Vulkan, with Khronos' validation layer
     python3 benchmark/self_check.py fabric --api vulkan --from-options   # Vulkan chosen in options.txt, Iris installed
     python3 benchmark/self_check.py fabric --api vulkan --vitrail --mode parts   # with Vitrail; packs load through it
+    python3 benchmark/self_check.py fabric --mode parts --api vulkan --arithmetic integer   # as without shaderFloat64
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
 both languages, Sodium's page, and in the benchmark world's storage_room the A/B key, F3 and a forced module failure,
@@ -24,7 +25,9 @@ the game. A game window opens while it runs; leave it alone. Needs the benchmark
 --api picks the graphics API (Gradle property mobium.graphicsBackend); the self-check fails when the game runs on the
 other one. On Vulkan the checking modes also enable the validation layer (mobium.vulkanValidation; Fedora package
 vulkan-validation-layers) and fail on any of its messages that come from Mobium (validation.txt lists them all); the
-measuring modes run without it, as does --no-validation.
+measuring modes run without it, as does --no-validation. --arithmetic integer starts the game as on a GPU without
+64-bit floats in shaders (Gradle property mobium.partsArithmetic): Module 2's expand pass computes in integers only, and
+on Vulkan the device is created without shaderFloat64, so the validation layer reports any shader that needs it.
 
 --from-options chooses the API the way a player does, in options.txt (preferredGraphicsBackend) instead of by launch
 argument, and keeps Iris on the dev classpath on Vulkan too: Iris 1.11.7 reads the option before the game starts and,
@@ -63,7 +66,7 @@ def set_options(options: Path, values: dict[str, str]) -> dict[str, str | None]:
     return previous
 
 
-def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, extra: list[str]) -> bool:
+def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, extra: list[str], arithmetic: str) -> bool:
     task, game = LOADERS[loader]
     saves = game / "saves"
     saves.mkdir(parents=True, exist_ok=True)
@@ -81,7 +84,10 @@ def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, 
     (directory / "request").write_text(mode)
 
     properties = [f"-Pmobium.graphicsBackend={api}"] + (["-Pmobium.vulkanValidation=true"] if validation else []) + extra
+    if arithmetic:
+        properties.append(f"-Pmobium.partsArithmetic={arithmetic}")
     on = f"{api}{' with validation' if validation else ''}{' with Vitrail' if extra else ''}"
+    on += f", {arithmetic} arithmetic" if arithmetic else ""
     restore: dict[str, str | None] = {}
     if from_options:
         properties.append("-Pmobium.graphicsBackendFrom=options")
@@ -139,6 +145,8 @@ def main() -> None:
                         help="graphics API of the dev client (default: opengl)")
     parser.add_argument("--from-options", action="store_true",
                         help="choose the API in options.txt instead of by launch argument; on Vulkan Iris stays installed")
+    parser.add_argument("--arithmetic", default="", choices=["", "integer"],
+                        help="integer: Module 2's expand pass as on a GPU without 64-bit floats in shaders")
     parser.add_argument("--no-validation", action="store_true",
                         help="vulkan: without the validation layer (the measuring modes never use it)")
     parser.add_argument("--vitrail", action="store_true",
@@ -159,7 +167,7 @@ def main() -> None:
     if args.vitrail_cache and not args.vitrail:
         parser.error("--vitrail-cache needs --vitrail")
     extra = (["-Pmobium.vitrail=true"] if args.vitrail else []) + (["-Pmobium.vitrailCache=true"] if args.vitrail_cache else [])
-    results = [run(loader, mode, args.api, validation, args.from_options, extra)
+    results = [run(loader, mode, args.api, validation, args.from_options, extra, args.arithmetic)
                for loader in (args.loaders or list(LOADERS))]
     sys.exit(0 if all(results) else 1)
 

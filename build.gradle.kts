@@ -41,6 +41,9 @@ val vulkanValidation = findProperty("mobium.vulkanValidation")?.toString()?.let 
 // beside it in the dev clients (core/Compat.kt), which is how the check of §27 is repeated with a newer Vitrail.
 val vitrail = findProperty("mobium.vitrail")?.toString()?.let { it != "false" } ?: false
 val vitrailCache = findProperty("mobium.vitrailCache")?.toString()?.let { it != "false" } ?: false
+// -Pmobium.partsArithmetic=integer: Module 2's expand pass as on a GPU without 64-bit floats in shaders (on Vulkan the
+// device is created without shaderFloat64; docs/vanilla-notes.md §26).
+val partsArithmetic: String? = findProperty("mobium.partsArithmetic")?.toString()
 val launchArguments = buildList {
     if (graphicsBackend != null && !backendFromOptions) addAll(listOf("--graphicsBackend", graphicsBackend))
     if (vulkanValidation) add("--vulkanValidation")
@@ -49,6 +52,7 @@ val launchProperties = buildMap {
     if (graphicsBackend != null) put("mobium.graphicsBackend", graphicsBackend)
     if (vulkanValidation) put("mobium.vulkanValidation", "true")
     if (vitrailCache) put("mobium.vitrailCache", "true")
+    if (partsArithmetic != null) put("mobium.parts.arithmetic", partsArithmetic)
 }
 // The layer stops reporting a message after 10 repeats by default, so vanilla's could hide Mobium's of the same kind.
 val launchEnvironment = if (vulkanValidation) mapOf("VK_LAYER_DUPLICATE_MESSAGE_LIMIT" to "1000000") else mapOf()

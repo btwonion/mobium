@@ -23,8 +23,8 @@ import org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Properties
 import org.lwjgl.vulkan.VkWriteDescriptorSet
 
 /**
- * Module 2's expand pass on Vulkan (docs/vanilla-notes.md §23): the same `expand_parts.comp`, compiled to SPIR-V,
- * as a compute dispatch in a command buffer of Mobium's own that `VulkanCommandEncoder.execute` appends to the
+ * Module 2's expand pass on Vulkan (docs/vanilla-notes.md §23): the same `expand_parts.comp`, compiled to SPIR-V
+ * (with 64-bit floats, or with integer arithmetic for devices without `shaderFloat64`, §26), as a compute dispatch in a command buffer of Mobium's own that `VulkanCommandEncoder.execute` appends to the
  * frame's submission right after `StagedVertexBuffer.upload()`, so that it runs after the upload's copy and before
  * the first draw. The barrier at its end makes the vertices visible to everything after it.
  *
@@ -47,13 +47,10 @@ object VulkanExpand {
     private const val ALL_MEMORY = VK10.VK_ACCESS_MEMORY_READ_BIT or VK10.VK_ACCESS_MEMORY_WRITE_BIT
 
     private var device: VulkanDevice? = null
-    private var pipeline: VkCompute.Pipeline? = null
+    /** The pipelines by arithmetic (`ExpandPass.ARITHMETIC_*`), created when first used. */
+    private val pipelines = arrayOfNulls<VkCompute.Pipeline>(2)
     private var maxGroups = 65535
     private var alignment = 256L
-
-    /** The float execution modes the shader was compiled with, for the log. */
-    var floatModes = ""
-        private set
 
     private val upload = arrayOfNulls<VkCompute.Buffer>(SLOTS)
     private val uploadUsed = LongArray(SLOTS)
@@ -72,12 +69,12 @@ object VulkanExpand {
     val bytesAllocated: Long
         get() = (mesh?.size ?: 0L) + upload.sumOf { it?.size ?: 0L }
 
-    /** Expands [batch] into [vertexBuffer], which `upload()` has just filled. */
-    fun dispatch(batch: PartBatch, vertexBuffer: VulkanGpuBuffer) {
+    /** Expands [batch] into [vertexBuffer], which `upload()` has just filled, with [arithmetic] (`ExpandPass.ARITHMETIC_*`). */
+    fun dispatch(batch: PartBatch, vertexBuffer: VulkanGpuBuffer, arithmetic: Int) {
         val profiling = ExpandProfile.enabled
         var lap = if (profiling) System.nanoTime() else 0L
         val device = device()
-        val pipeline = pipeline(device)
+        val pipeline = pipelines[arithmetic] ?: createPipeline(device, arithmetic)
         val vma = device.vma()
         val encoder = device.createCommandEncoder()
         beginSlot(device)
@@ -280,8 +277,10 @@ object VulkanExpand {
         }
         mesh?.let { VkCompute.destroyBuffer(vma, it) }
         mesh = null
-        pipeline?.let { VkCompute.destroyPipeline(device.vkDevice(), it) }
-        pipeline = null
+        for (i in pipelines.indices) {
+            pipelines[i]?.let { VkCompute.destroyPipeline(device.vkDevice(), it) }
+            pipelines[i] = null
+        }
         this.device = null
     }
 
@@ -351,10 +350,16 @@ object VulkanExpand {
         retired += Retired(buffer, fence)
     }
 
-    /** Compiles the shader with the float modes the device supports and creates the pipeline, once. */
-    private fun pipeline(device: VulkanDevice): VkCompute.Pipeline {
-        pipeline?.let { return it }
+    /**
+     * Compiles the shader for [arithmetic] with the float modes the device supports and creates its pipeline, once.
+     * The double variant sets each mode for 32 and 64 bit together. The integer variant has no 64-bit floats and sets
+     * the modes for 32 bit; the rounding mode for 64 bit as well where the device wants all widths alike
+     * (`roundingModeIndependence` NONE), and not at all where it then lacks it for 64 bit.
+     */
+    private fun createPipeline(device: VulkanDevice, arithmetic: Int): VkCompute.Pipeline {
+        val integer = arithmetic == ExpandPass.ARITHMETIC_INTEGER
         val defines = ArrayList<String>()
+        if (integer) defines += ExpandPass.INTEGER_DEFINE
         MemoryStack.stackPush().use { stack ->
             val physical = device.vkDevice().physicalDevice
             val vulkan12 = VkPhysicalDeviceVulkan12Properties.calloc(stack).`sType$Default`()
@@ -363,8 +368,16 @@ object VulkanExpand {
             val limits = properties.properties().limits()
             maxGroups = limits.maxComputeWorkGroupCount(0)
             alignment = maxOf(4L, limits.minStorageBufferOffsetAlignment())
-            if (vulkan12.shaderRoundingModeRTEFloat32() && vulkan12.shaderRoundingModeRTEFloat64()) defines += "MOBIUM_FLOAT_RTE"
-            if (vulkan12.shaderSignedZeroInfNanPreserveFloat32() && vulkan12.shaderSignedZeroInfNanPreserveFloat64()) defines += "MOBIUM_FLOAT_PRESERVE"
+            val allWidthsAlike = vulkan12.roundingModeIndependence() == VK12.VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE
+            val rounding64 = vulkan12.shaderRoundingModeRTEFloat64()
+            if (vulkan12.shaderRoundingModeRTEFloat32() && (rounding64 || (integer && !allWidthsAlike))) {
+                defines += "MOBIUM_FLOAT_RTE"
+                if (!integer || allWidthsAlike) defines += "MOBIUM_FLOAT_RTE_64"
+            }
+            if (vulkan12.shaderSignedZeroInfNanPreserveFloat32() && (integer || vulkan12.shaderSignedZeroInfNanPreserveFloat64())) {
+                defines += "MOBIUM_FLOAT_PRESERVE"
+                if (!integer) defines += "MOBIUM_FLOAT_PRESERVE_64"
+            }
             if (vulkan12.shaderDenormPreserveFloat32() && vulkan12.denormBehaviorIndependence() == VK12.VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL) {
                 defines += "MOBIUM_FLOAT_DENORM"
             }
@@ -374,9 +387,12 @@ object VulkanExpand {
         val spirv = VkCompute.compile("expand_parts.comp", source, defines)
         try {
             val created = VkCompute.createPipeline(device.vkDevice(), spirv, 3, PUSH_WORDS * 4)
-            pipeline = created
-            floatModes = if (defines.isEmpty()) "none" else defines.joinToString { it.removePrefix("MOBIUM_FLOAT_").lowercase() }
-            Mobium.LOGGER.info("Mobium part transform: Vulkan compute pipeline ready (float modes: {}, max groups {})", floatModes, maxGroups)
+            pipelines[arithmetic] = created
+            val modes = defines.filter { it.startsWith("MOBIUM_FLOAT_") }.joinToString { it.removePrefix("MOBIUM_FLOAT_").lowercase() }
+            Mobium.LOGGER.info(
+                "Mobium part transform: Vulkan compute pipeline ready ({} arithmetic, float modes: {}, max groups {})",
+                if (integer) "integer" else "double", modes.ifEmpty { "none" }, maxGroups
+            )
             return created
         } finally {
             MemoryUtil.memFree(spirv)

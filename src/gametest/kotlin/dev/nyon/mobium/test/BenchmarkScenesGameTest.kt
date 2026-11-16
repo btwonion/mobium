@@ -121,8 +121,8 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
     /**
      * Module 2 in [scene] with ticks frozen: the GPU's vertices against the CPU's for every part it takes over
-     * ([PartValidation], byte for byte; CI runs Mesa's llvmpipe), with each expand stage the GPU has, then its picture
-     * against the picture with Module 2 off.
+     * ([PartValidation], byte for byte; CI runs Mesa's llvmpipe), with each expand stage and arithmetic the GPU has,
+     * then its picture against the picture with Module 2 off.
      */
     private fun checkParts(context: ClientGameTestContext, singleplayer: TestSingleplayerContext, scene: String) {
         singleplayer.server.runCommand("tick freeze")
@@ -137,24 +137,36 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         // Both stages where the GPU has the vertex stage (which one runs depends on the shader pack), compute else.
         val vertexStores = context.computeOnClient<Boolean, RuntimeException> { ExpandPass.vertexStores }
         val stages = if (vertexStores) intArrayOf(ExpandPass.STAGE_VERTEX, ExpandPass.STAGE_COMPUTE) else intArrayOf(ExpandPass.STAGE_COMPUTE)
+        // Both arithmetics where shaders have 64-bit floats (which one runs depends on the GPU), integers else.
+        val doubles = context.computeOnClient<Boolean, RuntimeException> { ExpandPass.doubles }
+        val arithmetics = if (doubles) intArrayOf(ExpandPass.ARITHMETIC_DOUBLE, ExpandPass.ARITHMETIC_INTEGER) else intArrayOf(ExpandPass.ARITHMETIC_INTEGER)
         for (stage in stages) {
-            context.runOnClient<RuntimeException> {
-                ExpandPass.forcedStage = stage
-                PartValidation.reset()
-                PartTransform.validating = true
-            }
-            context.waitTicks(VALIDATION_TICKS)
-            context.runOnClient<RuntimeException> { PartTransform.validating = false }
-            // On Vulkan the last frames' comparisons arrive once the GPU is done with them.
-            context.waitFor({ PartValidation.settled }, SETTLE_TICKS)
-            context.runOnClient<RuntimeException> {
-                LOGGER.info("Module 2 validation ({}): {}; {}", scene, PartValidation.summary(), PartTransform.debugLine())
-                check(PartValidation.compared > 0 && PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0) {
-                    "Module 2's vertices (${ExpandPass.stageName}) differ from the CPU's in $scene: ${PartValidation.summary()} ${PartValidation.reports}"
+            for (arithmetic in arithmetics) {
+                context.runOnClient<RuntimeException> {
+                    ExpandPass.forcedStage = stage
+                    ExpandPass.forcedArithmetic = arithmetic
+                    PartValidation.reset()
+                    PartTransform.validating = true
+                }
+                context.waitTicks(VALIDATION_TICKS)
+                context.runOnClient<RuntimeException> { PartTransform.validating = false }
+                // On Vulkan the last frames' comparisons arrive once the GPU is done with them.
+                context.waitFor({ PartValidation.settled }, SETTLE_TICKS)
+                context.runOnClient<RuntimeException> {
+                    LOGGER.info("Module 2 validation ({}, {}): {}; {}", scene, ExpandPass.stageName(stage, arithmetic), PartValidation.summary(), PartTransform.debugLine())
+                    check(ExpandPass.lastStage == stage && ExpandPass.lastArithmetic == arithmetic) {
+                        "The expand pass ran as ${ExpandPass.stageName(ExpandPass.lastStage, ExpandPass.lastArithmetic)}, not as ${ExpandPass.stageName(stage, arithmetic)}"
+                    }
+                    check(PartValidation.compared > 0 && PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0) {
+                        "Module 2's vertices (${ExpandPass.stageName}) differ from the CPU's in $scene: ${PartValidation.summary()} ${PartValidation.reports}"
+                    }
                 }
             }
         }
-        context.runOnClient<RuntimeException> { ExpandPass.forcedStage = -1 }
+        context.runOnClient<RuntimeException> {
+            ExpandPass.forcedStage = -1
+            ExpandPass.forcedArithmetic = -1
+        }
         val parts = context.takeScreenshot("scene_${scene}_parts")
         singleplayer.server.runCommand("tick unfreeze")
         ScreenshotDiff.compare(vanilla, parts).also { diff ->

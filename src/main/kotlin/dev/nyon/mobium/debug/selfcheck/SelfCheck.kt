@@ -30,6 +30,7 @@ import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
 import dev.nyon.mobium.core.Fallback
+import dev.nyon.mobium.core.GraphicsBackend
 import dev.nyon.mobium.core.IrisCompat
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
@@ -40,6 +41,7 @@ import dev.nyon.mobium.debug.ModuleLines
 import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.debug.Validation
 import dev.nyon.mobium.debug.VulkanValidation
+import dev.nyon.mobium.gpu.vk.VulkanSupport
 import dev.nyon.mobium.parts.ExpandPass
 import dev.nyon.mobium.parts.PartCheck
 import dev.nyon.mobium.parts.PartTransform
@@ -1083,6 +1085,15 @@ object SelfCheck {
         minecraft.options.cloudStatus().set(CloudStatus.OFF)
         if (!minecraft.gui.hud.isHidden) minecraft.gui.hud.toggle()
         check("part transform active", ModuleStates.isActive(Module.PART_TRANSFORM), ModuleStates.status(Module.PART_TRANSFORM).describe())
+        val vulkan = Capabilities.current?.backend == GraphicsBackend.VULKAN
+        results += "NOTE expand pass: ${ExpandPass.describeChoice()}" + if (vulkan) "; Vulkan: ${VulkanSupport.describe()}" else ""
+        // -Pmobium.partsArithmetic=integer (self_check.py --arithmetic integer): as on a GPU without 64-bit floats.
+        if (ExpandPass.integerOnly) {
+            check(
+                "integer arithmetic only, as on a GPU without 64-bit floats in shaders",
+                !ExpandPass.doubles && !(vulkan && VulkanSupport.float64), ExpandPass.describeChoice()
+            )
+        }
         val repository = minecraft.resourcePackRepository
         repository.reload()
         val fresh = repository.availableIds.firstOrNull { "fresh" in it.lowercase(Locale.ROOT) }
@@ -1199,17 +1210,28 @@ object SelfCheck {
             // While a pack draws through Vitrail, builders have its entity format, which Module 2 leaves to the CPU
             // (docs/vanilla-notes.md §27): no part may be taken there.
             val vitrailPack = ShaderPackCheck.vitrail && ShaderPackCheck.inUse()
-            // Both stages where the GPU has the vertex stage (which one runs depends on the shader pack), compute else.
-            if (ExpandPass.vertexStores) {
-                ExpandPass.forcedStage = ExpandPass.STAGE_VERTEX
-                validateParts("$name, vertex stage", expectParts = !vitrailPack)
+            // Both stages where the GPU has the vertex stage (which one runs depends on the shader pack), compute else;
+            // each with both arithmetics where shaders have 64-bit floats (which one runs depends on the GPU), with
+            // integers else.
+            for (stage in intArrayOf(ExpandPass.STAGE_VERTEX, ExpandPass.STAGE_COMPUTE)) {
+                if (stage == ExpandPass.STAGE_VERTEX && !ExpandPass.vertexStores) continue
+                for (arithmetic in intArrayOf(ExpandPass.ARITHMETIC_DOUBLE, ExpandPass.ARITHMETIC_INTEGER)) {
+                    if (arithmetic == ExpandPass.ARITHMETIC_DOUBLE && !ExpandPass.doubles) continue
+                    ExpandPass.forcedStage = stage
+                    ExpandPass.forcedArithmetic = arithmetic
+                    val variant = ExpandPass.stageName(stage, arithmetic)
+                    validateParts("$name, $variant", expectParts = !vitrailPack)
+                    // With no part taken the expand pass does not run, so lastStage and lastArithmetic are stale.
+                    if (vitrailPack) continue
+                    check("parts, $name, $variant: the expand pass ran as asked", ExpandPass.lastStage == stage && ExpandPass.lastArithmetic == arithmetic,
+                        ExpandPass.stageName(ExpandPass.lastStage, ExpandPass.lastArithmetic))
+                }
             }
-            ExpandPass.forcedStage = ExpandPass.STAGE_COMPUTE
-            validateParts("$name, compute", expectParts = !vitrailPack)
             if (vitrailPack) {
                 check("parts, $name: no part taken in Vitrail's vertex format", PartValidation.compared == 0L, PartValidation.summary() + "; " + PartTransform.debugLine())
             }
             ExpandPass.forcedStage = -1
+            ExpandPass.forcedArithmetic = -1
             comparePaused(minecraft, "parts: $name", "parts-${file}-${setup.replace(", ", "-").replace(' ', '-')}")
         }
     }

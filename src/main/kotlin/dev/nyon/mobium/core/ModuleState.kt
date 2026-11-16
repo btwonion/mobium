@@ -38,10 +38,13 @@ enum class OffReason(val key: String) {
     /** A mod that hooks the same rendering paths and is not tested with Mobium is installed ([Compat.untested]). */
     UNTESTED("untested"),
 
-    /** The module does not run on the active backend: Module 2 needs OpenGL until its Vulkan dispatch exists (PLAN.md M7). */
+    /** The module does not run on the active backend: one that is neither OpenGL nor Vulkan, or none yet. */
     BACKEND("backend"),
 
-    /** The module needs compute shaders (OpenGL 4.3 with double precision in shaders). */
+    /**
+     * The module needs compute shaders it can write vertex buffers from: OpenGL 4.3, or on Vulkan the hooks of
+     * `VulkanSupport`.
+     */
     NO_COMPUTE("no_compute");
 
     val translationKey: String

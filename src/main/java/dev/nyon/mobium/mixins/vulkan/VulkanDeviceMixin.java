@@ -14,8 +14,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Reads which feature sets the Vulkan device was created with (Renderpearl keeps them private), so that Module 2
- * knows whether 64-bit floats are enabled. Reads only; nothing changes. {@code require = 0}: without the hook
- * {@code VulkanSupport} sees no 64-bit floats and Module 2 stays off on Vulkan.
+ * knows whether 64-bit floats are enabled, and that the device exists. Reads only; nothing changes.
+ * {@code require = 0}: without the hook {@code VulkanSupport} sees no device and Module 2 stays off on Vulkan.
  */
 @Mixin(VulkanDevice.class)
 public class VulkanDeviceMixin {

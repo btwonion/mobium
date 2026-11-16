@@ -162,7 +162,7 @@ object ItemTransform {
         PartTransform.items++
         PartTransform.itemQuads += runQuads
 
-        if (PartTransform.validating || PartCheck.sample(PartCheck.path(flags, false, ExpandPass.lastStage))) {
+        if (PartTransform.validating || PartCheck.sample(PartCheck.path(flags, false, ExpandPass.lastStage, ExpandPass.lastArithmetic))) {
             // Compared with the CPU's vertices: the run is written once more, the vanilla way, into the check's builder.
             PartValidation.begin(staged, draw, firstVertex, runQuads * 4, format, null)
             try {
