@@ -1,12 +1,6 @@
 name: sync-readme
 
 on:
-  push:
-    paths:
-      - "README.md"
-      - "media/**"
-    branches:
-      - master
   workflow_dispatch:
 
 jobs:
