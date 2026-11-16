@@ -11,7 +11,7 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 ## Current state
 
 - Both modules run on Vulkan on `master`, Module 2 where the GPU has `shaderFloat64`; the released mod has only the
-  static cache there. Both stay off while Vitrail is installed.
+  static cache there. The static cache stays off while Vitrail is installed.
 - Module 2 on Vulkan writes 0 differing vertices (self-check on both loaders, gametests on lavapipe in CI).
 - Module 2 for items (dropped items, items in hands, frames and displays) is on `master`, not released yet; its
   results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
@@ -60,11 +60,13 @@ gate fails, stop, write up why in the PR and agree on the next step first.
   public repository, release or date. Setups B and D are measured on OpenGL only. When an Iris release draws on Vulkan:
   the self-check with it on Vulkan, both modules, before B and D are measured there. With Iris 1.11.7 installed and
   Vulkan chosen in `options.txt`, Iris stays dormant and both modules draw as vanilla (`self_check.py --from-options`).
-- **Vitrail: both modules stay off while it is installed.** It is a beta (0.13.0-beta for 26.2 and 26.3, Fabric and
-  NeoForge) whose open work rewrites how it writes entity vertices, where Mobium hooks too (§22). Checked after
-  Gate D against its then newest release, as its own piece of work: its dev client with an OptiFine-format pack, the
-  self-check's gallery and `--mode parts` on Vulkan; identical pictures and 0 differing vertices lift
-  `OffReason.UNTESTED`.
+- **Vitrail: Module 2 runs beside it, the static cache stays off while it is installed.** Checked with 0.13.0-beta,
+  its newest release for 26.3, on both loaders on Vulkan with Complementary Reimagined (§27): without a pack both
+  modules match vanilla; with a pack Vitrail's own entity format keeps Module 2 on the CPU path by itself, while the
+  cached objects vanish, because the pack's composites cover the level target the cache draws into. Supporting the
+  cache there needs its buckets drawn through Vitrail's entity door (`RenderTypeFeatureRenderer.executeGroup`), which
+  Vitrail offers no API for. Check again with each Vitrail release (`-Pmobium.vitrail`, `self_check.py --vitrail
+  --vitrail-cache`).
 - **GPUs without `shaderFloat64`: Module 2 gets a shader without double precision, the next target after Gate D.**
   Every Intel GPU from Ice Lake's Iris Plus through Iris Xe (11th to 14th gen Core) to Arrow Lake's Arc 140T, the Arc
   A-series, Snapdragon X and every Mac lack the feature (`docs/compat.md`, *Known differences and limits*), so Module 2 stays off on Vulkan there; 26.4

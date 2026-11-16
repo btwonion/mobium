@@ -41,10 +41,12 @@ enum class OverlappingMod(val modId: String, val displayName: String, val module
  */
 enum class UntestedMod(val modId: String, val displayName: String, val modules: Set<Module>) {
     /**
-     * Vitrail draws OptiFine-format shader packs on the Vulkan renderer and hooks block entity and entity submission,
-     * `StagedVertexBuffer` and `BufferBuilder` with an entity vertex layout of its own (docs/vanilla-notes.md §22).
+     * Vitrail draws OptiFine-format shader packs on the Vulkan renderer. While a pack draws, it records entity draws
+     * itself into the pack's colour targets and the pack's composites cover the level's main target, where the static
+     * cache draws: cached objects would vanish. Module 2 is tested with it (docs/vanilla-notes.md §27): under a pack the
+     * builders have Vitrail's entity format, which Module 2 leaves to the CPU.
      */
-    VITRAIL("vitrail", "Vitrail", setOf(Module.STATIC_CACHE, Module.PART_TRANSFORM))
+    VITRAIL("vitrail", "Vitrail", setOf(Module.STATIC_CACHE))
 }
 
 /** Detects the installed compat, overlapping and untested mods once at startup. */
@@ -71,9 +73,16 @@ object Compat {
         overlapping.clear()
         OverlappingMod.entries.filterTo(overlapping) { modVersion(it.modId) != null }
         untestedMods.clear()
-        UntestedMod.entries.filterTo(untestedMods) { modVersion(it.modId) != null }
+        UntestedMod.entries.filterTo(untestedMods) { modVersion(it.modId) != null && !allowedForCheck(it) }
         detected = true
     }
+
+    /**
+     * Dev clients only: `-Pmobium.vitrailCache` (system property `mobium.vitrailCache`) lets the static cache run
+     * beside Vitrail, for repeating the check of docs/vanilla-notes.md §27 against a newer Vitrail.
+     */
+    private fun allowedForCheck(mod: UntestedMod): Boolean =
+        mod == UntestedMod.VITRAIL && isDevelopment && System.getProperty("mobium.vitrailCache") == "true"
 
     fun isLoaded(mod: CompatMod): Boolean = mod in versions
 

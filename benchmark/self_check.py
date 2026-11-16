@@ -13,6 +13,7 @@
     python3 benchmark/self_check.py --mode benchmark   # /mobium benchmark in a world made with the built-in pack
     python3 benchmark/self_check.py fabric --api vulkan   # on Vulkan, with Khronos' validation layer
     python3 benchmark/self_check.py fabric --api vulkan --from-options   # Vulkan chosen in options.txt, Iris installed
+    python3 benchmark/self_check.py fabric --api vulkan --vitrail --mode parts   # with Vitrail; packs load through it
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
 both languages, Sodium's page, and in the benchmark world's storage_room the A/B key, F3 and a forced module failure,
@@ -62,7 +63,7 @@ def set_options(options: Path, values: dict[str, str]) -> dict[str, str | None]:
     return previous
 
 
-def run(loader: str, mode: str, api: str, validation: bool, from_options: bool) -> bool:
+def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, extra: list[str]) -> bool:
     task, game = LOADERS[loader]
     saves = game / "saves"
     saves.mkdir(parents=True, exist_ok=True)
@@ -79,8 +80,8 @@ def run(loader: str, mode: str, api: str, validation: bool, from_options: bool) 
     directory.mkdir(parents=True)
     (directory / "request").write_text(mode)
 
-    properties = [f"-Pmobium.graphicsBackend={api}"] + (["-Pmobium.vulkanValidation=true"] if validation else [])
-    on = f"{api}{' with validation' if validation else ''}"
+    properties = [f"-Pmobium.graphicsBackend={api}"] + (["-Pmobium.vulkanValidation=true"] if validation else []) + extra
+    on = f"{api}{' with validation' if validation else ''}{' with Vitrail' if extra else ''}"
     restore: dict[str, str | None] = {}
     if from_options:
         properties.append("-Pmobium.graphicsBackendFrom=options")
@@ -140,6 +141,11 @@ def main() -> None:
                         help="choose the API in options.txt instead of by launch argument; on Vulkan Iris stays installed")
     parser.add_argument("--no-validation", action="store_true",
                         help="vulkan: without the validation layer (the measuring modes never use it)")
+    parser.add_argument("--vitrail", action="store_true",
+                        help="vulkan: with Vitrail on the dev classpath (mobium.vitrail); the shader pack steps then load "
+                             "the pack through it")
+    parser.add_argument("--vitrail-cache", action="store_true",
+                        help="with --vitrail: the static cache runs beside Vitrail too (mobium.vitrailCache, dev clients only)")
     parser.add_argument("--scene", default="", help="profile-mobs: another benchmark scene than mob_pen_live "
                         "(vanilla models only, static cache off); expand-cost: another scene than display_build")
     args = parser.parse_args()
@@ -148,7 +154,13 @@ def main() -> None:
         parser.error(f"unknown loader {', '.join(unknown)}; use {' or '.join(LOADERS)}")
     mode = f"{args.mode} {args.scene}" if args.scene else args.mode
     validation = args.api == "vulkan" and not args.no_validation and args.mode not in MEASURING
-    results = [run(loader, mode, args.api, validation, args.from_options) for loader in (args.loaders or list(LOADERS))]
+    if args.vitrail and args.api != "vulkan":
+        parser.error("--vitrail needs --api vulkan: Vitrail draws on Vulkan only")
+    if args.vitrail_cache and not args.vitrail:
+        parser.error("--vitrail-cache needs --vitrail")
+    extra = (["-Pmobium.vitrail=true"] if args.vitrail else []) + (["-Pmobium.vitrailCache=true"] if args.vitrail_cache else [])
+    results = [run(loader, mode, args.api, validation, args.from_options, extra)
+               for loader in (args.loaders or list(LOADERS))]
     sys.exit(0 if all(results) else 1)
 
 
