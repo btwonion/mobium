@@ -10,8 +10,8 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 
 ## Current state
 
-- Both modules run on Vulkan on `master`, Module 2 where the GPU has `shaderFloat64`; the released mod has only the
-  static cache there. Both stay off while Vitrail is installed.
+- Both modules run on Vulkan on `master`, Module 2 with doubles where the GPU has `shaderFloat64` and with integers
+  elsewhere; the released mod has only the static cache there. The static cache stays off while Vitrail is installed.
 - Module 2 on Vulkan writes 0 differing vertices (self-check on both loaders, gametests on lavapipe in CI).
 - Module 2 for items (dropped items, items in hands, frames and displays) is on `master`, not released yet; its
   results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
@@ -26,8 +26,10 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 **Goal:** both modules on Minecraft's Vulkan backend, with the same guarantee as on OpenGL: the same pixels and, for
 Module 2, the same vertex bytes as the game's own path.
 
-1. **26.4.** `26.4-snapshot-6` still has no compute and no storage buffers in Renderpearl and drops push descriptors
-   (§20). Check the newest snapshot again before porting to 26.4.
+1. **26.4.** `26.4-snapshot-8` still has no compute and no storage buffers in Renderpearl and drops push descriptors;
+   everything Module 2's Vulkan path hooks or calls is as in 26.3. New around it: CPU devices such as lavapipe need
+   `-Drenderpearl.vulkan.allowcpudevice`, and "Default" picks Vulkan or OpenGL at random at each start (§20). Check
+   the newest build again before porting to 26.4.
 2. **Tooling.** Done: dev clients, self-check (`--api vulkan`) and gametests on Vulkan with the validation layer,
    `ExpandProfile` on Renderpearl's timestamps (§21).
 3. **Module 1 on Vulkan.** Done: pixel-identical on both loaders, no validation messages from Mobium (§22).
@@ -51,19 +53,47 @@ gametests on lavapipe), no validation-layer messages from Mobium; `mob_pen_live`
 gate fails, stop, write up why in the PR and agree on the next step first.
 
 **Decisions:**
-- **Iris on Vulkan: not part of M7.** No Iris release runs on Vulkan (1.11.7 is the newest for 26.3 and stops the game
-  there, §21; the request is open in Iris's tracker, with no Vulkan branch), and Aperture, its Vulkan successor, has
-  no release or date. Setups B and D are measured on OpenGL only. Check again when an Iris or Aperture release runs on
-  Vulkan.
-- **Vitrail: both modules stay off while it is installed.** It is a beta (0.13.0-beta for 26.2 and 26.3, Fabric and
-  NeoForge) whose open work rewrites how it writes entity vertices, where Mobium hooks too (§22). Checked after
-  Gate D against its then newest release, as its own piece of work: its dev client with an OptiFine-format pack, the
-  self-check's gallery and `--mode parts` on Vulkan; identical pictures and 0 differing vertices lift
-  `OffReason.UNTESTED`.
-- **GPUs without `shaderFloat64`: Module 2 gets a shader without double precision, the next target after Gate D.**
-  Every Intel GPU from Ice Lake's Iris Plus through Iris Xe (11th to 14th gen Core) to Arrow Lake's Arc 140T, the Arc
-  A-series, Snapdragon X and every Mac lack the feature (`docs/compat.md`, *Known differences and limits*), so Module 2 stays off on Vulkan there; 26.4
-  makes Vulkan the default. The expand pass uses doubles for correctly rounded square roots and divisions
-  (`Capabilities.glCompute`); exact integer arithmetic (`umulExtended`) instead, still 0 differing vertices in every
-  setup and on both backends. On OpenGL the same GPUs report core 4.0 and emulate doubles in the driver; how much
-  that costs Module 2 there is not measured *(verify)*.
+- **Iris on Vulkan: not part of M7.** No Iris release draws on Vulkan: 1.11.7 is the newest for 26.3 (none for 26.4);
+  with Vulkan chosen in `options.txt` it switches its own mixins off, and started on Vulkan by launch argument it
+  stops the game (§21). Iris's branch `26.3-new` (1.12.0, unreleased) has a Vulkan backend and hooks
+  classes Module 2 hooks or calls: `VulkanFeatureSets`, `VulkanDevice`, `VulkanCommandEncoder` (§21). Aperture has no
+  public repository, release or date. Setups B and D are measured on OpenGL only. When an Iris release draws on Vulkan:
+  the self-check with it on Vulkan, both modules, before B and D are measured there. With Iris 1.11.7 installed and
+  Vulkan chosen in `options.txt`, Iris stays dormant and both modules draw as vanilla (`self_check.py --from-options`).
+- **Vitrail: Module 2 runs beside it, the static cache stays off while it is installed.** Checked with 0.13.0-beta,
+  its newest release for 26.3, on both loaders on Vulkan with Complementary Reimagined (§27): without a pack both
+  modules match vanilla; with a pack Vitrail's own entity format keeps Module 2 on the CPU path by itself, while the
+  cached objects vanish, because the pack's composites cover the level target the cache draws into. Supporting the
+  cache there needs its buckets drawn through Vitrail's entity door (`RenderTypeFeatureRenderer.executeGroup`), which
+  Vitrail offers no API for. Check again with each Vitrail release (`-Pmobium.vitrail`, `self_check.py --vitrail
+  --vitrail-cache`).
+- **GPUs without `shaderFloat64`: Module 2 computes in integers there.** Every Intel GPU from Ice Lake's Iris Plus
+  through Iris Xe (11th to 14th gen Core) to Arrow Lake's Arc 140T, the Arc A-series, Snapdragon X and every Mac lack
+  the feature (`docs/compat.md`, *Known differences and limits*). The expand pass's correctly rounded square roots and
+  divisions use doubles where shaders have them and 32-bit integers elsewhere, with the same bytes (*Module 2 without
+  64-bit floats*). On OpenGL the same GPUs report core 4.0 and emulate doubles in the driver; how much that costs
+  Module 2 there is not measured *(verify)*.
+
+---
+
+## Module 2 without 64-bit floats
+
+Module 2's expand pass used doubles for its correctly rounded square roots and divisions, so on Vulkan GPUs without
+`shaderFloat64` (*Decisions*, third entry) Module 2 stayed off. The shader now has a second arithmetic that computes
+them bit by bit in 32-bit integers and writes the same bytes (`docs/architecture.md`, *Two arithmetics, same bytes*;
+`docs/vanilla-notes.md` §26). Doubles still run where shaders have them; integers elsewhere.
+
+- [x] Integer square root, division and Iris's rsqrt in `expand_parts.comp` (`MOBIUM_INTEGER`), compared with Java for
+      every float and 4 · 10⁹ divisions without a difference.
+- [x] `ExpandPass.arithmetic` with `forcedArithmetic` for the checks and `-Dmobium.parts.arithmetic=integer`
+      (self-check `--arithmetic integer`) for a session as on a GPU without doubles; on Vulkan `VulkanSupport` runs
+      Module 2 without `shaderFloat64`; the GPU check samples each arithmetic as its own path.
+- [x] Self-check `--mode parts` with both arithmetics in both stages, on OpenGL and Vulkan, both loaders, plus Vulkan
+      sessions without `shaderFloat64`; the gametests with both arithmetics: 0 differing vertices, pictures identical,
+      no validation messages from Mobium (`docs/vanilla-notes.md` §26, *Results*).
+- [x] The maintainer's visual check (*How to verify* of the PR).
+- [ ] On a real GPU without `shaderFloat64` (an Intel Iris Xe or Arc A-series laptop on Vulkan): the self-check's
+      `--mode parts --api vulkan`, or in normal play F3 `mobium:modules` showing the GPU check without a difference.
+- [ ] In a benchmark round: `expand-cost` and `mob_pen_live` with both arithmetics on GPUs with doubles (the Arc 140V,
+      an Nvidia and an AMD card). If the integer arithmetic is no slower anywhere, it replaces the double one, and
+      the `shaderFloat64` feature set and its mixin go.

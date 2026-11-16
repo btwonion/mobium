@@ -11,9 +11,9 @@ switches between Mobium's path and vanilla's, never between two pictures.
 | Module | What it does | Package | State |
 | --- | --- | --- | --- |
 | 1 · Static cache | Block entities and entities that stand still are captured once through vanilla's own submit and prepare and drawn from per-section GPU buffers until they change | `cache/` | On by default |
-| 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `parts/` | On by default where the GPU has compute shaders with double precision (OpenGL 4.3, or `shaderFloat64` on Vulkan) |
+| 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `parts/` | On by default where the GPU has compute shaders (OpenGL 4.3, or Vulkan) |
 
-Both run on OpenGL and on Minecraft's Vulkan backend. While Vitrail is installed both stay off
+Both run on OpenGL and on Minecraft's Vulkan backend. While Vitrail is installed the static cache stays off
 (`OffReason.UNTESTED`).
 
 - **Must-have compatibility:** Iris shader packs, and EMF/ETF including Fresh Animations. Never bypass `setupAnim`.
@@ -131,8 +131,8 @@ A model part keeps every CPU step up to its own `compile`: `setupAnim`, EMF's an
    because Renderpearl has no compute or storage buffers. On Vulkan (`parts/VulkanExpand.kt`, raw Vulkan in
    `gpu/vk/VkCompute.kt`) the same shader, compiled to SPIR-V, runs as a compute dispatch in a command buffer of
    Mobium's own that Renderpearl's encoder appends to the frame right after `upload()`; three `require = 0` mixins
-   (`mixins/vulkan`, `gpu/vk/VulkanSupport.kt`) enable `shaderFloat64` and give vertex buffers storage usage
-   (`docs/vanilla-notes.md` §23); while an installed mod keeps Module 2 on the vanilla path (Vitrail, an overlapping
+   (`mixins/vulkan`, `gpu/vk/VulkanSupport.kt`) give vertex buffers storage usage and enable `shaderFloat64` where the
+   GPU has it (`docs/vanilla-notes.md` §23); while an installed mod keeps Module 2 on the vanilla path (an overlapping
    mod), the device and its buffers stay vanilla's.
 7. **Two stages, same bytes.** Mesa's iris records a compute dispatch in a batch of its own and flushes both batches
    around it, a fixed GPU cost per frame however few parts there are. So without a shader pack the same shader runs
@@ -142,10 +142,18 @@ A model part keeps every CPU step up to its own `compile`: `setupAnim`, EMF's an
    *Module 2's fixed cost*). On Vulkan only the compute dispatch exists.
 
 **Exactness.** The shader repeats the Java code's float operations in their order (`precise`, JOML without fused
-multiply-adds, Sodium's and Iris's own formulas), corrects square roots and divisions to the correctly rounded float
-with exact double residuals (GPUs do not round them correctly; Mesa on the Arc 140V was off in 24k of 3.3M normals),
-and writes Iris's per-quad extension (face normal, mid UV, tangent) as Iris does on the CPU (`docs/vanilla-notes.md`
-§16).
+multiply-adds, Sodium's and Iris's own formulas), gives square roots and divisions the correctly rounded float (GPUs
+do not round them correctly; Mesa on the Arc 140V was off in 24k of 3.3M normals), and writes Iris's per-quad
+extension (face normal, mid UV, tangent) as Iris does on the CPU (`docs/vanilla-notes.md` §16).
+
+**Two arithmetics, same bytes.** The correctly rounded square roots and divisions exist twice in the shader
+(`ExpandPass.arithmetic`): the GPU's double result corrected with exact double residuals, or, compiled with
+`MOBIUM_INTEGER`, computed bit by bit in 32-bit integers, which needs no 64-bit floats (`docs/vanilla-notes.md` §26).
+Doubles run where shaders have them (every OpenGL 4.3 context, Vulkan devices with `shaderFloat64`), the integer
+variant elsewhere (most Intel GPUs before Xe2, Snapdragon X, Macs through MoltenVK); which is faster is not measured.
+`-Dmobium.parts.arithmetic=integer` runs a whole session as on a GPU without doubles (on Vulkan the device is then
+created without `shaderFloat64`); the checks force both arithmetics through
+`ExpandPass.forcedArithmetic`, and the GPU check of normal play samples each arithmetic as a path of its own.
 
 **Checks.** The CPU path is the reference. `parts/PartValidation.kt` compiles parts on the CPU as well, reads the
 GPU's vertices back and compares them byte for byte (bytes the CPU never writes left out):
@@ -199,8 +207,9 @@ than white or different baked normals per vertex, more than four tint layers, an
   class Mobium does not know) takes vanilla's path. Per type: a type that fails 3 times stays vanilla. Per module: an
   exception or GPU error switches the module off for the session, with one log line and one toast. The pure
   bookkeeping (`FailureLedger`) is unit-tested.
-- **Capabilities** (`core/Capabilities.kt`): the backend from `DeviceInfo.backendName()`, OpenGL compute with double
-  precision, whether vertex shaders may write storage buffers, multi-draw indirect. Logged at startup.
+- **Capabilities** (`core/Capabilities.kt`): the backend from `DeviceInfo.backendName()`, OpenGL compute, whether
+  shaders have 64-bit floats (OpenGL 4.0, or `shaderFloat64` enabled on Vulkan), whether vertex shaders may write
+  storage buffers, multi-draw indirect. Logged at startup.
 - **Compat** (`core/Compat.kt`, `IrisCompat.kt`, `EmfCompat.kt`): which compat mods are loaded, Iris's shader pack and
   vertex formats, EMF's animated roots, overlapping mods. Compat mixins (`mixins/compat/`) apply only when their mod
   is present (`MobiumMixinPlugin`) and are optional where they only measure.
@@ -240,10 +249,11 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
 - **Unit tests** (`src/test`, pure Kotlin, `./gradlew :26.3-fabric:test`): module rules, the failure ledger, ring and
   memory-budget arithmetic, light stamps, the path sampler, frame statistics, gate maths, machine state and OS
   strings, the config format and translation keys; on Fabric also the expand shader compiled to SPIR-V in every
-  variant (`ExpandShaderTest`; ModDevGradle gives the unit tests no LWJGL).
+  variant, both arithmetics, the integer one without any 64-bit type (`ExpandShaderTest`; ModDevGradle gives the
+  unit tests no LWJGL).
 - **Client gametests** (`src/gametest`, Fabric only, mod id `mobium-test`): startup on the requested graphics API,
-  the benchmark world and scenes with screenshots and Module 2's byte-for-byte validation, the settings screen and the
-  fallback toast. On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game (locally a
+  the benchmark world and scenes with screenshots and Module 2's byte-for-byte validation (each stage and arithmetic
+  the GPU has), the settings screen and the fallback toast. On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game (locally a
   window opens and closes by itself). CI runs them under `xvfb-run` on Mesa's software OpenGL and a second time on
   Vulkan with Mesa's lavapipe (`-Pmobium.graphicsBackend=vulkan`). Screenshots land in
   `versions/26.3-fabric/build/run/clientGameTest/screenshots/`.
@@ -251,13 +261,15 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
   dev client with a request file; inside the game it walks through the checks (screens opened the loader's way, both
   languages, the Sodium page, and in the benchmark world key presses, commands and pixel comparisons against vanilla),
   writes `<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores every option it touched and closes the
-  game. On Vulkan it runs with the validation layer and fails on any message Mobium's objects or calls raise. `--mode`
-  runs one part instead:
+  game. On Vulkan it runs with the validation layer and fails on any message Mobium's objects or calls raise.
+  `--from-options` chooses the API in `options.txt` as players do instead of by launch argument, which keeps Iris
+  installed on Vulkan, where it does not run (`docs/vanilla-notes.md` §21); the shader pack steps are skipped while
+  Iris does not run. `--mode` runs one part instead:
   - `gallery`: the `cache_gallery` scene only (every cached type, effects, shader pack, Fresh Animations); failed count
     checks name why an object was not cached.
   - `parts`: Module 2's GPU vertices against the CPU's and pictures against vanilla in `mob_pen_live` and
-    `part_gallery` (with a row of dropped items of every item path), with the four setups' models and both expand
-    stages.
+    `part_gallery` (with a row of dropped items of every item path), with the four setups' models, both expand
+    stages and both arithmetics; `--arithmetic integer` starts the game as on a GPU without 64-bit floats.
   - `benchmark`: the players' `/mobium benchmark` with 5-second runs, its refusals and the built-in pack.
   - `profile-mobs [--scene <scene>]`: Module 2 off, on and without vertices (models' and items'), and one more run
     with Module 2 under Java Flight Recorder that the averages leave out (`--scene item_drops` for items); `profile`

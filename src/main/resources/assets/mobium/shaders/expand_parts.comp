@@ -4,7 +4,10 @@
 // for bit. One invocation per quad. Every float operation is `precise` and written in the order of the Java code it
 // replaces (docs/vanilla-notes.md §16): JOML without fused multiply-adds for positions and the face normal, Iris
 // 1.11.7's NormalHelper for the tangent. Square roots and divisions are correctly rounded as in Java
-// (`(float) Math.sqrt(double)`, float division), which GPUs do not do on their own: see sqrtFloat.
+// (`(float) Math.sqrt(double)`, float division), which GPUs do not do on their own: see sqrtFloat, which exists
+// twice. With 64-bit floats the GPU's result is corrected by exact double residuals; with MOBIUM_INTEGER defined, for
+// GPUs without 64-bit floats in shaders, the results are computed in 32-bit integers and the shader uses no double
+// (docs/vanilla-notes.md §26). Both write the same bytes.
 //
 // Buffers, all arrays of 32-bit words:
 //   meshes   per quad 22 words (MeshPool.kt): 4 x (x/16, y/16, z/16, u, v), then the face's Direction ordinal, then 0;
@@ -21,17 +24,22 @@
 // off (ExpandPass.kt): the same code, one vertex per quad. On Vulkan (VulkanExpand.kt) compiled to SPIR-V by shaderc,
 // which defines VULKAN: compute only, the counts as push constants, and where the device supports them the float
 // execution modes that pin down what OpenGL's drivers do by default (MOBIUM_FLOAT_* defined by VulkanExpand.kt):
-// round to nearest even, signed zeros, infinities and NaNs kept, denormals kept.
+// round to nearest even, signed zeros, infinities and NaNs kept, denormals kept. The modes for 64-bit floats have
+// defines of their own (*_64): the integer variant sets them only where the device wants all widths alike.
 
 #ifdef VULKAN
 #extension GL_EXT_spirv_intrinsics : require
 // SPIR-V execution modes and capabilities (SPV_KHR_float_controls, core in SPIR-V 1.4).
 #ifdef MOBIUM_FLOAT_RTE
 spirv_execution_mode(capabilities = [4467], 4462, 32);      // RoundingModeRTE
+#endif
+#ifdef MOBIUM_FLOAT_RTE_64
 spirv_execution_mode(capabilities = [4467], 4462, 64);
 #endif
 #ifdef MOBIUM_FLOAT_PRESERVE
 spirv_execution_mode(capabilities = [4466], 4461, 32);      // SignedZeroInfNanPreserve
+#endif
+#ifdef MOBIUM_FLOAT_PRESERVE_64
 spirv_execution_mode(capabilities = [4466], 4461, 64);
 #endif
 #ifdef MOBIUM_FLOAT_DENORM
@@ -119,6 +127,156 @@ vec3 transformPosition(uint p, uint kind, float x, float y, float z) {
     return vec3(rx, ry, rz);
 }
 
+#ifdef MOBIUM_INTEGER
+
+// Square roots and divisions without 64-bit floats (docs/vanilla-notes.md §26): the correctly rounded results from
+// 32-bit integer steps alone (shift, compare, subtract), which every GPU computes exactly, so that nothing here
+// depends on how a driver rounds. Each function takes every float, the special values as Java treats them.
+
+const uint FLOAT_INFINITY = 0x7F800000u;
+const uint FLOAT_NAN = 0x7FC00000u;
+
+// The magnitude bits of a finite float other than 0 as mantissa * 2^(exponent - 150) with 2^23 <= mantissa < 2^24;
+// a denormal's mantissa is shifted up.
+void unpackFloat(uint magnitude, out uint mantissa, out int exponent) {
+    exponent = int(magnitude >> 23);
+    mantissa = magnitude & 0x7FFFFFu;
+    if (exponent == 0) {
+        int shift = 23 - findMSB(mantissa);
+        mantissa <<= shift;
+        exponent = 1 - shift;
+    } else {
+        mantissa |= 0x800000u;
+    }
+}
+
+// Long division, one bit per step: the next `count` bits of rest / d, the first of them the integer part
+// (rest < 2 * d < 2^31). Leaves twice the remainder in rest.
+uint divideBits(inout uint rest, uint d, int count) {
+    uint quotient = 0u;
+    for (int i = 0; i < count; i++) {
+        quotient <<= 1;
+        if (rest >= d) {
+            rest -= d;
+            quotient |= 1u;
+        }
+        rest <<= 1;
+    }
+    return quotient;
+}
+
+// One step of the square root bit by bit: the next two bits of the number give the root's next bit.
+void sqrtStep(inout uint root, inout uint rest, uint pair) {
+    rest = (rest << 2) | pair;
+    uint trial = (root << 2) | 1u;
+    root <<= 1;
+    if (rest >= trial) {
+        rest -= trial;
+        root |= 1u;
+    }
+}
+
+// floor(sqrt(n)) for n = high * 2^32 + low < 2^50. The remainder is at most twice the root, so it stays in 32 bits.
+uint sqrtBits(uint high, uint low) {
+    uint root = 0u;
+    uint rest = 0u;
+    for (int shift = 16; shift >= 0; shift -= 2) sqrtStep(root, rest, (high >> shift) & 3u);
+    for (int shift = 30; shift >= 0; shift -= 2) sqrtStep(root, rest, (low >> shift) & 3u);
+    return root;
+}
+
+// `(float) Math.sqrt((double) x)`, the correctly rounded square root. x is m * 2^e with e odd and 2^23 <= m < 2^25,
+// so its root is sqrt(m * 2^25) * 2^((e - 25) / 2), and s = floor(sqrt(m * 2^25)) has 25 bits: the 24 of the result
+// and the bit that rounds it. An odd s never lies on a midpoint (m * 2^25 is even, s * s odd), so it rounds up.
+float sqrtFloat(float x) {
+    uint bits = floatBitsToUint(x);
+    if ((bits & 0x7FFFFFFFu) == 0u) return x;
+    if (bits >= FLOAT_INFINITY) return bits == FLOAT_INFINITY ? x : uintBitsToFloat(FLOAT_NAN);
+    uint mantissa;
+    int exponent;
+    unpackFloat(bits, mantissa, exponent);
+    if ((exponent & 1) == 0) {
+        mantissa <<= 1;
+        exponent -= 1;
+    }
+    uint s = sqrtBits(mantissa >> 7, mantissa << 25);
+    // A mantissa of 2^24 after rounding carries into the exponent by the addition.
+    return uintBitsToFloat((uint((exponent + 125) >> 1) << 23) + ((s + 1u) >> 1));
+}
+
+// Float division `a / b`, correctly rounded to nearest, ties to even: 25 bits of the mantissas' quotient by long
+// division, the rest of it as the sticky bit, then rounded where the result's exponent puts its last bit (higher up
+// for a denormal result).
+float divideFloat(float a, float b) {
+    uint bitsA = floatBitsToUint(a);
+    uint bitsB = floatBitsToUint(b);
+    uint negative = (bitsA ^ bitsB) & 0x80000000u;
+    uint magnitudeA = bitsA & 0x7FFFFFFFu;
+    uint magnitudeB = bitsB & 0x7FFFFFFFu;
+    if (magnitudeA > FLOAT_INFINITY || magnitudeB > FLOAT_INFINITY) return uintBitsToFloat(FLOAT_NAN);
+    if (magnitudeA == FLOAT_INFINITY) return uintBitsToFloat(magnitudeB == FLOAT_INFINITY ? FLOAT_NAN : negative | FLOAT_INFINITY);
+    if (magnitudeB == FLOAT_INFINITY) return uintBitsToFloat(negative);
+    if (magnitudeB == 0u) return uintBitsToFloat(magnitudeA == 0u ? FLOAT_NAN : negative | FLOAT_INFINITY);
+    if (magnitudeA == 0u) return uintBitsToFloat(negative);
+    uint mantissaA;
+    int exponentA;
+    unpackFloat(magnitudeA, mantissaA, exponentA);
+    uint mantissaB;
+    int exponentB;
+    unpackFloat(magnitudeB, mantissaB, exponentB);
+    // The result's exponent field if it is normal: the quotient of the mantissas is brought into [1, 2).
+    int field = exponentA - exponentB + 127;
+    if (mantissaA < mantissaB) {
+        mantissaA <<= 1;
+        field -= 1;
+    }
+    uint rest = mantissaA;
+    uint quotient = divideBits(rest, mantissaB, 25);
+    bool sticky = rest != 0u;
+    // Bits of the quotient below the result's last: one for a normal result, more for a denormal one.
+    int dropped = 1;
+    if (field < 1) {
+        dropped += 1 - field;
+        field = 1;
+    }
+    if (dropped >= 26) return uintBitsToFloat(negative);
+    uint mantissa = quotient >> dropped;
+    uint below = quotient & ((1u << dropped) - 1u);
+    uint midpoint = 1u << (dropped - 1);
+    if (below > midpoint || (below == midpoint && (sticky || (mantissa & 1u) != 0u))) mantissa += 1u;
+    // The mantissa's top bit (and a carry from rounding) adds into the exponent field; past the largest float: infinity.
+    uint bits = (uint(field - 1) << 23) + mantissa;
+    if (bits >= FLOAT_INFINITY) bits = FLOAT_INFINITY;
+    return uintBitsToFloat(negative | bits);
+}
+
+// Iris's NormalHelper.rsqrt: `value == 0 ? 1 : (float) (1.0 / Math.sqrt(value))`. Computed as the correctly rounded
+// 1 / sqrt(value), which is what Java's two double operations and the cast give for every float (compared for all of
+// them, docs/vanilla-notes.md §26). value is v * 2^e with e even and 2^24 <= v < 2^26, so 1 / sqrt(value) is
+// sqrt(2^74 / v) * 2^(-37 - e / 2), and q = floor(sqrt(floor(2^74 / v))) has 25 bits (26 for v = 2^24), rounded like
+// sqrtFloat's: q * q * v = 2^74 only for a power of two, where q is even.
+float irisRsqrt(float value) {
+    uint bits = floatBitsToUint(value);
+    if ((bits & 0x7FFFFFFFu) == 0u) return 1.0;
+    if (bits >= FLOAT_INFINITY) return uintBitsToFloat(bits == FLOAT_INFINITY ? 0u : FLOAT_NAN);
+    uint mantissa;
+    int exponent;
+    unpackFloat(bits, mantissa, exponent);
+    int shift = (exponent & 1) != 0 ? 1 : 2;
+    uint v = mantissa << shift;
+    uint q = 0x2000000u;
+    if (v != 0x1000000u) {
+        // 2^74 / v, 51 bits: the first step divides 2^24.
+        uint rest = 0x1000000u;
+        uint high = divideBits(rest, v, 19);
+        uint low = divideBits(rest, v, 32);
+        q = sqrtBits(high, low);
+    }
+    return uintBitsToFloat((uint(113 + ((150 + shift - exponent) >> 1)) << 23) + ((q + 1u) >> 1));
+}
+
+#else
+
 // The neighbouring floats of a positive float.
 float nextUp(float x) {
     return uintBitsToFloat(floatBitsToUint(x) + 1u);
@@ -197,6 +355,8 @@ float irisRsqrt(float value) {
     }
     return q;
 }
+
+#endif
 
 // Java's `(int) x & 0xFF` for a finite float.
 uint javaByte(float x) {

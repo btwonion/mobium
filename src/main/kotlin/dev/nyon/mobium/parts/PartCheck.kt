@@ -9,19 +9,20 @@ import java.util.Locale
 /**
  * Module 2's check on the player's GPU. `expand_parts.comp` is written to give exactly the CPU's bytes, but it was
  * validated only on Mesa (Intel's iris, llvmpipe in CI); another driver may round or fuse operations differently. So
- * for each path through the shader ([path]: the part's flags, the cube layout, the stage) the first [PER_PATH] parts,
+ * for each path through the shader ([path]: the part's flags, the cube layout, the stage, the arithmetic) the first [PER_PATH] parts,
  * at most [PER_FRAME] per frame, are also compiled on the CPU and compared after the expand pass ([PartValidation],
  * which waits for the GPU once per staged buffer in those frames). On a difference the compared parts get the CPU's
  * bytes in that frame (the frame's other parts keep the GPU's, for that one frame) and Module 2 fails: one toast,
  * vanilla until restart, the log names the GPU and the first differing vertices. Render thread only.
  */
 object PartCheck {
-    private const val PATHS = 2048
+    private const val PATHS = 4096
     private const val PER_PATH = 64
     private const val PER_FRAME = 8
     private const val FLAG_BITS = 0x1FF
     private const val SODIUM_LAYOUT = 1 shl 9
     private const val STAGE_SHIFT = 10
+    private const val ARITHMETIC_SHIFT = 11
 
     private val sampler = PathSampler(PATHS, PER_PATH, PER_FRAME)
 
@@ -41,11 +42,13 @@ object PartCheck {
 
     /**
      * The path of a part or an item run with [flags] (`PartBatch` part flags, 9 bits), cubes in Sodium's layout or not, expanded in
-     * [stage]; -1 (never sampled) before the first expand pass has picked a stage.
+     * [stage] with [arithmetic] (`ExpandPass.ARITHMETIC_*`); -1 (never sampled) before the first expand pass has picked
+     * a stage.
      */
-    fun path(flags: Int, sodiumLayout: Boolean, stage: Int): Int {
+    fun path(flags: Int, sodiumLayout: Boolean, stage: Int, arithmetic: Int): Int {
         if (stage < 0) return -1
-        return (flags and FLAG_BITS) or (if (sodiumLayout) SODIUM_LAYOUT else 0) or (stage shl STAGE_SHIFT)
+        return (flags and FLAG_BITS) or (if (sodiumLayout) SODIUM_LAYOUT else 0) or (stage shl STAGE_SHIFT) or
+            (arithmetic shl ARITHMETIC_SHIFT)
     }
 
     /** Whether to compare the next part of [path] with the CPU; per part, allocates nothing. */

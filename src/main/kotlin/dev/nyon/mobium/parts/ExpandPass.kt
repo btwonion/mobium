@@ -26,6 +26,10 @@ import org.lwjgl.opengl.GL43C
  * rasterisation off ([STAGE_VERTEX]), which keeps it in the graphics pipeline: Mesa's iris records a dispatch in a
  * batch of its own and flushes both batches around it, about 0.2 ms of GPU time per frame however few parts there are
  * (docs/vanilla-notes.md §16). Both write the same bytes; [stage] picks one per pass.
+ *
+ * The shader's square roots and divisions exist twice as well ([arithmetic]): corrected with 64-bit floats
+ * ([ARITHMETIC_DOUBLE]), or computed in 32-bit integers ([ARITHMETIC_INTEGER]) for GPUs without 64-bit floats in
+ * shaders (docs/vanilla-notes.md §26). Again the same bytes.
  */
 object ExpandPass {
     private const val SHADER = "/assets/mobium/shaders/expand_parts.comp"
@@ -37,8 +41,18 @@ object ExpandPass {
     const val STAGE_COMPUTE = 0
     const val STAGE_VERTEX = 1
 
+    const val ARITHMETIC_DOUBLE = 0
+    const val ARITHMETIC_INTEGER = 1
+
     /** Vertex shaders can write the pass's storage buffers on this GPU (`Capabilities.glVertexStores`). */
     var vertexStores = false
+        private set
+
+    /**
+     * Shaders have 64-bit floats on this GPU (`Capabilities.shaderDoubles`), so both arithmetics can run; false with
+     * `-Dmobium.parts.arithmetic=integer`, which runs the session as on a GPU without them.
+     */
+    var doubles = false
         private set
 
     /** The stage from `-Dmobium.parts.stage=compute|vertex`, or -1 for the automatic choice ([stage]). */
@@ -62,27 +76,56 @@ object ExpandPass {
             else -> STAGE_COMPUTE
         }
 
-    /** How [stage] is chosen, for the log. */
-    fun describeChoice(): String = when {
-        Capabilities.current?.backend == GraphicsBackend.VULKAN -> "compute (Vulkan has no vertex-stage variant)"
-        configuredStage == STAGE_COMPUTE -> "compute (-Dmobium.parts.stage)"
-        configuredStage == STAGE_VERTEX -> "vertex stage (-Dmobium.parts.stage)"
-        vertexStores -> "vertex stage, compute while a shader pack is in use"
-        else -> "compute (vertex shaders cannot write storage buffers on this GPU)"
+    /** An arithmetic set for a comparison (the self-check, the gametests), or -1. */
+    @JvmField
+    var forcedArithmetic = -1
+
+    /**
+     * The arithmetic the next pass uses: 64-bit floats where shaders have them, 32-bit integers elsewhere (the only
+     * choice there, whatever is forced). Which of the two is faster is not measured, so a GPU with 64-bit floats keeps
+     * the variant every benchmark so far ran with.
+     */
+    val arithmetic: Int
+        get() = when {
+            !doubles -> ARITHMETIC_INTEGER
+            forcedArithmetic >= 0 -> forcedArithmetic
+            else -> ARITHMETIC_DOUBLE
+        }
+
+    /** How [stage] and [arithmetic] are chosen, for the log. */
+    fun describeChoice(): String {
+        val stage = when {
+            Capabilities.current?.backend == GraphicsBackend.VULKAN -> "compute (Vulkan has no vertex-stage variant)"
+            configuredStage == STAGE_COMPUTE -> "compute (-Dmobium.parts.stage)"
+            configuredStage == STAGE_VERTEX -> "vertex stage (-Dmobium.parts.stage)"
+            vertexStores -> "vertex stage, compute while a shader pack is in use"
+            else -> "compute (vertex shaders cannot write storage buffers on this GPU)"
+        }
+        val arithmetic = when {
+            integerOnly -> "integer arithmetic (-Dmobium.parts.arithmetic=integer)"
+            !doubles -> "integer arithmetic (no 64-bit floats in shaders)"
+            else -> "double arithmetic"
+        }
+        return "$stage; $arithmetic"
     }
 
     /** The stage of the last pass, or -1 before the first ([PartCheck] samples parts per stage). */
     @JvmField
     var lastStage = -1
 
-    /** Name of [stage], for F3 and the log. */
+    /** The arithmetic of the last pass ([PartCheck] samples parts per arithmetic too). */
+    @JvmField
+    var lastArithmetic = ARITHMETIC_DOUBLE
+
+    /** Name of [stage] and [arithmetic], for F3 and the log. */
     val stageName: String
-        get() = stageName(stage)
+        get() = stageName(stage, arithmetic)
 
-    fun stageName(stage: Int): String = if (stage == STAGE_VERTEX) "vertex stage" else "compute"
+    fun stageName(stage: Int, arithmetic: Int): String =
+        (if (stage == STAGE_VERTEX) "vertex stage" else "compute") + if (arithmetic == ARITHMETIC_INTEGER) ", integer arithmetic" else ""
 
-    private var computeProgram = 0
-    private var vertexProgram = 0
+    /** The programs by stage and arithmetic ([programIndex]), 0 until first used. */
+    private val programs = IntArray(4)
     private var emptyVertexArray = 0
     private var meshBuffer = 0
     private var meshCapacity = 0L
@@ -95,11 +138,13 @@ object ExpandPass {
         get() = glBytesAllocated + VulkanExpand.bytesAllocated
 
     /**
-     * Reads what the GPU can do and `-Dmobium.parts.stage` (`compute` or `vertex`, for comparisons and bug reports;
-     * `vertex` only where the GPU has it); called once the GPU is known.
+     * Reads what the GPU can do, `-Dmobium.parts.stage` (`compute` or `vertex`, for comparisons and bug reports;
+     * `vertex` only where the GPU has it) and `-Dmobium.parts.arithmetic=integer` (as on a GPU without 64-bit floats;
+     * on Vulkan `VulkanSupport` then leaves `shaderFloat64` off); called once the GPU is known.
      */
     fun configure(capabilities: Capabilities) {
         vertexStores = capabilities.glVertexStores
+        doubles = capabilities.shaderDoubles && !integerOnly
         configuredStage = when (System.getProperty("mobium.parts.stage")) {
             "compute" -> STAGE_COMPUTE
             "vertex" -> if (vertexStores) STAGE_VERTEX else -1
@@ -107,18 +152,26 @@ object ExpandPass {
         }
     }
 
+    /** `-Dmobium.parts.arithmetic`, read here and by `VulkanSupport` before the device exists. */
+    const val ARITHMETIC_PROPERTY = "mobium.parts.arithmetic"
+
+    /** `-Dmobium.parts.arithmetic=integer`: the session runs as on a GPU without 64-bit floats in shaders. */
+    val integerOnly: Boolean = System.getProperty(ARITHMETIC_PROPERTY) == "integer"
+
     /** Expands [batch] into [vertexBuffer]; on Vulkan always as a compute dispatch. */
     fun dispatch(batch: PartBatch, vertexBuffer: GpuBuffer) {
+        val arithmetic = arithmetic
+        lastArithmetic = arithmetic
         if (vertexBuffer is GlBuffer) {
-            dispatchGl(batch, vertexBuffer.handle())
+            dispatchGl(batch, vertexBuffer.handle(), arithmetic)
         } else {
             lastStage = STAGE_COMPUTE
-            VulkanExpand.dispatch(batch, vertexBuffer as VulkanGpuBuffer)
+            VulkanExpand.dispatch(batch, vertexBuffer as VulkanGpuBuffer, arithmetic)
         }
     }
 
     /** Expands [batch] into the vertex buffer with GL name [vertexBuffer]. */
-    private fun dispatchGl(batch: PartBatch, vertexBuffer: Int) {
+    private fun dispatchGl(batch: PartBatch, vertexBuffer: Int, arithmetic: Int) {
         val profiling = ExpandProfile.enabled
         var lap = if (profiling) System.nanoTime() else 0L
         val stage = stage
@@ -142,7 +195,7 @@ object ExpandPass {
 
         if (profiling) ExpandProfile.passStart()
         val previousProgram = GL11C.glGetInteger(GL20C.GL_CURRENT_PROGRAM)
-        GL20C.glUseProgram(program(stage))
+        GL20C.glUseProgram(program(stage, arithmetic))
         GL30C.glBindBufferBase(GL43C.GL_SHADER_STORAGE_BUFFER, 0, meshBuffer)
         GL30C.glBindBufferBase(GL43C.GL_SHADER_STORAGE_BUFFER, 1, frameBuffer)
         GL30C.glBindBufferBase(GL43C.GL_SHADER_STORAGE_BUFFER, 2, vertexBuffer)
@@ -180,12 +233,18 @@ object ExpandPass {
         }
     }
 
-    private fun program(stage: Int): Int = if (stage == STAGE_VERTEX) {
-        if (vertexProgram == 0) vertexProgram = GlCompute.createProgram("expand_parts.comp (vertex)", source("MOBIUM_VERTEX"), GL20C.GL_VERTEX_SHADER)
-        vertexProgram
-    } else {
-        if (computeProgram == 0) computeProgram = GlCompute.createProgram("expand_parts.comp", source(null))
-        computeProgram
+    private fun program(stage: Int, arithmetic: Int): Int {
+        val index = stage * 2 + arithmetic
+        if (programs[index] == 0) {
+            val integer = arithmetic == ARITHMETIC_INTEGER
+            val name = "expand_parts.comp (${stageName(stage, arithmetic)})"
+            programs[index] = if (stage == STAGE_VERTEX) {
+                GlCompute.createProgram(name, source("MOBIUM_VERTEX", integer), GL20C.GL_VERTEX_SHADER)
+            } else {
+                GlCompute.createProgram(name, source(null, integer))
+            }
+        }
+        return programs[index]
     }
 
     /** Uploads the quads [MeshPool] wrote since the last dispatch, growing the mesh buffer when needed. */
@@ -209,12 +268,16 @@ object ExpandPass {
         }
     }
 
-    /** The shader's source, with `#define [define]` after its `#version` line if given. */
-    private fun source(define: String?): String {
+    /** The shader's source, with `#define [define]` (if given) and [INTEGER_DEFINE] (if [integer]) after its `#version` line. */
+    private fun source(define: String?, integer: Boolean): String {
         val source = ExpandPass::class.java.getResourceAsStream(SHADER)?.use { String(it.readAllBytes()) }
             ?: throw IllegalStateException("$SHADER is missing")
-        if (define == null) return source
+        if (define == null && !integer) return source
         val versionEnd = source.indexOf('\n') + 1
-        return source.substring(0, versionEnd) + "#define $define 1\n" + source.substring(versionEnd)
+        val defines = (if (define != null) "#define $define 1\n" else "") + if (integer) "#define $INTEGER_DEFINE 1\n" else ""
+        return source.substring(0, versionEnd) + defines + source.substring(versionEnd)
     }
+
+    /** The shader define that selects the integer arithmetic. */
+    const val INTEGER_DEFINE = "MOBIUM_INTEGER"
 }
