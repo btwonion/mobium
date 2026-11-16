@@ -5,6 +5,14 @@
     python3 benchmark/bench_round.py A D          # some setups only
     python3 benchmark/bench_round.py --dry-run    # checks and plans, launches nothing
     python3 benchmark/bench_round.py --quick A    # smoke test: one short /mobium stages, results in build/
+    python3 benchmark/bench_round.py --api vulkan # setups A and C on Vulkan, about 2 hours
+
+--api picks the graphics API (default opengl): for each setup the script sets it in the instance's options.txt
+(preferredGraphicsBackend, as a player chooses it in the video settings) and puts the old value back afterwards. On
+Vulkan only setups A and C run: B and D need Iris, which draws no shader pack there (PLAN.md, Decisions). A game that
+fails to start on the chosen API carries on with the other one without saying so; the script reads the backend of
+every run from summary.csv and names the runs on the wrong one, which then have to run again. A Vulkan round's
+folder ends in -vulkan.
 
 For each setup it writes the setup's plan (PLANS) to the instance's mobium-bench/autorun, starts the instance through
 Prism's command line straight into the "Mobium Bench" world, and waits until Mobium has run every command and closed
@@ -51,6 +59,10 @@ PLANS = {
     "D": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
 }
 QUICK_PLAN = ["mobium stages 5 1 display_build"]
+APIS = ("opengl", "vulkan")
+# B and D need Iris, which draws no shader pack on Vulkan (PLAN.md, Decisions).
+VULKAN_SETUPS = ["A", "C"]
+API_OPTION = "preferredGraphicsBackend"
 MINUTES = {"mobium suite": 26, "mobium gatec": 8, "mobium stages": 8, "mobium stages 60 3 display_build": 8,
            "mobium gatec 60 3 item_drops": 8, QUICK_PLAN[0]: 2}
 START_MINUTES = 5
@@ -154,6 +166,32 @@ def focus_report(done: Path, watch: InputWatch) -> list[str]:
         else:
             lines.append(f"{line[11:]}: no keyboard or mouse input within 5 s")
     return lines
+
+
+def option_value(options: Path, key: str) -> str | None:
+    """A key's value in options.txt; None when it is missing."""
+    for line in options.read_text().splitlines() if options.exists() else []:
+        if line.startswith(key + ":"):
+            return line.split(":", 1)[1]
+    return None
+
+
+def choose_api(game: Path, api: str) -> str | None:
+    """Sets the graphics API in the instance's options.txt; returns the old value."""
+    options = game / "options.txt"
+    previous = option_value(options, API_OPTION)
+    # After a start that did not end cleanly the game turns vulkan into default (docs/vanilla-notes.md §21).
+    prism_instances.set_keys(options, ":", {API_OPTION: f'"{api}"', "startedCleanly": "true"})
+    return previous
+
+
+def wrong_backend_runs(summary: Path, api: str) -> list[str]:
+    """The runs in [summary] that did not run on [api] (the game falls back to the other API when one fails)."""
+    if not summary.exists():
+        return []
+    with summary.open(newline="") as file:
+        return [f"{row['timestamp']} {row['scene']} ({row['setup']}): {row.get('backend') or 'unknown backend'}"
+                for row in csv.DictReader(file) if (row.get("backend") or "").lower() != api]
 
 
 def launch(folder: str) -> None:
@@ -284,7 +322,9 @@ def print_medians(plan: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("setups", nargs="*", default=list(PLANS), help="setup letters (default: A B C D)")
+    parser.add_argument("setups", nargs="*",
+                        help=f"setup letters (default: {' '.join(PLANS)}; on Vulkan {' '.join(VULKAN_SETUPS)})")
+    parser.add_argument("--api", choices=APIS, default="opengl", help="graphics API of the round (default: opengl)")
     parser.add_argument("--display", default="AOC", help="part of the benchmark monitor's name (default: AOC)")
     parser.add_argument("--machine", default="thinkpad-x9", help="machine name for the results folder")
     parser.add_argument("--prism", type=Path, help="Prism data directory (default: flatpak or ~/.local/share)")
@@ -296,13 +336,17 @@ def main() -> None:
                         help=f"smoke test: only '{QUICK_PLAN[0]}' per setup, results in versions/26.3-fabric/build/")
     args = parser.parse_args()
 
-    letters = [setup.upper() for setup in args.setups]
+    vulkan = args.api == "vulkan"
+    letters = [setup.upper() for setup in args.setups] or (VULKAN_SETUPS if vulkan else list(PLANS))
     if args.quick:
         for letter in PLANS:
             PLANS[letter] = QUICK_PLAN
     unknown = [letter for letter in letters if letter not in PLANS]
     if unknown:
         parser.error(f"unknown setups {unknown}; use {' '.join(PLANS)}")
+    if vulkan and (iris := [letter for letter in letters if letter not in VULKAN_SETUPS]):
+        parser.error(f"setups {' '.join(iris)} need Iris, which draws no shader pack on Vulkan; "
+                     f"use {' '.join(VULKAN_SETUPS)}")
     instances = (args.prism or prism_instances.default_prism_dir()) / "instances"
     found = setups_by_letter()
     kit = prism_instances.kit_build(args.kit) if args.kit.is_dir() else None
@@ -333,15 +377,16 @@ def main() -> None:
         elif problem := update_data(data):
             problems.append(problem)
     results = (ROOT / "versions/26.3-fabric/build/bench-round-quick") if args.quick else data
-    target = results / f"{datetime.now():%Y-%m-%d}-{args.machine}"
+    target = results / f"{datetime.now():%Y-%m-%d}-{args.machine}{'-vulkan' if vulkan else ''}"
     if not args.quick and target.exists():
         # An earlier round of the day: its summary.csv files would be overwritten.
         target = target.with_name(f"{target.name}-{kit}")
         if target.exists():
             problems.append(f"{target} exists already; move it or pass another --machine")
     total = sum(START_MINUTES + sum(MINUTES.get(command, 10) for command in PLANS[letter]) for letter in letters)
-    print(f"Round {' '.join(letters)} with Mobium {kit}, about {total // 60} h {total % 60} min; monitor '{args.display}'; "
-          f"results in {target}")
+    on = "Vulkan" if vulkan else "OpenGL"
+    print(f"Round {' '.join(letters)} with Mobium {kit} on {on}, about {total // 60} h {total % 60} min; "
+          f"monitor '{args.display}'; results in {target}")
     for letter in letters:
         print(f"  {letter} ({games[letter][0]}): {', '.join(PLANS[letter])}")
     if problems:
@@ -351,16 +396,29 @@ def main() -> None:
 
     finished = []
     throttled = {}
+    wrong_api = {}
     for letter in letters:
         folder, game = games[letter]
         started = datetime.now()
-        ok = run_setup(letter, game, folder, args.display)
+        previous = choose_api(game, args.api)
+        try:
+            ok = run_setup(letter, game, folder, args.display)
+        finally:
+            # The instance's next start, by hand or in another round, runs on the API it had before.
+            prism_instances.set_keys(game / "options.txt", ":", {API_OPTION: previous or '"default"'})
         plans = collect(letter, game, started, target)
         for plan in plans:
             print_medians(plan)
-        if runs := throttled_runs(target / letter / "summary.csv"):
+        summary = target / letter / "summary.csv"
+        if runs := throttled_runs(summary):
             throttled[letter] = runs
             print(f"  {letter}: {len(runs)} runs under the game's own frame cap (window lost focus or minimized):")
+            for run in runs:
+                print(f"    {run}")
+        if runs := wrong_backend_runs(summary, args.api):
+            wrong_api[letter] = runs
+            print(f"  {letter}: {len(runs)} runs not on {on} (the game started on the other API; see "
+                  f"{game / 'logs/latest.log'}, 'Using graphics backend'):")
             for run in runs:
                 print(f"    {run}")
         if not ok:
@@ -368,16 +426,18 @@ def main() -> None:
         finished.append(letter)
         time.sleep(30)
     print(f"Finished {' '.join(finished) or 'nothing'}; results in {target}")
-    if throttled:
-        print(f"Run {' '.join(throttled)} again: their throttled runs do not count "
-              f"(python3 benchmark/bench_round.py {' '.join(throttled)})")
+    again = sorted(set(throttled) | set(wrong_api))
+    if again:
+        print(f"Run {' '.join(again)} again: their throttled runs or runs on the other API do not count "
+              f"(python3 benchmark/bench_round.py {' '.join(again)}{' --api vulkan' if vulkan else ''})")
     if not args.quick and any(path.is_file() for path in target.rglob("*")):
         stopped = [letter for letter in letters if letter not in finished]
         notes = [f"{' '.join(stopped)} not finished"] if stopped else []
         notes += [f"throttled runs in {' '.join(throttled)}"] if throttled else []
-        publish(data, target, f"{target.name}: {' '.join(letters)} with build {kit}"
+        notes += [f"runs not on {on} in {' '.join(wrong_api)}"] if wrong_api else []
+        publish(data, target, f"{target.name}: {' '.join(letters)} on {on} with build {kit}"
                 + (f" ({'; '.join(notes)})" if notes else ""))
-    sys.exit(0 if len(finished) == len(letters) and not throttled else 1)
+    sys.exit(0 if len(finished) == len(letters) and not again else 1)
 
 
 if __name__ == "__main__":

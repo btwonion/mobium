@@ -210,6 +210,15 @@ at the end and in the commit message; such a setup has to run again (`bench_roun
 while it runs: the game owns the monitor, anything else running costs frame time, and a click anywhere takes the focus
 from the game, which then runs at 10 FPS.
 
+`--api vulkan` runs the round on Minecraft's Vulkan renderer: setups A and C (about two hours), since B and D need
+Iris, which draws no shader pack on Vulkan (`PLAN.md`, *Decisions*). For each setup the script chooses the API in the
+instance's `options.txt` as a player does in the video settings (`preferredGraphicsBackend`, with `startedCleanly`
+set, since after an unclean start the game turns `vulkan` into `default`; `docs/vanilla-notes.md` §21) and puts the
+old value back afterwards; without the option the round runs on OpenGL, set the same way. A game that fails to start
+on the chosen API carries on with the other one without saying so: the script reads every run's `backend` from
+`summary.csv`, names the runs on the other API like throttled ones, and such a setup has to run again. A Vulkan
+round's folder is `<yyyy-mm-dd>-<machine>-vulkan`.
+
 The data repository is [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks); the raw-data
 links below point into it. Its checkout sits next to this one (`../mobium-benchmarks`, or `--data`); the script
 clones it when missing and pulls it before a round. If the commit fails at the end (for example
