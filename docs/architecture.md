@@ -45,7 +45,8 @@ The same stages run for the hand, the GUI, picture-in-picture and Iris's shadow 
 buffer; Module 2 works in all of them, Module 1 draws only in the level's main pass.
 
 The GPU layer is Renderpearl (`com.mojang.renderpearl`: `api`, `frontend`, `backend` with `opengl` and `vulkan`).
-OpenGL is 26.3's default, Vulkan opt-in; 26.4 makes Vulkan the default (`docs/vanilla-notes.md` §5, §18).
+OpenGL is 26.3's default, Vulkan opt-in; 26.4's "Default" picks one of the two at random at every start
+(`docs/vanilla-notes.md` §5, §18, §20).
 
 ## Module 1: static cache
 

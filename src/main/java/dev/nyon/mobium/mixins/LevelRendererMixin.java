@@ -3,6 +3,7 @@ package dev.nyon.mobium.mixins;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import dev.nyon.mobium.cache.StaticCache;
@@ -10,7 +11,6 @@ import dev.nyon.mobium.debug.Sections;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.SubmitNodeStorage;
-import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.world.phys.Vec3;
@@ -94,7 +94,8 @@ public class LevelRendererMixin {
 
     // Static cache (Module 1): draws the cached objects right after vanilla's solid features, in the same render pass,
     // where vanilla would have drawn them (sign text included: it is opaque and vanilla puts it into the solid phase).
-    // Draws nothing while the cache is off.
+    // Draws nothing while the cache is off. Takes only the render pass, since the method's other parameters differ
+    // between versions (docs/vanilla-notes.md §28).
     @Inject(
         method = "executeSolid",
         at = @At(
@@ -103,12 +104,7 @@ public class LevelRendererMixin {
             shift = At.Shift.AFTER
         )
     )
-    private void mobium$drawCachedObjects(
-        ChunkSectionsToRender chunkSectionsToRender,
-        FeatureRenderDispatcher.PreparedFrame featureFrame,
-        RenderPass renderPass,
-        CallbackInfo ci
-    ) {
+    private void mobium$drawCachedObjects(CallbackInfo ci, @Local(argsOnly = true) RenderPass renderPass) {
         long start = Sections.begin();
         StaticCache.draw(renderPass);
         Sections.end(Sections.DRAW, start);

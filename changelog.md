@@ -2,4 +2,4 @@
 - The A/B key is called "Toggle Mobium" and shows just "Mobium: ON" or "Mobium: OFF" above the hotbar
 - The GPU part transform now also draws items: dropped items, items in hands, frames and displays
 - Mobium now works on Minecraft's Vulkan renderer
-- New build for the Minecraft 26.4 snapshot (26.4-snapshot-8), Fabric only
+- New build for the Minecraft 26.4 snapshot (26.4-snapshot-10), Fabric only

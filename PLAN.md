@@ -17,9 +17,10 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
   results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
 - `self_check.py --mode parts --api vulkan` passes on both loaders with items: 0 differing vertices, pictures
   identical, no validation messages from Mobium.
-- A `26.4-fabric` target builds against `26.4-snapshot-8` (Fabric only: NeoForge has no 26.4 build; nor do Sodium,
-  Iris, EMF, ETF and Vitrail). Its gametests and the self-check pass on OpenGL and on Vulkan:
-  0 differing vertices, pictures as on 26.3, no validation messages from Mobium (`docs/vanilla-notes.md` §28).
+- A `26.4-fabric` target builds against `26.4-snapshot-10` with Fabric API `0.166.3+26.4` (Fabric only: NeoForge
+  has no 26.4 build; nor do Sodium, Iris, EMF, ETF and Vitrail). Its gametests and the self-check pass on OpenGL and
+  on Vulkan: 0 differing vertices, pictures as on 26.3, no validation messages from Mobium (`docs/vanilla-notes.md`
+  §28).
 - Next: step 6, `python3 benchmark/bench_full.py` on `master`: the round on Vulkan (setups A and C) and a round A–D
   on OpenGL in one unattended run, with Gate D's benchmark numbers at the end.
 
@@ -30,10 +31,10 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 **Goal:** both modules on Minecraft's Vulkan backend, with the same guarantee as on OpenGL: the same pixels and, for
 Module 2, the same vertex bytes as the game's own path.
 
-1. **26.4.** `26.4-snapshot-8` still has no compute and no storage buffers in Renderpearl and drops push descriptors;
+1. **26.4.** `26.4-snapshot-10` still has no compute and no storage buffers in Renderpearl and drops push descriptors;
    everything Module 2's Vulkan path hooks or calls is as in 26.3. New around it: CPU devices such as lavapipe need
    `-Drenderpearl.vulkan.allowcpudevice`, and "Default" picks Vulkan or OpenGL at random at each start (§20). The
-   `26.4-fabric` target follows the snapshots (§28); check every hook again with each new one.
+   `26.4-fabric` target follows the snapshots (§20, §28); check every hook again with each new one.
 2. **Tooling.** Done: dev clients, self-check (`--api vulkan`) and gametests on Vulkan with the validation layer,
    `ExpandProfile` on Renderpearl's timestamps (§21).
 3. **Module 1 on Vulkan.** Done: pixel-identical on both loaders, no validation messages from Mobium (§22).
