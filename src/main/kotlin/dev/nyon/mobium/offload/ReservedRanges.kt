@@ -1,13 +1,13 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import org.lwjgl.system.MemoryUtil
 import java.nio.ByteBuffer
 
 /**
- * The byte ranges of one staged draw that Module 2 reserved, in the order they were reserved (which is their order in
- * the draw; adjacent ones merged). `StagedVertexBuffer.upload()` copies every builder slice of a draw into the staging
- * buffer; [copyWithout] copies a slice without these ranges, whose bytes are junk until the expand pass writes them.
- * Render thread only.
+ * The byte ranges of one staged draw that vertex offload reserved, in the order they were reserved (which is their
+ * order in the draw; adjacent ones merged). `StagedVertexBuffer.upload()` copies every builder slice of a draw into the
+ * staging buffer; [copyWithout] copies a slice without these ranges, whose bytes are junk until the expand pass writes
+ * them. Render thread only.
  */
 class ReservedRanges {
     private var bounds = IntArray(64)

@@ -63,22 +63,22 @@ class SodiumOptions : ConfigEntryPoint {
         addTypeSwitches(builder, cache)
 
         val parts = builder.createOptionGroup()
-            .setName(Component.translatable("mobium.module.part_transform"))
+            .setName(Component.translatable("mobium.module.vertex_offload"))
             .addOption(
                 builder.createBooleanOption(id("parts_enabled"))
                     .setName(Component.translatable("mobium.settings.module_enabled"))
                     .setTooltip(Component.translatable("mobium.settings.module_enabled.tooltip"))
                     .setStorageHandler(save)
-                    .setDefaultValue(defaults.parts.enabled)
-                    .setBinding({ config.parts.enabled = it }, { config.parts.enabled })
+                    .setDefaultValue(defaults.offload.enabled)
+                    .setBinding({ config.offload.enabled = it }, { config.offload.enabled })
             )
             .addOption(
-                builder.createBooleanOption(id("parts_items"))
-                    .setName(Component.translatable("mobium.settings.parts_items"))
-                    .setTooltip(Component.translatable("mobium.settings.parts_items.tooltip"))
+                builder.createBooleanOption(id("offload_items"))
+                    .setName(Component.translatable("mobium.settings.offload_items"))
+                    .setTooltip(Component.translatable("mobium.settings.offload_items.tooltip"))
                     .setStorageHandler(save)
-                    .setDefaultValue(defaults.parts.items)
-                    .setBinding({ config.parts.items = it }, { config.parts.items })
+                    .setDefaultValue(defaults.offload.items)
+                    .setBinding({ config.offload.items = it }, { config.offload.items })
             )
 
         builder.registerModOptions(Mobium.MOD_ID)
@@ -91,7 +91,7 @@ class SodiumOptions : ConfigEntryPoint {
             )
     }
 
-    /** One switch per Module 1 type, resolved through the live config on every read and write. */
+    /** One switch per static cache type, resolved through the live config on every read and write. */
     private fun addTypeSwitches(builder: ConfigBuilder, group: OptionGroupBuilder) {
         val defaultSwitches = defaults.cache.types.switches()
         for ((index, entry) in defaultSwitches.withIndex()) {

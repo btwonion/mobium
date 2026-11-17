@@ -1,11 +1,11 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import net.minecraft.client.model.geom.ModelPart
 import org.lwjgl.system.MemoryUtil
 
 /**
- * Module 2's cube meshes: the first time a cube is drawn, its faces are written once in the cube's local space, one
- * quad of [QUAD_WORDS] words each, in the layout of the path that would have drawn it (`expand_parts.comp`):
+ * Vertex offload's cube meshes: the first time a cube is drawn, its faces are written once in the cube's local space,
+ * one quad of [QUAD_WORDS] words each, in the layout of the path that would have drawn it (`expand.comp`):
  * - vanilla and EMF cubes as `Cube.compile` writes them: four vertices `x/16, y/16, z/16, u, v` from the polygons, in
  *   polygon order, then the face's `Direction` ordinal;
  * - vanilla cubes with Sodium as Sodium's `EntityRenderer.renderCuboid` writes them from its `ModelCuboid`

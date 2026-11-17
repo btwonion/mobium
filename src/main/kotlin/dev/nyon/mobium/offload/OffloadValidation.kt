@@ -1,4 +1,4 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import com.mojang.blaze3d.vertex.BufferBuilder
 import com.mojang.blaze3d.vertex.ByteBufferBuilder
@@ -18,21 +18,21 @@ import org.lwjgl.system.MemoryUtil
 import java.util.Locale
 
 /**
- * Compares Module 2's GPU vertices with the CPU's, for the parts [PartTransform] picks: every part while the dev
- * validation runs ([PartTransform.validating]: self-check and gametests), a few per path in normal play ([PartCheck]).
- * Such a part is also compiled the vanilla way (the same `compile`, into a builder of the same format, through the
- * same sprite; Iris extends it as it would the staged one), and after the expand pass the GPU's vertices are read back
- * and compared with those byte for byte. Left out are the bytes the CPU path never writes, so that they hold whatever
- * the memory held before: byte 35, the normal's padding, and in Iris's format bytes 42 and 43, the fourth short of
- * `iris_Entity`, which Iris's Sodium serializer leaves alone (its per-vertex path writes 0, as the expand pass does).
- * Slow (a GPU read per staged buffer with compared parts); render thread only.
+ * Compares vertex offload's GPU vertices with the CPU's, for the parts [PartTransform] picks: every part while the dev
+ * validation runs ([PartTransform.validating]: self-check and gametests), a few per path in normal play
+ * ([OffloadCheck]). Such a part is also compiled the vanilla way (the same `compile`, into a builder of the same
+ * format, through the same sprite; Iris extends it as it would the staged one), and after the expand pass the GPU's
+ * vertices are read back and compared with those byte for byte. Left out are the bytes the CPU path never writes, so
+ * that they hold whatever the memory held before: byte 35, the normal's padding, and in Iris's format bytes 42 and 43,
+ * the fourth short of `iris_Entity`, which Iris's Sodium serializer leaves alone (its per-vertex path writes 0, as the
+ * expand pass does). Slow (a GPU read per staged buffer with compared parts); render thread only.
  *
  * On OpenGL the read waits for the GPU. Vulkan cannot wait inside a frame for commands it has not submitted, so there
  * the span is copied into a read-back buffer and compared once the frame's fence has signalled ([poll], a few frames
  * later); in normal play the CPU's bytes are written over every compared part in the same frame, so that no compared
- * part is drawn from the GPU, and the verdict switches Module 2 off as on OpenGL.
+ * part is drawn from the GPU, and the verdict switches vertex offload off as on OpenGL.
  */
-object PartValidation {
+object OffloadValidation {
     private const val NORMAL_PADDING = 35
     private const val IRIS_ID_PADDING = 42
     private const val MAX_REPORTED = 8
@@ -108,7 +108,7 @@ object PartValidation {
         pendingChecks.clear()
     }
 
-    /** A part Module 2 just took over: [vertexCount] vertices from [firstVertex] of [draw]. */
+    /** A part vertex offload just took over: [vertexCount] vertices from [firstVertex] of [draw]. */
     fun begin(
         staged: StagedVertexBuffer,
         draw: StagedVertexBuffer.Draw,
@@ -166,7 +166,8 @@ object PartValidation {
 
     /**
      * After [staged]'s expand pass in [stage]: compares its compared parts with the GPU's vertices in [vertexBuffer];
-     * with [repair] (normal play, [PartCheck]) a difference switches Module 2 off and the frame draws the CPU's bytes.
+     * with [repair] (normal play, [OffloadCheck]) a difference switches vertex offload off and the frame draws the
+     * CPU's bytes.
      */
     fun check(staged: StagedVertexBuffer, vertexBuffer: GpuBuffer, repair: Boolean, stage: String) {
         if (vertexBuffer is GlBufferHandle) {
@@ -177,9 +178,9 @@ object PartValidation {
         }
     }
 
-    /** A comparison's verdict: in normal play a difference makes Module 2 fail ([PartCheck.failed]). */
+    /** A comparison's verdict: in normal play a difference makes vertex offload fail ([OffloadCheck.failed]). */
     private fun finish(differing: Long, unmatched: Int, repair: Boolean, stage: String) {
-        if (repair && (differing > 0 || unmatched > 0)) PartCheck.failed(differing, unmatched, stage)
+        if (repair && (differing > 0 || unmatched > 0)) OffloadCheck.failed(differing, unmatched, stage)
     }
 
     /**
@@ -199,7 +200,7 @@ object PartValidation {
             end = maxOf(end, base(entry) + entry.vertexCount.toLong() * entry.vertexSize)
         }
         if (end > start) {
-            if (PartCheck.forcedDifference) forceDifference(vertexBuffer, start)
+            if (OffloadCheck.forcedDifference) forceDifference(vertexBuffer, start)
             if (end - start > readbackSize) {
                 if (readback != 0L) MemoryUtil.nmemFree(readback)
                 readback = MemoryUtil.nmemAlloc(end - start)
@@ -270,8 +271,8 @@ object PartValidation {
             sizes[i] = taken[i].vertexCount.toLong() * taken[i].vertexSize
         }
         val readback = VulkanExpand.readBack(vertexBuffer, start, end - start, offsets, addresses, sizes, repairs)
-        val forced = PartCheck.forcedDifference
-        PartCheck.forcedDifference = false
+        val forced = OffloadCheck.forcedDifference
+        OffloadCheck.forcedDifference = false
         pendingChecks += Pending(readback, start, taken, unmatched, repair, forced, stage)
     }
 
@@ -333,7 +334,7 @@ object PartValidation {
 
     /** `/mobium debug gpucheck`: flips the lowest bit of the x position at [offset] on the GPU, as a driver might. */
     private fun forceDifference(vertexBuffer: Int, offset: Long) {
-        PartCheck.forcedDifference = false
+        OffloadCheck.forcedDifference = false
         val scratch = MemoryUtil.nmemAlloc(4)
         GlCompute.read(vertexBuffer, offset, 4, scratch)
         MemoryUtil.memPutInt(scratch, MemoryUtil.memGetInt(scratch) xor 1)
@@ -382,7 +383,7 @@ object PartValidation {
             }
         }
         val line = "vertex $vertex of a part (${vertexSize} bytes): ${parts.joinToString("; ")}"
-        Mobium.LOGGER.warn("Mobium part_transform validation: {}", line)
+        Mobium.LOGGER.warn("Mobium vertex_offload validation: {}", line)
         return line
     }
 

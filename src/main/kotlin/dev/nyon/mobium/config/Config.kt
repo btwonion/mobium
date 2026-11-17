@@ -8,20 +8,20 @@ import kotlin.reflect.KMutableProperty0
  * every switch only ever selects between Mobium's path and vanilla's: nothing here changes what is drawn.
  *
  * @param enabled is the global switch; when false every module uses the vanilla path.
- * @param cache holds the static cache (Module 1) settings.
- * @param parts holds the GPU part transform (Module 2) settings.
+ * @param cache holds the static cache settings.
+ * @param offload holds the vertex offload settings.
  */
 @Serializable
 data class Config(
     var enabled: Boolean = true,
     var cache: CacheConfig = CacheConfig(),
-    var parts: PartsConfig = PartsConfig()
+    var offload: OffloadConfig = OffloadConfig()
 ) {
-    fun deepCopy() = copy(cache = cache.deepCopy(), parts = parts.deepCopy())
+    fun deepCopy() = copy(cache = cache.deepCopy(), offload = offload.deepCopy())
 }
 
 /**
- * Module 1: block entities and static entities drawn from GPU buffers until they change.
+ * The static cache: block entities and static entities drawn from GPU buffers until they change.
  *
  * @param enabled switches the module.
  * @param memoryBudgetMb is the memory the cached vertex data may use (it is held once on the GPU and once in system
@@ -44,7 +44,7 @@ data class CacheConfig(
 }
 
 /**
- * Module 1 per-type switches; a type that is off always takes the vanilla path.
+ * The static cache's per-type switches; a type that is off always takes the vanilla path.
  *
  * @param chests covers chests (also trapped, copper and ender chests) and shulker boxes.
  * @param signs covers signs and hanging signs, including their text.
@@ -78,7 +78,7 @@ data class CacheTypes(
 }
 
 /**
- * Module 2: animated models keep CPU posing, the GPU expands one record per part into vertices.
+ * Vertex offload: animated models keep CPU posing, the GPU expands one record per part into vertices.
  *
  * @param enabled switches the module; it only runs where compute shaders exist.
  * @param items lets the module expand items' baked quads too (dropped items, held items, items in frames).
@@ -86,7 +86,7 @@ data class CacheTypes(
  * models and items always take the vanilla path.
  */
 @Serializable
-data class PartsConfig(
+data class OffloadConfig(
     var enabled: Boolean = true,
     var items: Boolean = true,
     var excludedEntities: MutableList<String> = mutableListOf()

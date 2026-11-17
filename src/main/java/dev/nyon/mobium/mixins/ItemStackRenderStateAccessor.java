@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
 /**
- * Static cache (Module 1): reads what an item state draws, so that a cached item can be compared with the state vanilla
+ * Static cache: reads what an item state draws, so that a cached item can be compared with the state vanilla
  * extracts each frame ({@code ItemFingerprint}). Read-only; no behaviour change.
  */
 @Mixin(ItemStackRenderState.class)

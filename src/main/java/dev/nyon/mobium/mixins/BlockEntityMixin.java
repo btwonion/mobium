@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Static cache (Module 1): holds the block entity's cache entry ({@link CachedBlockEntity}), and a block entity removed
+ * Static cache: holds the block entity's cache entry ({@link CachedBlockEntity}), and a block entity removed
  * from the client level (block broken or replaced, chunk unloaded) drops its cached picture right away instead of
  * waiting for the eviction sweep. Adds a field; no behaviour change. Server-side block entities are ignored.
  */

@@ -42,10 +42,10 @@ import dev.nyon.mobium.debug.Sections
 import dev.nyon.mobium.debug.Validation
 import dev.nyon.mobium.debug.VulkanValidation
 import dev.nyon.mobium.gpu.vk.VulkanSupport
-import dev.nyon.mobium.parts.ExpandPass
-import dev.nyon.mobium.parts.PartCheck
-import dev.nyon.mobium.parts.PartTransform
-import dev.nyon.mobium.parts.PartValidation
+import dev.nyon.mobium.offload.ExpandPass
+import dev.nyon.mobium.offload.OffloadCheck
+import dev.nyon.mobium.offload.PartTransform
+import dev.nyon.mobium.offload.OffloadValidation
 import jdk.jfr.Configuration
 import jdk.jfr.Recording
 import net.minecraft.client.CloudStatus
@@ -125,10 +125,10 @@ object SelfCheck {
     private const val PROFILE_MOBS = "profile-mobs"
     private const val EXPAND_COST = "expand-cost"
     private const val DISPLAY_SCENE = "display_build"
-    private const val PARTS = "parts"
+    private const val OFFLOAD = "offload"
     private const val MOB_SCENE = "mob_pen_live"
     private const val PART_GALLERY = "part_gallery"
-    private const val GATE_B = "gateb"
+    private const val CACHE_COST = "cachecost"
     private const val GALLERY_ONLY = "gallery"
     private const val BENCHMARK = "benchmark"
     private const val BENCHMARK_WORLD = "Mobium Benchmark Check"
@@ -189,8 +189,8 @@ object SelfCheck {
                     else -> null
                 }
             )
-            PARTS -> parts(minecraft)
-            GATE_B -> gateB(minecraft)
+            OFFLOAD -> offload(minecraft)
+            CACHE_COST -> cacheCost(minecraft)
             GALLERY_ONLY -> galleryOnly(minecraft)
             BENCHMARK -> benchmark(minecraft)
             else -> scenario(minecraft)
@@ -449,11 +449,11 @@ object SelfCheck {
     }
 
     /**
-     * `--mode gateb`: `/mobium gateb 20 2` in the dev client's window (not the protocol's 1920×1080 or the benchmark
-     * machine, so only a hint), including its run with the cache's draw calls skipped; the medians file is copied into
-     * `mobium-selfcheck/`. Then `display_build` and `map_wall` with the cache off and on, 15 s each, twice.
+     * `--mode cachecost`: `/mobium cachecost 20 2` in the dev client's window (not the protocol's 1920×1080 or the
+     * benchmark machine, so only a hint), including its run with the cache's draw calls skipped; the medians file is
+     * copied into `mobium-selfcheck/`. Then `display_build` and `map_wall` with the cache off and on, 15 s each, twice.
      */
-    private fun gateB(minecraft: Minecraft) = sequence {
+    private fun cacheCost(minecraft: Minecraft) = sequence {
         snapshotOptions(minecraft)
         titleScreen(minecraft)
         val saved = config.deepCopy()
@@ -465,19 +465,19 @@ object SelfCheck {
         yield(ticks(40))
         val bench = minecraft.gameDirectory.toPath().resolve("mobium-bench")
         val before = if (Files.isDirectory(bench)) Files.list(bench).use { it.toList() }.toSet() else emptySet()
-        checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium gateb 20 2", null)
+        checkNotNull(minecraft.player).connection.sendUnattendedCommand("mobium cachecost 20 2", null)
         yield(ticks(TICKS_PER_SECOND))
-        yield(until("Gate B plan finished", 900) { !BenchSuite.isActive })
-        val file = Files.list(bench).use { files -> files.filter { it !in before && it.fileName.toString().startsWith("gateb-") }.findFirst().orElse(null) }
+        yield(until("cachecost plan finished", 900) { !BenchSuite.isActive })
+        val file = Files.list(bench).use { files -> files.filter { it !in before && it.fileName.toString().startsWith("cachecost-") }.findFirst().orElse(null) }
         if (file == null) {
-            check("gateb medians written", false)
+            check("cachecost medians written", false)
         } else {
             Files.copy(file, directory.resolve(file.fileName))
             val lines = Files.readAllLines(file)
             val window = minecraft.window
             results += "NOTE window ${window.width}x${window.height}: " + lines.filter { it.startsWith("#") }.joinToString("; ")
             for (line in lines.drop(1).filter { !it.startsWith("#") }) results += "NOTE " + line.split(',').take(4).joinToString(" ")
-            check("gateb medians written", true, file.toString())
+            check("cachecost medians written", true, file.toString())
         }
         // First look at the entity scenes: the static cache off and on, alternating, 15 s each.
         for (scene in listOf("display_build", "map_wall")) {
@@ -590,8 +590,8 @@ object SelfCheck {
         check("Mobium off in the first run", AbToggle.mobiumOff && !StaticCache.active && !PartTransform.active, ModuleStates.status(Module.STATIC_CACHE).describe())
         yield(until("second run recording", 120) { FrameRecorder.isActive && !AbToggle.mobiumOff })
         check(
-            "Mobium on in the second run", StaticCache.active && PartTransform.active == ModuleStates.isActive(Module.PART_TRANSFORM),
-            "${ModuleStates.status(Module.STATIC_CACHE).describe()}, ${ModuleStates.status(Module.PART_TRANSFORM).describe()}"
+            "Mobium on in the second run", StaticCache.active && PartTransform.active == ModuleStates.isActive(Module.VERTEX_OFFLOAD),
+            "${ModuleStates.status(Module.STATIC_CACHE).describe()}, ${ModuleStates.status(Module.VERTEX_OFFLOAD).describe()}"
         )
         yield(until("benchmark finished", 600) { !BenchSuite.isActive })
         yield(ticks(10))
@@ -684,7 +684,7 @@ object SelfCheck {
         check(
             "Mobium back on $moment",
             !AbToggle.mobiumOff && StaticCache.active == (ModuleStates.isActive(Module.STATIC_CACHE) && StaticCache.anyTypeAllowed()) &&
-                PartTransform.active == ModuleStates.isActive(Module.PART_TRANSFORM),
+                PartTransform.active == ModuleStates.isActive(Module.VERTEX_OFFLOAD),
             ModuleStates.status(Module.STATIC_CACHE).describe()
         )
     }
@@ -762,16 +762,17 @@ object SelfCheck {
 
     /**
      * `--mode profile-mobs`: `mob_pen_live` with vanilla models (no packs; the dev client still has EMF, ETF and Iris),
-     * with Fresh Animations (setup C), then also with the first shader pack (setup D), each with Module 2 off and on and
-     * with the models' vertex writes skipped ([recordMobs]); one JFR recording per setup goes to
-     * `mobium-selfcheck/mob_pen_live-{plain,c,d}.jfr`. The measurement basis for Module 2: how much of the model
+     * with Fresh Animations (setup C), then also with the first shader pack (setup D), each with vertex offload off and
+     * on and with the models' vertex writes skipped ([recordMobs]); one JFR recording per setup goes to
+     * `mobium-selfcheck/mob_pen_live-{plain,c,d}.jfr`. The measurement basis for vertex offload: how much of the model
      * tessellation is the vertex work it replaces.
      */
     private fun profileMobs(minecraft: Minecraft, scene: String) = sequence {
         snapshotOptions(minecraft)
         titleScreen(minecraft)
         val saved = config.deepCopy()
-        // Another scene than the mob pens measures what Module 2 does for its block entities: the static cache is off.
+        // Another scene than the mob pens measures what vertex offload does for its block entities: the static cache is
+        // off.
         val mobs = scene == MOB_SCENE
         applyConfig(Config().also { if (!mobs) it.cache.enabled = false })
         minecraft.options.framerateLimit().set(Options.UNLIMITED_FRAMERATE_CUTOFF)
@@ -820,30 +821,30 @@ object SelfCheck {
     }
 
     /**
-     * [MOB_SCENE] for 6 × 8 s, alternating Module 2 off, Module 2 on and [Sections.skipModelVertices] (the models write
-     * no vertices, so they vanish), with the stage timers sampled once a second (each a 64-frame average). The last is
-     * the most Module 2 can take off the CPU. A seventh run with Module 2, which the averages leave out, is recorded
-     * with Java Flight Recorder (method samples every millisecond, allocation samples): its sampling stops the render
-     * thread a thousand times a second, and the scheduler then moves it to the slower cores now and then
-     * (docs/benchmarks.md, *Extract and submit follow the CPU's clock*).
+     * [MOB_SCENE] for 6 × 8 s, alternating vertex offload off, vertex offload on and [Sections.skipModelVertices] (the
+     * models write no vertices, so they vanish), with the stage timers sampled once a second (each a 64-frame average).
+     * The last is the most vertex offload can take off the CPU. A seventh run with vertex offload, which the averages
+     * leave out, is recorded with Java Flight Recorder (method samples every millisecond, allocation samples): its
+     * sampling stops the render thread a thousand times a second, and the scheduler then moves it to the slower cores
+     * now and then (docs/benchmarks.md, *Extract and submit follow the CPU's clock*).
      */
     private suspend fun SequenceScope<Wait>.recordMobs(minecraft: Minecraft, scene: String, setup: String) {
         yield(ticks(10 * TICKS_PER_SECOND))
         Sections.forceTimers = true
-        val names = listOf("Module 2 off", "Module 2 on", "no vertices")
+        val names = listOf("Vertex offload off", "Vertex offload on", "no vertices")
         val sums = Array(names.size) { DoubleArray(Sections.COUNT) }
         val frameMs = DoubleArray(names.size)
-        val partsBefore = config.parts.enabled
+        val partsBefore = config.offload.enabled
         for (round in 0 until 7) {
-            // Rounds 0 to 5 alternate the three conditions; round 6 is Java Flight Recorder's, with Module 2.
+            // Rounds 0 to 5 alternate the three conditions; round 6 is Java Flight Recorder's, with vertex offload.
             val condition = if (round == 6) 1 else round % names.size
-            config.parts.enabled = condition == 1
+            config.offload.enabled = condition == 1
             ModuleStates.refresh("self-check")
             Sections.skipModelVertices = condition == 2
             yield(ticks(2 * TICKS_PER_SECOND))
             val recording = if (round == 6) Recording(Configuration.getConfiguration("profile")) else null
             recording?.enable("jdk.ExecutionSample")?.withPeriod(Duration.ofMillis(1))
-            // Allocation samples too: Module 2's per-part path must not allocate (CLAUDE.md, *Hot paths*).
+            // Allocation samples too: vertex offload's per-part path must not allocate (CLAUDE.md, *Hot paths*).
             recording?.enable("jdk.ObjectAllocationSample")?.with("throttle", "1000/s")?.withStackTrace()
             val framesBefore = Sections.frame
             val start = System.nanoTime()
@@ -863,7 +864,7 @@ object SelfCheck {
         }
         Sections.skipModelVertices = false
         Sections.forceTimers = false
-        config.parts.enabled = partsBefore
+        config.offload.enabled = partsBefore
         ModuleStates.refresh("self-check")
         val window = minecraft.window
         for ((index, name) in names.withIndex()) {
@@ -874,12 +875,12 @@ object SelfCheck {
     }
 
     /**
-     * `--mode expand-cost`: Module 2's fixed cost per frame (docs/benchmarks.md, *Module 2's fixed cost*) in [scene]
-     * (default `display_build`, where Module 2 takes only the 17 shields) with the default config, the static cache on
-     * as in the benchmark; `mob_pen_live` also with Fresh Animations (setup C) and with the first shader pack on top
-     * (setup D). Each setup is measured by [recordExpand]. With [only] set, only those conditions: [STAGES]
-     * (`--scene "mob_pen_live stages"`) compute against the vertex stage, in all four setups; [ITEMS]
-     * (`--scene "display_build items"`) Module 2 off and on with and without its items, with vanilla models only.
+     * `--mode expand-cost`: vertex offload's fixed cost per frame (docs/benchmarks.md, *Vertex offload's fixed cost*)
+     * in [scene] (default `display_build`, where vertex offload takes only the 17 shields) with the default config, the
+     * static cache on as in the benchmark; `mob_pen_live` also with Fresh Animations (setup C) and with the first
+     * shader pack on top (setup D). Each setup is measured by [recordExpand]. With [only] set, only those conditions:
+     * [STAGES] (`--scene "mob_pen_live stages"`) compute against the vertex stage, in all four setups; [ITEMS]
+     * (`--scene "display_build items"`) vertex offload off and on with and without its items, with vanilla models only.
      */
     private fun expandCost(minecraft: Minecraft, scene: String, only: List<ExpandCondition>?) = sequence {
         snapshotOptions(minecraft)
@@ -956,11 +957,11 @@ object SelfCheck {
     }
 
     /**
-     * One setup of `--mode expand-cost`: Module 2 off, Module 2 with the compute dispatch, Module 2 with the vertex-stage
-     * variant ([ExpandPass.STAGE_VERTEX]) and the models' vertex writes skipped, 8 s each, in 4 rounds whose order
-     * rotates, so that every condition comes first once (the laptop's clocks drift within a round). Reports the frame
-     * times, the GPU time per frame, the stage timers and [ExpandProfile]'s CPU time per step. Each condition is logged,
-     * so that a driver's own log (Mesa's `INTEL_DEBUG=submit`) can be split by it.
+     * One setup of `--mode expand-cost`: vertex offload off, vertex offload with the compute dispatch, vertex offload
+     * with the vertex-stage variant ([ExpandPass.STAGE_VERTEX]) and the models' vertex writes skipped, 8 s each, in 4
+     * rounds whose order rotates, so that every condition comes first once (the laptop's clocks drift within a round).
+     * Reports the frame times, the GPU time per frame, the stage timers and [ExpandProfile]'s CPU time per step. Each
+     * condition is logged, so that a driver's own log (Mesa's `INTEL_DEBUG=submit`) can be split by it.
      */
     private suspend fun SequenceScope<Wait>.recordExpand(
         minecraft: Minecraft,
@@ -983,14 +984,14 @@ object SelfCheck {
         val runFrames = Array(names.size) { ArrayList<Double>() }
         val taken = Array(names.size) { DoubleArray(2) }
         val clockFile = MachineState.SYSTEM.gpuClockFile()
-        val partsBefore = config.parts.enabled
-        val itemsBefore = config.parts.items
+        val partsBefore = config.offload.enabled
+        val itemsBefore = config.offload.items
         val forcedBefore = ExpandPass.forcedStage
         for (run in 0 until names.size * rounds) {
             val condition = (run + run / names.size % names.size) % names.size
             val settings = conditions[condition]
-            config.parts.enabled = settings.parts
-            config.parts.items = settings.items
+            config.offload.enabled = settings.parts
+            config.offload.items = settings.items
             ExpandPass.forcedStage = settings.stage
             ModuleStates.refresh("self-check")
             Sections.skipModelVertices = settings.skipVertices
@@ -1020,15 +1021,15 @@ object SelfCheck {
         Mobium.LOGGER.info("Mobium self-check: expand-cost {} done", setup)
         Sections.skipModelVertices = false
         Sections.forceTimers = false
-        config.parts.enabled = partsBefore
-        config.parts.items = itemsBefore
+        config.offload.enabled = partsBefore
+        config.offload.items = itemsBefore
         ExpandPass.forcedStage = forcedBefore
         ModuleStates.refresh("self-check")
         val window = minecraft.window
         for ((index, name) in names.withIndex()) {
             results += String.format(
                 Locale.ROOT, "NOTE %s, setup %s, %s, window %dx%d: frame %.3f ms (rounds %s), GPU %.3f ms at %.0f MHz, " +
-                    "expand passes on the GPU %.1f µs; Module 2 took %.0f parts and %.0f item runs per frame; ",
+                    "expand passes on the GPU %.1f µs; vertex offload took %.0f parts and %.0f item runs per frame; ",
                 scene, setup, name, window.width, window.height, frameMs[index],
                 runFrames[index].joinToString(" ") { String.format(Locale.ROOT, "%.3f", it) }, gpuMs[index], mhz[index],
                 passUs[index], taken[index][0], taken[index][1]
@@ -1051,7 +1052,7 @@ object SelfCheck {
     )
 
     private val COST_CONDITIONS = listOf(
-        ExpandCondition("Module 2 off", parts = false),
+        ExpandCondition("Vertex offload off", parts = false),
         ExpandCondition("compute", parts = true),
         ExpandCondition("vertex stage", parts = true, stage = ExpandPass.STAGE_VERTEX),
         ExpandCondition("no vertices", parts = false, skipVertices = true)
@@ -1062,20 +1063,24 @@ object SelfCheck {
         ExpandCondition("vertex stage", parts = true, stage = ExpandPass.STAGE_VERTEX)
     )
 
-    /** Module 2's items (`parts.items`) off and on, in the vertex stage, which A and C use without a shader pack. */
+    /**
+     * Vertex offload's items (`offload.items`) off and on, in the vertex stage, which A and C use without a shader
+     * pack.
+     */
     private val ITEMS = listOf(
-        ExpandCondition("Module 2 off", parts = false),
+        ExpandCondition("Vertex offload off", parts = false),
         ExpandCondition("items off", parts = true, stage = ExpandPass.STAGE_VERTEX, items = false),
         ExpandCondition("items on", parts = true, stage = ExpandPass.STAGE_VERTEX)
     )
 
     /**
-     * `--mode parts`: Module 2 in `mob_pen_live` and `part_gallery` with the models of the four benchmark setups
-     * (vanilla, with the first shader pack, with the pack and Fresh Animations, with Fresh Animations). In each: the GPU's vertices against the CPU's for every part it takes over ([PartValidation], byte for
-     * byte), then Mobium's picture against vanilla's behind a pause screen, and two vanilla frames as the floor. Last,
-     * the GPU check of normal play ([gpuCheck]).
+     * `--mode offload`: vertex offload in `mob_pen_live` and `part_gallery` with the models of the four benchmark
+     * setups (vanilla, with the first shader pack, with the pack and Fresh Animations, with Fresh Animations). In each:
+     * the GPU's vertices against the CPU's for every part it takes over ([OffloadValidation], byte for byte), then
+     * Mobium's picture against vanilla's behind a pause screen, and two vanilla frames as the floor. Last, the GPU
+     * check of normal play ([gpuCheck]).
      */
-    private fun parts(minecraft: Minecraft) = sequence {
+    private fun offload(minecraft: Minecraft) = sequence {
         snapshotOptions(minecraft)
         titleScreen(minecraft)
         val saved = config.deepCopy()
@@ -1090,10 +1095,10 @@ object SelfCheck {
         yield(ticks(40))
         minecraft.options.cloudStatus().set(CloudStatus.OFF)
         if (!minecraft.gui.hud.isHidden) minecraft.gui.hud.toggle()
-        check("part transform active", ModuleStates.isActive(Module.PART_TRANSFORM), ModuleStates.status(Module.PART_TRANSFORM).describe())
+        check("Vertex offload active", ModuleStates.isActive(Module.VERTEX_OFFLOAD), ModuleStates.status(Module.VERTEX_OFFLOAD).describe())
         val vulkan = Capabilities.current?.backend == GraphicsBackend.VULKAN
         results += "NOTE expand pass: ${ExpandPass.describeChoice()}" + if (vulkan) "; Vulkan: ${VulkanSupport.describe()}" else ""
-        // -Pmobium.partsArithmetic=integer (self_check.py --arithmetic integer): as on a GPU without 64-bit floats.
+        // -Pmobium.offloadArithmetic=integer (self_check.py --arithmetic integer): as on a GPU without 64-bit floats.
         if (ExpandPass.integerOnly) {
             check(
                 "integer arithmetic only, as on a GPU without 64-bit floats in shaders",
@@ -1219,8 +1224,8 @@ object SelfCheck {
         for ((scene, file) in listOf(MOB_SCENE to "pens", PART_GALLERY to "gallery")) {
             if (!buildScene(minecraft, scene)) continue
             val name = "$setup, $scene"
-            // While a pack draws through Vitrail, builders have its entity format, which Module 2 leaves to the CPU
-            // (docs/vanilla-notes.md §27): no part may be taken there.
+            // While a pack draws through Vitrail, builders have its entity format, which vertex offload leaves to the
+            // CPU (docs/vanilla-notes.md §27): no part may be taken there.
             val vitrailPack = ShaderPackCheck.vitrail && ShaderPackCheck.inUse()
             // Both stages where the GPU has the vertex stage (which one runs depends on the shader pack), compute else;
             // each with both arithmetics where shaders have 64-bit floats (which one runs depends on the GPU), with
@@ -1240,7 +1245,7 @@ object SelfCheck {
                 }
             }
             if (vitrailPack) {
-                check("parts, $name: no part taken in Vitrail's vertex format", PartValidation.compared == 0L, PartValidation.summary() + "; " + PartTransform.debugLine())
+                check("parts, $name: no part taken in Vitrail's vertex format", OffloadValidation.compared == 0L, OffloadValidation.summary() + "; " + PartTransform.debugLine())
             }
             ExpandPass.forcedStage = -1
             ExpandPass.forcedArithmetic = -1
@@ -1249,48 +1254,48 @@ object SelfCheck {
     }
 
     /**
-     * Module 2's GPU check in normal play ([PartCheck]): it compared parts in the setups before without finding a
-     * difference. Then `/mobium debug gpucheck` makes it find one in the mob pens, as on a driver that rounds
-     * otherwise: the CPU's vertices replace the GPU's in that frame, Module 2 switches off with one toast, and
-     * Mobium's picture matches vanilla's. Last in `--mode parts`, since the module stays off until restart.
+     * Vertex offload's GPU check in normal play ([OffloadCheck]): it compared parts in the setups before without
+     * finding a difference. Then `/mobium debug gpucheck` makes it find one in the mob pens, as on a driver that rounds
+     * otherwise: the CPU's vertices replace the GPU's in that frame, vertex offload switches off with one toast, and
+     * Mobium's picture matches vanilla's. Last in `--mode offload`, since the module stays off until restart.
      */
     private suspend fun SequenceScope<Wait>.gpuCheck(minecraft: Minecraft) {
         val line = debugLines().firstOrNull { "GPU check" in it } ?: "no F3 line"
         check(
             "GPU check compared parts in normal play, no difference",
-            PartCheck.checkedParts > 0 && PartCheck.failures == 0 && ModuleStates.isActive(Module.PART_TRANSFORM), line
+            OffloadCheck.checkedParts > 0 && OffloadCheck.failures == 0 && ModuleStates.isActive(Module.VERTEX_OFFLOAD), line
         )
         if (!buildScene(minecraft, MOB_SCENE)) return
-        PartValidation.reset()
+        OffloadValidation.reset()
         minecraft.player?.connection?.sendUnattendedCommand("mobium debug gpucheck", null)
         yield(ticks(10))
-        val status = ModuleStates.status(Module.PART_TRANSFORM)
+        val status = ModuleStates.status(Module.VERTEX_OFFLOAD)
         check(
-            "a GPU difference switches the part transform off",
+            "a GPU difference switches vertex offload off",
             status.reason == OffReason.FAILED && "differ" in status.detail && !PartTransform.active, status.describe()
         )
         check(
             "the frame with the difference got the CPU's vertices",
-            PartValidation.repaired > 0 && PartValidation.unrepaired == 0L,
-            "${PartValidation.repaired} vertices repaired, ${PartValidation.unrepaired} still differing"
+            OffloadValidation.repaired > 0 && OffloadValidation.unrepaired == 0L,
+            "${OffloadValidation.repaired} vertices repaired, ${OffloadValidation.unrepaired} still differing"
         )
         val toasts = failureToasts(minecraft.gui.toastManager())
         check("one failure toast for the GPU difference", toasts == 1, "$toasts toasts")
         comparePaused(minecraft, "parts: after a GPU difference", "parts-gpu-difference")
     }
 
-    /** One second of [PartValidation] over everything Module 2 takes over. */
+    /** One second of [OffloadValidation] over everything vertex offload takes over. */
     private suspend fun SequenceScope<Wait>.validateParts(name: String, expectParts: Boolean) {
-        PartValidation.reset()
+        OffloadValidation.reset()
         PartTransform.validating = true
         yield(ticks(TICKS_PER_SECOND))
         PartTransform.validating = false
         // On Vulkan the last frames' comparisons arrive once the GPU is done with them.
-        yield(upTo("validation read-backs", 5) { PartValidation.settled })
-        val passed = PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0 &&
-            (PartValidation.compared > 0 || !expectParts)
-        check("parts, $name: GPU vertices equal the CPU's", passed, PartValidation.summary() + "; " + PartTransform.debugLine() +
-            PartValidation.reports.joinToString("") { " | $it" })
+        yield(upTo("validation read-backs", 5) { OffloadValidation.settled })
+        val passed = OffloadValidation.mismatched == 0L && OffloadValidation.unmatchedParts == 0 &&
+            (OffloadValidation.compared > 0 || !expectParts)
+        check("parts, $name: GPU vertices equal the CPU's", passed, OffloadValidation.summary() + "; " + PartTransform.debugLine() +
+            OffloadValidation.reports.joinToString("") { " | $it" })
     }
 
     /**

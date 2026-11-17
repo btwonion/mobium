@@ -1,4 +1,4 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import net.minecraft.client.model.geom.ModelPart
 import java.lang.reflect.Field

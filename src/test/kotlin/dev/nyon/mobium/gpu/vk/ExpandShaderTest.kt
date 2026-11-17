@@ -9,7 +9,7 @@ import org.lwjgl.system.MemoryUtil
 import org.lwjgl.util.shaderc.Shaderc
 
 /**
- * `expand_parts.comp` compiles to SPIR-V for Vulkan in every variant Module 2 may ask for (double and integer
+ * `expand.comp` compiles to SPIR-V for Vulkan in every variant vertex offload may ask for (double and integer
  * arithmetic, each with and without each float execution mode), and with glslang's OpenGL rules as the compute shader
  * and as the vertex-stage variant in both arithmetics, so a shader change cannot break a path unnoticed (the GL driver
  * compiles the source itself, at the first frame that needs it). The integer variant must not need 64-bit floats or
@@ -17,7 +17,7 @@ import org.lwjgl.util.shaderc.Shaderc
  * come with Minecraft's libraries on the Fabric target).
  */
 class ExpandShaderTest {
-    private val source = javaClass.getResourceAsStream("/assets/mobium/shaders/expand_parts.comp")!!.use { String(it.readAllBytes()) }
+    private val source = javaClass.getResourceAsStream("/assets/mobium/shaders/expand.comp")!!.use { String(it.readAllBytes()) }
 
     private fun shadercAvailable(): Boolean = runCatching {
         Class.forName("org.lwjgl.util.shaderc.Shaderc")
@@ -106,7 +106,7 @@ class ExpandShaderTest {
 
     /** The SPIR-V of the Vulkan variant with [defines], as words. */
     private fun compile(defines: List<String>): IntArray {
-        val spirv = VkCompute.compile("expand_parts.comp", source, defines)
+        val spirv = VkCompute.compile("expand.comp", source, defines)
         try {
             assertTrue(spirv.remaining() > 0 && spirv.remaining() % 4 == 0, "SPIR-V of $defines")
             assertEquals(0x07230203, spirv.getInt(0), "SPIR-V magic of $defines")
@@ -148,7 +148,7 @@ class ExpandShaderTest {
         try {
             Shaderc.shaderc_compile_options_set_target_env(options, Shaderc.shaderc_target_env_opengl, Shaderc.shaderc_env_version_opengl_4_5)
             for (define in defines) Shaderc.shaderc_compile_options_add_macro_definition(options, define, "1")
-            val result = Shaderc.shaderc_compile_into_spv(compiler, source, kind, "expand_parts.comp", "main", options)
+            val result = Shaderc.shaderc_compile_into_spv(compiler, source, kind, "expand.comp", "main", options)
             try {
                 if (Shaderc.shaderc_result_get_compilation_status(result) == Shaderc.shaderc_compilation_status_success) return null
                 return Shaderc.shaderc_result_get_error_message(result)

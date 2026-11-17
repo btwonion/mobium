@@ -22,86 +22,29 @@ class ConfigFormatTest {
         val config = Config(
             enabled = false,
             cache = CacheConfig(memoryBudgetMb = 256, types = CacheTypes(signs = false)),
-            parts = PartsConfig(enabled = false, items = false, excludedEntities = mutableListOf("minecraft:zombie"))
+            offload = OffloadConfig(enabled = false, items = false, excludedEntities = mutableListOf("minecraft:zombie"))
         )
         assertEquals(config, json.decodeFromString<Config>(json.encodeToString(config)))
     }
 
     @Test
-    fun `unknown keys fail so that Konfig routes old files to the migration`() {
+    fun `unknown keys fail so that Konfig routes files of another format to the migration`() {
         assertThrows<SerializationException> {
             json.decodeFromString<Config>("""{"enabled": true, "removedSetting": 1}""")
         }
     }
 
     @Test
-    fun `a version 3 file keeps its settings and loses the prototype and beds switches`() {
-        val tree = json.parseToJsonElement(
-            """{"enabled": false, "cache": {"memoryBudgetMb": 64, "prototype": true, "types": {"beds": false, "signs": false}}}"""
-        )
-        val expected = Config(enabled = false, cache = CacheConfig(memoryBudgetMb = 64, types = CacheTypes(signs = false)))
-        assertEquals(expected, migrate(json, tree, 3))
+    fun `a file of another format fails to decode and gets the defaults`() {
+        val text = """{"enabled": false, "parts": {"enabled": false, "items": false, "excludedEntities": []}}"""
+        assertThrows<SerializationException> { json.decodeFromString<Config>(text) }
+        assertNull(migrate(json, json.parseToJsonElement(text), 6))
     }
 
     @Test
-    fun `a version 3 file without cache settings gets the defaults`() {
-        assertEquals(Config(enabled = false), migrate(json, json.parseToJsonElement("""{"enabled": false}"""), 3))
-    }
-
-    @Test
-    fun `a version 4 file without the item switch decodes with items on`() {
-        val decoded = json.decodeFromString<Config>(
-            """{"enabled": true, "parts": {"enabled": false, "excludedEntities": ["minecraft:cow"]}}"""
-        )
-        assertEquals(PartsConfig(enabled = false, items = true, excludedEntities = mutableListOf("minecraft:cow")), decoded.parts)
-        assertEquals(decoded, migrate(json, json.parseToJsonElement("""{"parts": {"enabled": false, "excludedEntities": ["minecraft:cow"]}}"""), 4))
-    }
-
-    @Test
-    fun `a version 5 file keeps its settings and loses the animation LOD settings`() {
-        val tree = json.parseToJsonElement(
-            """{"enabled": true, "parts": {"items": false}, "lod": {"preset": "SUBTLE", "excludedEntities": ["minecraft:cow"]}}"""
-        )
-        assertEquals(Config(parts = PartsConfig(items = false)), migrate(json, tree, 5))
-    }
-
-    @Test
-    fun `version 3 and 4 files lose the animation LOD settings too`() {
-        val tree = json.parseToJsonElement("""{"enabled": false, "lod": {"preset": "OFF"}}""")
-        assertEquals(Config(enabled = false), migrate(json, tree, 3))
-        assertEquals(Config(enabled = false), migrate(json, tree, 4))
-    }
-
-    @Test
-    fun `the lod key no longer decodes, which routes version 5 files to the migration`() {
-        assertThrows<SerializationException> {
-            json.decodeFromString<Config>("""{"enabled": true, "lod": {"preset": "OFF"}}""")
-        }
-    }
-
-    @Test
-    fun `the old prototype key no longer decodes, which routes version 3 files to the migration`() {
-        assertThrows<SerializationException> {
-            json.decodeFromString<Config>("""{"enabled": false, "cache": {"prototype": true}}""")
-        }
-    }
-
-    @Test
-    fun `version 1 keeps the global switch and gets the default cache settings`() {
-        val tree = json.parseToJsonElement("""{"enabled": false}""")
-        assertEquals(Config(enabled = false), migrate(json, tree, 1))
-    }
-
-    @Test
-    fun `version 2 keeps the global switch only`() {
-        val tree = json.parseToJsonElement("""{"enabled": false, "cache": {"prototype": true, "broken": 1}}""")
-        assertEquals(Config(enabled = false), migrate(json, tree, 2))
-    }
-
-    @Test
-    fun `defaults follow the plan`() {
+    fun `defaults turn everything on`() {
         val config = Config()
-        assertTrue(config.enabled && config.cache.enabled && config.parts.enabled && config.parts.items)
+        assertTrue(config.enabled && config.cache.enabled && config.offload.enabled && config.offload.items)
         assertEquals(128, config.cache.memoryBudgetMb)
         assertTrue(config.cache.types.switches().all { it.second.get() })
     }
@@ -111,7 +54,7 @@ class ConfigFormatTest {
         val original = Config()
         val copy = original.deepCopy()
         copy.cache.types.chests = false
-        copy.parts.excludedEntities += "minecraft:cow"
+        copy.offload.excludedEntities += "minecraft:cow"
         assertNotEquals(original, copy)
         assertEquals(Config(), original)
     }

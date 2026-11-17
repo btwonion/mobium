@@ -5,7 +5,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
 /**
- * Module 2: an OpenGL buffer's GL name for the expand pass. 26.4 makes {@code GlBuffer} package-private while its
+ * Vertex offload: an OpenGL buffer's GL name for the expand pass. 26.4 makes {@code GlBuffer} package-private while its
  * {@code handle()} stays public, so the class is named by string. Read-only; no behaviour change.
  */
 @Mixin(targets = "com.mojang.renderpearl.backend.opengl.GlBuffer")

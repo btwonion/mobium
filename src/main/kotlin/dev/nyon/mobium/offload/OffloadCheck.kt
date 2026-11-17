@@ -1,4 +1,4 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.core.Capabilities
@@ -7,15 +7,16 @@ import dev.nyon.mobium.core.Module
 import java.util.Locale
 
 /**
- * Module 2's check on the player's GPU. `expand_parts.comp` is written to give exactly the CPU's bytes, but the dev
+ * Vertex offload's check on the player's GPU. `expand.comp` is written to give exactly the CPU's bytes, but the dev
  * validation runs on a few GPUs only (`docs/compat.md`); another driver may round or fuse operations differently. So
- * for each path through the shader ([path]: the part's flags, the cube layout, the stage, the arithmetic) the first [PER_PATH] parts,
- * at most [PER_FRAME] per frame, are also compiled on the CPU and compared after the expand pass ([PartValidation],
- * which waits for the GPU once per staged buffer in those frames). On a difference the compared parts get the CPU's
- * bytes in that frame (the frame's other parts keep the GPU's, for that one frame) and Module 2 fails: one toast,
- * vanilla until restart, the log names the GPU and the first differing vertices. Render thread only.
+ * for each path through the shader ([path]: the part's flags, the cube layout, the stage, the arithmetic) the first
+ * [PER_PATH] parts, at most [PER_FRAME] per frame, are also compiled on the CPU and compared after the expand pass
+ * ([OffloadValidation], which waits for the GPU once per staged buffer in those frames). On a difference the compared
+ * parts get the CPU's bytes in that frame (the frame's other parts keep the GPU's, for that one frame) and vertex
+ * offload fails: one toast, vanilla until restart, the log names the GPU and the first differing vertices. Render
+ * thread only.
  */
-object PartCheck {
+object OffloadCheck {
     private const val PATHS = 4096
     private const val PER_PATH = 64
     private const val PER_FRAME = 8
@@ -32,7 +33,7 @@ object PartCheck {
     val checkedPaths: Int
         get() = sampler.pathsSeen
 
-    /** Comparisons that found a difference since the start (Module 2 is off after the first). */
+    /** Comparisons that found a difference since the start (vertex offload is off after the first). */
     var failures = 0
         private set
 
@@ -41,9 +42,9 @@ object PartCheck {
     var forcedDifference = false
 
     /**
-     * The path of a part or an item run with [flags] (`PartBatch` part flags, 9 bits), cubes in Sodium's layout or not, expanded in
-     * [stage] with [arithmetic] (`ExpandPass.ARITHMETIC_*`); -1 (never sampled) before the first expand pass has picked
-     * a stage.
+     * The path of a part or an item run with [flags] (`OffloadBatch` part flags, 9 bits), cubes in Sodium's layout or
+     * not, expanded in [stage] with [arithmetic] (`ExpandPass.ARITHMETIC_*`); -1 (never sampled) before the first
+     * expand pass has picked a stage.
      */
     fun path(flags: Int, sodiumLayout: Boolean, stage: Int, arithmetic: Int): Int {
         if (stage < 0) return -1
@@ -62,17 +63,19 @@ object PartCheck {
         forcedDifference = true
     }
 
-    /** A comparison found [vertices] differing vertices and [parts] parts the CPU wrote otherwise: Module 2 fails. */
+    /**
+     * A comparison found [vertices] differing vertices and [parts] parts the CPU wrote otherwise: vertex offload fails.
+     */
     fun failed(vertices: Long, parts: Int, stage: String) {
         failures++
         val capabilities = Capabilities.current
         val detail = "differing: $vertices vertices, $parts parts; $stage"
         Mobium.LOGGER.error(
-            "Mobium part_transform: the GPU's vertices differ from the CPU's on {} ({}, {}): {}; first differences: {}",
-            capabilities?.deviceName, capabilities?.vendor, capabilities?.driverInfo, detail, PartValidation.reports
+            "Mobium vertex_offload: the GPU's vertices differ from the CPU's on {} ({}, {}): {}; first differences: {}",
+            capabilities?.deviceName, capabilities?.vendor, capabilities?.driverInfo, detail, OffloadValidation.reports
         )
         val error = IllegalStateException("the GPU's vertices differ from the CPU's ($detail)")
-        Fallback.moduleFailed(Module.PART_TRANSFORM, error)
+        Fallback.moduleFailed(Module.VERTEX_OFFLOAD, error)
     }
 
     /** F3 `mobium:modules`: how much of the check has run and what it found. */

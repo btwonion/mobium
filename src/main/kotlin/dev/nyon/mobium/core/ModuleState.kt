@@ -5,7 +5,7 @@ import dev.nyon.mobium.config.Config
 /** Mobium's two modules (docs/architecture.md). [key] names them in logs, commands and translation keys. */
 enum class Module(val key: String) {
     STATIC_CACHE("static_cache"),
-    PART_TRANSFORM("part_transform");
+    VERTEX_OFFLOAD("vertex_offload");
 
     val translationKey: String
         get() = "mobium.module.$key"
@@ -69,7 +69,7 @@ data class ModuleStatus(val module: Module, val reason: OffReason?, val detail: 
  *
  * @param backend is null before the GPU device exists.
  * @param shaderPack says whether an Iris shader pack is in use; no rule depends on it (the static cache captures and
- * Module 2 expands in Iris's extended vertex format).
+ * vertex offload expands in Iris's extended vertex format).
  * @param overlaps names, per module, an installed mod that does the same job.
  * @param untested names, per module, an installed mod that hooks the same paths and is not tested with Mobium.
  * @param failures holds, per module, the message of the failure that switched it off.
@@ -97,7 +97,7 @@ object ModuleRules {
         if (environment.abOff) return off(OffReason.AB_TOGGLE)
         val switchedOn = when (module) {
             Module.STATIC_CACHE -> config.cache.enabled
-            Module.PART_TRANSFORM -> config.parts.enabled
+            Module.VERTEX_OFFLOAD -> config.offload.enabled
         }
         if (!switchedOn) return off(OffReason.CONFIG)
         environment.overlaps[module]?.let { return off(OffReason.OVERLAP, it) }
@@ -105,14 +105,14 @@ object ModuleRules {
         if (!runsOn(environment)) return off(OffReason.BACKEND, environment.backend?.name?.lowercase() ?: "")
         return when (module) {
             Module.STATIC_CACHE -> ModuleStatus(module, null)
-            Module.PART_TRANSFORM -> if (!environment.compute) off(OffReason.NO_COMPUTE) else ModuleStatus(module, null)
+            Module.VERTEX_OFFLOAD -> if (!environment.compute) off(OffReason.NO_COMPUTE) else ModuleStatus(module, null)
         }
     }
 
     /**
      * Both modules run on OpenGL and Vulkan: the static cache draws through Renderpearl only (docs/vanilla-notes.md
-     * §22), Module 2 has an expand pass for each (§23; whether the GPU can is the `compute` rule). No backend before
-     * the device exists.
+     * §22), vertex offload has an expand pass for each (§23; whether the GPU can is the `compute` rule). No backend
+     * before the device exists.
      */
     private fun runsOn(environment: ModuleEnvironment): Boolean =
         environment.backend == GraphicsBackend.OPENGL || environment.backend == GraphicsBackend.VULKAN

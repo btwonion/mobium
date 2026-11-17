@@ -3,15 +3,15 @@ package dev.nyon.mobium.mixins;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.mojang.blaze3d.vertex.QuadInstance;
-import dev.nyon.mobium.parts.ItemTransform;
+import dev.nyon.mobium.offload.ItemTransform;
 import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
 /**
- * Module 2 for items: an item submit's quads become records for the GPU expand pass instead of vertices written on the
- * CPU ({@code ItemFeatureRenderer.prepareMainSubmit}: per quad {@code VertexConsumer.putBakedQuad}, or Sodium's
+ * Vertex offload for items: an item submit's quads become records for the GPU expand pass instead of vertices written
+ * on the CPU ({@code ItemFeatureRenderer.prepareMainSubmit}: per quad {@code VertexConsumer.putBakedQuad}, or Sodium's
  * {@code BakedModelEncoder}). Iris's ids are set around it in {@code prepareSubmit}, outline submits are not touched.
  * Fallback: {@code ItemTransform.prepare} returns false for anything it does not take (module or switch off, excluded
  * entity types, the special glint, quads it cannot reproduce) and vanilla writes the submit; runs of quads it cannot

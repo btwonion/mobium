@@ -44,6 +44,16 @@ scenes are only ever built in this one.
 
 ## ✨ Features
 
+Mobium has two modules, each with its own switch in the settings. The **static cache** takes the things that stand
+still, the **vertex offload** the things that move. Neither decides what is drawn: the game's own rendering code, your
+resource packs and other mods still do.
+
+| | Static cache | Vertex offload |
+| --- | --- | --- |
+| Takes | Chests, signs, heads, pots, shelves, item frames, armor stands and displays while they stand still | Mobs, armor, banners and other animated models; dropped items and items in hands, frames and displays |
+| Saves | All of the object's work each frame: it is drawn from a copy on the GPU until it changes | Writing the vertices: the game still animates every model, the GPU writes the result |
+| Needs | Nothing | OpenGL 4.3 or Minecraft's Vulkan renderer |
+
 ### Static cache
 
 Things that stand still are captured once through the game's own rendering code, resource packs and other mods'
@@ -57,7 +67,7 @@ changes, Mobium captures it again.
 
 While a chest opens, a pot wobbles or anything else moves, the game draws it as usual.
 
-### GPU part transform
+### Vertex offload
 
 Mobs, armor, banners and everything else built from model parts are still posed and animated by the game, Entity Model
 Features and Fresh Animations. Only the last step moves: instead of the CPU writing every corner of every cube, a
@@ -78,7 +88,7 @@ Vulkan renderer too (see the FAQ).
 Mobium works out of the box.
 
 - **Settings:** Mod Menu (Fabric), the mods list (NeoForge) or Mobium's page in Sodium's video settings, with a switch
-  for every cached type.
+  for each module and every cached type.
 - **A/B key:** switches Mobium off and on live, to compare in the same spot. It is the key right of <kbd>P</kbd>:
   <kbd>]</kbd> on a US keyboard, <kbd>+</kbd> on a German one.
 - **F3:** the debug entries `mobium:modules` and `mobium:timings` show what Mobium does and where the frame time goes.
@@ -98,7 +108,7 @@ usual.
 | Entity Model Features / Entity Texture Features, Fresh Animations | Works |
 | Mod Menu | Opens Mobium's settings |
 | Enhanced Block Entities, Vanillate, Accelerated Rendering | These do the same job; Mobium switches off its overlapping part |
-| Vitrail (shader packs on Vulkan) | Partly: the GPU part transform works; the static cache stays off while Vitrail is installed |
+| Vitrail (shader packs on Vulkan) | Partly: vertex offload works; the static cache stays off while Vitrail is installed |
 
 Details, tested versions and known limits:
 [docs/compat.md](https://github.com/btwonion/mobium/blob/master/docs/compat.md).
@@ -123,11 +133,11 @@ Yes, on OpenGL and on Minecraft's Vulkan renderer alike. Two things differ on Vu
 
 - Iris's shader packs do not work on Vulkan yet: with Iris installed the game runs without them there, and Mobium
   works as it does without Iris.
-- Vitrail, a shader pack mod for the Vulkan renderer: Mobium's GPU part transform works with it; its static cache stays
+- Vitrail, a shader pack mod for the Vulkan renderer: Mobium's vertex offload works with it; its static cache stays
   off while Vitrail is installed.
 
 On Vulkan Mobium is tested on one graphics chip so far, an Intel Arc 140V on Linux. Graphics chips without 64-bit floats
-in shaders (Iris Xe, the Arc A-series, Snapdragon X) get the GPU part transform as well, computed another way with the
+in shaders (Iris Xe, the Arc A-series, Snapdragon X) get vertex offload as well, computed another way with the
 same result; that way is checked on the Arc 140V, not yet on such a chip. F3 `mobium:modules` shows what runs on yours.
 
 ---

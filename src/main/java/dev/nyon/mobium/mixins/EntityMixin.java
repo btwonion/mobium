@@ -7,7 +7,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
 /**
- * Static cache (Module 1): holds the entity's cache entry ({@link CachedEntity}). Adds a field; no behaviour change.
+ * Static cache: holds the entity's cache entry ({@link CachedEntity}). Adds a field; no behaviour change.
  * Removed entities are no longer extracted, so their cached picture is not drawn; the cache's sweep frees it.
  */
 @Mixin(Entity.class)

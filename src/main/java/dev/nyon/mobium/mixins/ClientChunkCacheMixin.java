@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Static cache (Module 1): forwards client light updates so cached objects only re-read their light when their
+ * Static cache: forwards client light updates so cached objects only re-read their light when their
  * section changed. Sodium overwrites the {@code LevelExtractor} methods this calls, not this one. No behaviour change.
  */
 @Mixin(ClientChunkCache.class)

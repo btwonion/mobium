@@ -8,13 +8,13 @@
     python3 benchmark/self_check.py fabric --mode profile    # storage_room under JFR -> mobium-selfcheck/*.jfr
     python3 benchmark/self_check.py fabric --mode profile-mobs   # mob_pen_live without packs, setups C and D under JFR
     python3 benchmark/self_check.py fabric --mode profile-mobs --scene storage_room   # another scene, cache off
-    python3 benchmark/self_check.py fabric --mode parts      # Module 2: GPU vertices against the CPU's, pictures
-    python3 benchmark/self_check.py fabric --mode expand-cost   # Module 2's fixed cost per frame in display_build
+    python3 benchmark/self_check.py fabric --mode offload      # vertex offload: GPU vertices against the CPU's, pictures
+    python3 benchmark/self_check.py fabric --mode expand-cost   # vertex offload's fixed cost per frame in display_build
     python3 benchmark/self_check.py --mode benchmark   # /mobium benchmark in a world made with the built-in pack
     python3 benchmark/self_check.py fabric --api vulkan   # on Vulkan, with Khronos' validation layer
     python3 benchmark/self_check.py fabric --api vulkan --from-options   # Vulkan chosen in options.txt, Iris installed
-    python3 benchmark/self_check.py fabric --api vulkan --vitrail --mode parts   # with Vitrail; packs load through it
-    python3 benchmark/self_check.py fabric --mode parts --api vulkan --arithmetic integer   # as without shaderFloat64
+    python3 benchmark/self_check.py fabric --api vulkan --vitrail --mode offload   # with Vitrail; packs load through it
+    python3 benchmark/self_check.py fabric --mode offload --api vulkan --arithmetic integer   # as without shaderFloat64
     python3 benchmark/self_check.py --minecraft 26.4 --api vulkan   # the 26.4 snapshot target (Fabric only)
 
 The self-check walks through the current PR's "How to verify" inside the dev client (settings opened the loader's way,
@@ -32,7 +32,7 @@ random at every start, and Vulkan on Mesa's lavapipe also needs -Pmobium.vulkanC
 other one. On Vulkan the checking modes also enable the validation layer (mobium.vulkanValidation; Fedora package
 vulkan-validation-layers) and fail on any of its messages that come from Mobium (validation.txt lists them all); the
 measuring modes run without it, as does --no-validation. --arithmetic integer starts the game as on a GPU without
-64-bit floats in shaders (Gradle property mobium.partsArithmetic): Module 2's expand pass computes in integers only, and
+64-bit floats in shaders (Gradle property mobium.offloadArithmetic): vertex offload's expand pass computes in integers only, and
 on Vulkan the device is created without shaderFloat64, so the validation layer reports any shader that needs it.
 
 --from-options chooses the API the way a player does, in options.txt (preferredGraphicsBackend) instead of by launch
@@ -60,7 +60,7 @@ TARGETS = {
 }
 TIMEOUT_SECONDS = 20 * 60
 # Modes that measure time: the validation layer would distort them.
-MEASURING = {"profile", "profile-mobs", "expand-cost", "gateb"}
+MEASURING = {"profile", "profile-mobs", "expand-cost", "cachecost"}
 
 
 def set_options(options: Path, values: dict[str, str]) -> dict[str, str | None]:
@@ -103,7 +103,7 @@ def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, 
 
     properties = [f"-Pmobium.graphicsBackend={api}"] + (["-Pmobium.vulkanValidation=true"] if validation else []) + extra
     if arithmetic:
-        properties.append(f"-Pmobium.partsArithmetic={arithmetic}")
+        properties.append(f"-Pmobium.offloadArithmetic={arithmetic}")
     on = f"{api}{' with validation' if validation else ''}{' with Vitrail' if extra else ''}"
     on += f", {arithmetic} arithmetic" if arithmetic else ""
     restore: dict[str, str | None] = {}
@@ -141,20 +141,20 @@ def run(loader: str, mode: str, api: str, validation: bool, from_options: bool, 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("loaders", nargs="*", help="fabric or neoforge (default: every loader the version has)")
-    parser.add_argument("--mode", default="", choices=["", "gallery", "iris-without-mobium", "profile", "profile-mobs", "parts", "gateb", "expand-cost",
+    parser.add_argument("--mode", default="", choices=["", "gallery", "iris-without-mobium", "profile", "profile-mobs", "offload", "cachecost", "expand-cost",
                                                      "benchmark"],
                         help="gallery: only the cache_gallery checks (quicker); "
                              "iris-without-mobium: only the first shader pack in shaderpacks/, with Mobium off; "
                              "profile: storage_room under Java Flight Recorder, with the cache and without Mobium; "
                              "profile-mobs: mob_pen_live under Java Flight Recorder without packs, with Fresh Animations (setup C), "
                              "then also with the first shader pack (setup D); "
-                             "parts: Module 2 in mob_pen_live, GPU vertices against the CPU's and pictures against vanilla, "
+                             "offload: vertex offload in mob_pen_live, GPU vertices against the CPU's and pictures against vanilla, "
                              "with vanilla models, Fresh Animations and the first shader pack; "
-                             "expand-cost: Module 2 off, with its compute dispatch and with its vertex-stage variant in display_build "
+                             "expand-cost: vertex offload off, with its compute dispatch and with its vertex-stage variant in display_build "
                              "(--scene mob_pen_live: setups A, C, D; --scene \"mob_pen_live stages\": only the two stages, setups A to D; "
-                             "--scene \"display_build items\": Module 2 off and on with its items off and on), "
+                             "--scene \"display_build items\": vertex offload off and on with its items off and on), "
                              "CPU time per step of the expand pass; "
-                             "gateb: /mobium gateb 20 2 in the dev client's window plus display_build and map_wall with the cache off "
+                             "cachecost: /mobium cachecost 20 2 in the dev client's window plus display_build and map_wall with the cache off "
                              "and on (a hint, not the protocol); "
                              "benchmark: the players' /mobium benchmark with 5-second runs, in a Superflat world made through "
                              "Create New World with the built-in Mobium Benchmark pack, plus /mobium stop, leaving the world, "
@@ -166,7 +166,7 @@ def main() -> None:
     parser.add_argument("--from-options", action="store_true",
                         help="choose the API in options.txt instead of by launch argument; on Vulkan Iris stays installed")
     parser.add_argument("--arithmetic", default="", choices=["", "integer"],
-                        help="integer: Module 2's expand pass as on a GPU without 64-bit floats in shaders")
+                        help="integer: vertex offload's expand pass as on a GPU without 64-bit floats in shaders")
     parser.add_argument("--no-validation", action="store_true",
                         help="vulkan: without the validation layer (the measuring modes never use it)")
     parser.add_argument("--vitrail", action="store_true",

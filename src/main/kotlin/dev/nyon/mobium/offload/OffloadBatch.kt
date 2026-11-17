@@ -1,18 +1,17 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import net.minecraft.client.renderer.StagedVertexBuffer
 import org.lwjgl.system.MemoryUtil
 
 /**
- * One staged vertex buffer's records for the expand pass of this frame (`expand_parts.comp`, which documents the
+ * One staged vertex buffer's records for the expand pass of this frame (`expand.comp`, which documents the
  * layout): per compiled part, and per run of an item's quads in one draw, one part record of [PART_WORDS] words (pose,
- * normal matrix, colour, overlay, light, flags, draw slot, sprite or tint colours, Iris's ids), per cube or quad run one
- * cube record of [CUBE_WORDS] words (first quad in the dispatch, first quad of its mesh, its part, its first vertex in
- * the draw), and per draw that got records a slot with the byte
- * ranges reserved in it, which the upload leaves out ([ReservedRanges]). Off-heap and reused from frame to frame;
- * grows by doubling. Render thread only.
+ * normal matrix, colour, overlay, light, flags, draw slot, sprite or tint colours, Iris's ids), per cube or quad run
+ * one cube record of [CUBE_WORDS] words (first quad in the dispatch, first quad of its mesh, its part, its first vertex
+ * in the draw), and per draw that got records a slot with the byte ranges reserved in it, which the upload leaves out
+ * ([ReservedRanges]). Off-heap and reused from frame to frame; grows by doubling. Render thread only.
  */
-class PartBatch {
+class OffloadBatch {
     @JvmField
     var partCount = 0
 
@@ -31,7 +30,7 @@ class PartBatch {
     @JvmField
     val draws = ArrayList<StagedVertexBuffer.Draw>()
 
-    /** Per slot, the byte ranges of the draw that Module 2 reserved; kept across frames and reused by slot. */
+    /** Per slot, the byte ranges of the draw that vertex offload reserved; kept across frames and reused by slot. */
     private val reserved = ArrayList<ReservedRanges>()
     private var slots = MemoryUtil.nmemAlloc(INITIAL_SLOTS.toLong() * 4)
     private var slotCapacity = INITIAL_SLOTS
@@ -121,7 +120,7 @@ class PartBatch {
         private const val INITIAL_CUBES = 8192
         private const val INITIAL_SLOTS = 64
 
-        // Part record words, as in expand_parts.comp.
+        // Part record words, as in expand.comp.
         const val P_MATRIX = 0
         const val P_NORMALS = 12
         const val P_COLOR = 21

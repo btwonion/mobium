@@ -26,12 +26,12 @@ enum class OverlappingMod(val modId: String, val displayName: String, val module
     ENHANCED_BLOCK_ENTITIES("enhancedblockentities", "Enhanced Block Entities", setOf(Module.STATIC_CACHE)),
 
     /** CrankShaft's Vanillate draws chests, minecarts and other vanilla visuals through instancing. */
-    VANILLATE("vanillate", "Vanillate (CrankShaft)", setOf(Module.STATIC_CACHE, Module.PART_TRANSFORM)),
+    VANILLATE("vanillate", "Vanillate (CrankShaft)", setOf(Module.STATIC_CACHE, Module.VERTEX_OFFLOAD)),
 
     /** Accelerated Rendering transforms and caches entity vertices on the GPU (no 26.x build as of Oct 2026). */
     ACCELERATED_RENDERING(
         "acceleratedrendering", "Accelerated Rendering",
-        setOf(Module.STATIC_CACHE, Module.PART_TRANSFORM)
+        setOf(Module.STATIC_CACHE, Module.VERTEX_OFFLOAD)
     )
 }
 
@@ -43,8 +43,8 @@ enum class UntestedMod(val modId: String, val displayName: String, val modules: 
     /**
      * Vitrail draws OptiFine-format shader packs on the Vulkan renderer. While a pack draws, it records entity draws
      * itself into the pack's colour targets and the pack's composites cover the level's main target, where the static
-     * cache draws: cached objects would vanish. Module 2 is tested with it (docs/vanilla-notes.md §27): under a pack the
-     * builders have Vitrail's entity format, which Module 2 leaves to the CPU.
+     * cache draws: cached objects would vanish. Vertex offload is tested with it (docs/vanilla-notes.md §27): under a
+     * pack the builders have Vitrail's entity format, which vertex offload leaves to the CPU.
      */
     VITRAIL("vitrail", "Vitrail", setOf(Module.STATIC_CACHE))
 }

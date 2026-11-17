@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
 /**
- * Static cache (Module 1): reads one layer of an item state, everything {@code LayerRenderState.submit} uses.
+ * Static cache: reads one layer of an item state, everything {@code LayerRenderState.submit} uses.
  * Read-only; no behaviour change.
  */
 @Mixin(ItemStackRenderState.LayerRenderState.class)

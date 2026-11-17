@@ -1,7 +1,7 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 /**
- * Which parts [PartCheck] compares with the CPU: per path (a small integer below [paths]) the first [perPath] parts,
+ * Which parts [OffloadCheck] compares with the CPU: per path (a small integer below [paths]) the first [perPath] parts,
  * at most [perFrame] of them per frame, so that a path's samples come from several frames (other poses) and a frame
  * full of one model costs at most [perFrame] comparisons per path. Without Minecraft classes, unit-tested. Render
  * thread only; [take] runs per part and allocates nothing.

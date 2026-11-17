@@ -20,9 +20,9 @@ class ModuleRulesTest {
     }
 
     @Test
-    fun `part transform runs on OpenGL with compute, with or without a shader pack`() {
-        assertNull(reason(Module.PART_TRANSFORM))
-        assertNull(reason(Module.PART_TRANSFORM, environment = openGl.copy(shaderPack = true)))
+    fun `vertex offload runs on OpenGL with compute, with or without a shader pack`() {
+        assertNull(reason(Module.VERTEX_OFFLOAD))
+        assertNull(reason(Module.VERTEX_OFFLOAD, environment = openGl.copy(shaderPack = true)))
     }
 
     @Test
@@ -48,29 +48,29 @@ class ModuleRulesTest {
         val status = ModuleRules.resolve(Module.STATIC_CACHE, defaults, overlap)
         assertEquals(OffReason.OVERLAP, status.reason)
         assertEquals("Enhanced Block Entities", status.detail)
-        assertNull(reason(Module.PART_TRANSFORM, environment = overlap))
+        assertNull(reason(Module.VERTEX_OFFLOAD, environment = overlap))
     }
 
     @Test
     fun `an untested mod keeps its modules on vanilla, after an overlap and before the backend`() {
         val vitrail = openGl.copy(
             backend = GraphicsBackend.VULKAN,
-            untested = mapOf(Module.STATIC_CACHE to "Vitrail", Module.PART_TRANSFORM to "Vitrail")
+            untested = mapOf(Module.STATIC_CACHE to "Vitrail", Module.VERTEX_OFFLOAD to "Vitrail")
         )
         val status = ModuleRules.resolve(Module.STATIC_CACHE, defaults, vitrail)
         assertEquals(OffReason.UNTESTED, status.reason)
         assertEquals("Vitrail", status.detail)
-        assertEquals(OffReason.UNTESTED, reason(Module.PART_TRANSFORM, environment = vitrail))
+        assertEquals(OffReason.UNTESTED, reason(Module.VERTEX_OFFLOAD, environment = vitrail))
         assertEquals(OffReason.OVERLAP, reason(Module.STATIC_CACHE, environment = vitrail.copy(overlaps = mapOf(Module.STATIC_CACHE to "Vanillate"))))
         assertEquals(OffReason.CONFIG, reason(Module.STATIC_CACHE, Config(cache = CacheConfig(enabled = false)), vitrail))
     }
 
     @Test
-    fun `both modules run on OpenGL and Vulkan, Module 2 where the GPU has compute`() {
+    fun `both modules run on OpenGL and Vulkan, vertex offload where the GPU has compute`() {
         val vulkan = openGl.copy(backend = GraphicsBackend.VULKAN)
         for (module in Module.entries) assertNull(reason(module, environment = vulkan))
         assertNull(reason(Module.STATIC_CACHE, environment = vulkan.copy(compute = false)))
-        assertEquals(OffReason.NO_COMPUTE, reason(Module.PART_TRANSFORM, environment = vulkan.copy(compute = false)))
+        assertEquals(OffReason.NO_COMPUTE, reason(Module.VERTEX_OFFLOAD, environment = vulkan.copy(compute = false)))
     }
 
     @Test
@@ -79,7 +79,7 @@ class ModuleRulesTest {
             assertEquals(OffReason.BACKEND, reason(module, environment = openGl.copy(backend = GraphicsBackend.OTHER)))
             assertEquals(OffReason.BACKEND, reason(module, environment = openGl.copy(backend = null)))
         }
-        assertEquals(OffReason.NO_COMPUTE, reason(Module.PART_TRANSFORM, environment = openGl.copy(compute = false)))
+        assertEquals(OffReason.NO_COMPUTE, reason(Module.VERTEX_OFFLOAD, environment = openGl.copy(compute = false)))
     }
 
     @Test

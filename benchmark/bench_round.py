@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Runs a benchmark round unattended in the Prism instances "Mobium Bench A–D" (docs/benchmarks.md).
 
-    python3 benchmark/bench_round.py              # setups A, B, C, D in turn, about 3.5 hours
+    python3 benchmark/bench_round.py              # setups A, B, C, D in turn, about 4 hours
     python3 benchmark/bench_round.py A D          # some setups only
     python3 benchmark/bench_round.py --dry-run    # checks and plans, launches nothing
     python3 benchmark/bench_round.py --quick A    # smoke test: short runs of the plan's commands, results in build/
     python3 benchmark/bench_round.py --api vulkan # setups A and C on Vulkan, about 2 hours
-    python3 benchmark/bench_full.py               # everything the gate and the release need, in one go
+    python3 benchmark/bench_full.py               # everything the release bar needs, in one go
 
 --api picks the graphics API (default opengl): for each setup the script sets it in the instance's options.txt
 (preferredGraphicsBackend, as a player chooses it in the video settings) and puts the old value back afterwards. On
 Vulkan only setups A and C run: B and D need Iris, which draws no shader pack there (PLAN.md, Decisions). Vulkan has
-no vertex-stage expand pass, so its plans leave out /mobium stages and measure Gate D's `control` instead. A game that
+no vertex-stage expand pass, so its plans leave out /mobium stages. A game that
 fails to start on the chosen API carries on with the other one without saying so; the script reads the backend of
 every run from summary.csv and names the runs on the wrong one, which then have to run again, as does a setup with a
 command that did not start a run. A Vulkan round's folder ends in -vulkan.
@@ -54,37 +54,43 @@ PRISM = ["flatpak", "run", "org.prismlauncher.PrismLauncher"]
 IDLE_TIME = ["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.IdleMonitor", "--object-path",
              "/org/gnome/Mutter/IdleMonitor/Core", "--method", "org.gnome.Mutter.IdleMonitor.GetIdletime"]
 
-# Per API and setup: the client commands of the round, in order (docs/benchmarks.md "Tools"). On Vulkan /mobium stages
-# is refused (no vertex-stage expand pass); instead its round measures Gate D's `control`: the static cache with over
-# without (gateb, setup A) and Module 2 with over without (gatec in control). B and D need Iris, which draws no shader
-# pack on Vulkan (PLAN.md, Decisions).
+# Per API and setup: the client commands of the round, in order (docs/benchmarks.md "Tools"); the compare commands give
+# the release bar's numbers (docs/releasing.md). On Vulkan /mobium stages is refused (no vertex-stage expand pass). B
+# and D need Iris, which draws no shader pack on Vulkan (PLAN.md, Decisions).
 PLANS = {
     "opengl": {
-        "A": ["mobium suite", "mobium gatec", "mobium stages", "mobium stages 60 3 display_build",
-              "mobium gatec 60 3 item_drops"],
-        "B": ["mobium suite", "mobium stages", "mobium gatec 60 3 item_drops"],
-        "C": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
-        "D": ["mobium suite", "mobium gatec", "mobium stages", "mobium gatec 60 3 item_drops"],
+        "A": ["mobium suite", "mobium compare vertex_offload", "mobium stages", "mobium stages 60 3 display_build",
+              "mobium compare vertex_offload 60 3 item_drops", "mobium compare vertex_offload 60 3 control",
+              "mobium compare static_cache 60 3 control"],
+        "B": ["mobium suite", "mobium stages", "mobium compare vertex_offload 60 3 item_drops"],
+        "C": ["mobium suite", "mobium compare vertex_offload", "mobium stages",
+              "mobium compare vertex_offload 60 3 item_drops", "mobium compare vertex_offload 60 3 control"],
+        "D": ["mobium suite", "mobium compare vertex_offload", "mobium stages",
+              "mobium compare vertex_offload 60 3 item_drops"],
     },
     "vulkan": {
-        "A": ["mobium suite", "mobium gatec", "mobium gatec 60 3 item_drops", "mobium gatec 60 3 control",
-              "mobium gateb"],
-        "C": ["mobium suite", "mobium gatec", "mobium gatec 60 3 item_drops", "mobium gatec 60 3 control"],
+        "A": ["mobium suite", "mobium compare vertex_offload", "mobium compare vertex_offload 60 3 item_drops",
+              "mobium compare vertex_offload 60 3 control", "mobium compare static_cache 60 3 control"],
+        "C": ["mobium suite", "mobium compare vertex_offload", "mobium compare vertex_offload 60 3 item_drops",
+              "mobium compare vertex_offload 60 3 control"],
     },
 }
 # --quick: a short run of each kind of command the API's plans use.
 QUICK_PLANS = {
     "opengl": ["mobium stages 5 1 display_build"],
-    "vulkan": ["mobium suite 5 1 control", "mobium gatec 5 1", "mobium gateb 5 1"],
+    "vulkan": ["mobium suite 5 1 control", "mobium compare vertex_offload 5 1", "mobium compare static_cache 5 1 control"],
 }
 APIS = tuple(PLANS)
 API_OPTION = "preferredGraphicsBackend"
 # Each command's length in minutes.
-MINUTES = {"mobium suite": 26, "mobium gatec": 8, "mobium stages": 8, "mobium stages 60 3 display_build": 8,
-           "mobium gatec 60 3 item_drops": 8, "mobium gatec 60 3 control": 8, "mobium gateb": 16,
-           "mobium stages 5 1 display_build": 2, "mobium suite 5 1 control": 2, "mobium gatec 5 1": 2,
-           "mobium gateb 5 1": 3}
+MINUTES = {"mobium suite": 26, "mobium compare vertex_offload": 8, "mobium stages": 8,
+           "mobium stages 60 3 display_build": 8, "mobium compare vertex_offload 60 3 item_drops": 8,
+           "mobium compare vertex_offload 60 3 control": 8, "mobium compare static_cache 60 3 control": 8,
+           "mobium stages 5 1 display_build": 2, "mobium suite 5 1 control": 2, "mobium compare vertex_offload 5 1": 2,
+           "mobium compare static_cache 5 1 control": 2}
 START_MINUTES = 5
+# The medians files the plans write, by prefix; gatea, gateb and gatec are the older names in earlier rounds' data.
+PLAN_FILES = ("suite", "compare", "cachecost", "stages", "gatea", "gateb", "gatec")
 REFUSED = "did not start a run"
 NOT_MOVED = "did not reach the monitor"  # BenchAutorun.NOT_MOVED
 
@@ -262,7 +268,7 @@ def run_setup(letter: str, plan: list[str], game: Path, folder: str, display: st
 
 
 def collect(letter: str, game: Path, since: datetime, target: Path) -> list[Path]:
-    """Copies the files this round wrote into target/<letter>/; returns the plan files (suite, gates, stages)."""
+    """Copies the files this round wrote into target/<letter>/; returns the plan files (suite, compare, stages)."""
     bench = game / "mobium-bench"
     out = target / letter
     out.mkdir(parents=True, exist_ok=True)
@@ -271,7 +277,7 @@ def collect(letter: str, game: Path, since: datetime, target: Path) -> list[Path
     for file in sorted(bench.glob("*.csv")):
         if file.name.startswith("summary") or datetime.fromtimestamp(file.stat().st_mtime) < since:
             continue
-        if file.name.split("-", 1)[0] in ("suite", "gatea", "gateb", "gatec", "stages"):
+        if file.name.split("-", 1)[0] in PLAN_FILES:
             shutil.copy2(file, out / file.name)
             plans.append(out / file.name)
         else:

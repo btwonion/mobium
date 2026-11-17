@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.Shadow;
 *//*?}*/
 
 /**
- * Static cache (Module 1): while it is active, cached block entities return no render state, so vanilla neither
+ * Static cache: while it is active, cached block entities return no render state, so vanilla neither
  * submits nor tessellates them and Mobium draws them from its section buffers instead. Reached by vanilla's extraction
  * loop, by Sodium's replacement of it and by Iris's shadow pass (on NeoForge the deprecated four-argument overload
  * forwards to the five-argument one wrapped here). Fallback: when the cache is off or the block entity is not

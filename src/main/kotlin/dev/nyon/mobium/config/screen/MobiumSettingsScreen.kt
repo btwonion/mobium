@@ -37,10 +37,10 @@ class MobiumSettingsScreen(parent: Screen) :
         val switches = types.switches().map { (key, property) -> toggle("mobium.settings.type.$key", property) }
         list.addSmall(*switches.toTypedArray())
 
-        list.addHeader(Component.translatable("mobium.module.part_transform"))
+        list.addHeader(Component.translatable("mobium.module.vertex_offload"))
         list.addSmall(
-            toggle("mobium.settings.module_enabled", draft.parts::enabled),
-            toggle("mobium.settings.parts_items", draft.parts::items)
+            toggle("mobium.settings.module_enabled", draft.offload::enabled),
+            toggle("mobium.settings.offload_items", draft.offload::items)
         )
     }
 

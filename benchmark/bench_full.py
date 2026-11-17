@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Runs every benchmark the gate and the release need, in one go, unattended (docs/benchmarks.md).
+"""Runs every benchmark the release bar needs, in one go, unattended (docs/benchmarks.md, docs/releasing.md).
 
-    python3 benchmark/bench_full.py             # about 6 hours; nobody may use the computer meanwhile
+    python3 benchmark/bench_full.py             # about 6.5 hours; nobody may use the computer meanwhile
     python3 benchmark/bench_full.py --dry-run   # the checks and the plans; builds and launches nothing
 
 In order:
@@ -12,8 +12,8 @@ In order:
   4. the round on Vulkan, setups A and C (bench_round.py --api vulkan), skipped when the smoke test failed;
   5. the round on OpenGL, setups A–D (bench_round.py).
 Each round pushes its data to btwonion/mobium-benchmarks when it ends. A failed step after the build does not stop the
-next; the summary at the end names each step's outcome and what has to run again, then Gate D's benchmark numbers
-from the Vulkan round. Before building it checks mains power and the external monitor, which every round needs.
+next; the summary at the end names each step's outcome and what has to run again, then the release bar's benchmark
+numbers from both rounds. Before building it checks mains power and the external monitor, which every round needs.
 """
 
 import argparse
@@ -29,15 +29,11 @@ import bench_round  # noqa: E402
 ROOT = bench_round.ROOT
 BENCH = ROOT / "benchmark"
 WORLD = ROOT / "versions/26.3-fabric/build/bench-world" / bench_round.WORLD
-# Gate D (PLAN.md): with over without, at most this much, for each (setup, file kind, scene, CSV line).
-GATE_D_LIMIT = 1.03
-GATE_D = [
-    ("A", "gatec", "mob_pen_live", "gate_c_frame_with_over_without", "mob_pen_live, Module 2"),
-    ("C", "gatec", "mob_pen_live", "gate_c_frame_with_over_without", "mob_pen_live, Module 2"),
-    ("A", "gatec", "control", "gate_c_frame_with_over_without", "control, Module 2"),
-    ("C", "gatec", "control", "gate_c_frame_with_over_without", "control, Module 2"),
-    ("A", "gateb", None, "gate_b_control_cache_over_vanilla", "control, static cache"),
-]
+# The release bar (docs/releasing.md): every /mobium compare of a round, the frame with the module over the frame
+# without it, at most this much.
+RELEASE_BAR = 1.03
+# /mobium compare's scene when the command names none (BenchSuite.compareScene).
+COMPARE_SCENES = {"static_cache": "storage_room", "vertex_offload": "mob_pen_live"}
 
 
 def step(title: str, command: list[str]) -> int:
@@ -55,44 +51,55 @@ def round_command(args: argparse.Namespace, *extra: str) -> list[str]:
     return command
 
 
-def gate_file(folder: Path, kind: str, scene: str | None) -> Path | None:
-    """The newest `kind` file in the round's setup folder, for `scene` (the first column of its rows)."""
-    for file in sorted(folder.glob(f"{kind}-*.csv"), reverse=True):
-        rows = [line for line in file.read_text().splitlines()[1:] if line and not line.startswith("#")]
-        if scene is None or (rows and rows[0].split(",", 1)[0] == scene):
+def compare_file(folder: Path, module: str, scene: str) -> Path | None:
+    """The newest /mobium compare file in the round's setup folder for `module` in `scene`."""
+    for file in sorted(folder.glob("compare-*.csv"), reverse=True):
+        lines = file.read_text().splitlines()
+        rows = [line for line in lines[1:] if line and not line.startswith("#")]
+        if f"# compare_module,{module}" in lines and rows and rows[0].split(",", 1)[0] == scene:
             return file
     return None
 
 
-def gate_value(file: Path, key: str) -> float | None:
+def file_value(file: Path, key: str) -> float | None:
     for line in file.read_text().splitlines():
         if line.startswith(f"# {key},"):
             return float(line.split(",", 1)[1])
     return None
 
 
-def gate_d(data: Path, since: float) -> list[str]:
-    """Gate D's benchmark numbers from the Vulkan round folder this run pushed (the newest one since `since`)."""
-    rounds = [folder for folder in data.glob("*-vulkan*") if folder.is_dir() and folder.stat().st_mtime >= since]
-    if not rounds:
-        return ["no Vulkan round from this run in " + str(data)]
-    folder = max(rounds, key=lambda path: path.stat().st_mtime)
-    lines = [f"from {folder.name} (with over without, at most {GATE_D_LIMIT}×):"]
+def release_bar(data: Path, since: float) -> list[str]:
+    """The release bar's benchmark numbers from the round folders this run pushed (the newest per API since `since`)."""
+    lines = []
     slow = missing = False
-    for letter, kind, scene, key, label in GATE_D:
-        file = gate_file(folder / letter, kind, scene)
-        value = gate_value(file, key) if file else None
-        if value is None:
+    for api, plans in bench_round.PLANS.items():
+        rounds = [folder for folder in data.glob("[0-9]*") if folder.is_dir() and folder.stat().st_mtime >= since
+                  and ("-vulkan" in folder.name) == (api == "vulkan")]
+        if not rounds:
             missing = True
-            lines.append(f"  {letter} {label}: missing")
-        else:
-            slow = slow or value > GATE_D_LIMIT
-            lines.append(f"  {letter} {label}: {value:.3f} {'ok' if value <= GATE_D_LIMIT else 'TOO SLOW'} "
-                         f"({file.name})")
-    verdict = "NOT passed" if slow else "incomplete: run the Vulkan round again" if missing else "passed"
-    lines.append(f"Gate D's benchmark part: {verdict} (its pixel and vertex checks are the self-check's and the "
-                 "gametests')")
-    return lines
+            lines.append(f"  {api}: no round from this run in {data}")
+            continue
+        folder = max(rounds, key=lambda path: path.stat().st_mtime)
+        lines.append(f"  {api}, from {folder.name}:")
+        for letter, plan in plans.items():
+            for command in plan:
+                words = command.split()
+                if words[1] != "compare":
+                    continue
+                module = words[2]
+                scene = words[5] if len(words) > 5 else COMPARE_SCENES[module]
+                file = compare_file(folder / letter, module, scene)
+                value = file_value(file, "compare_frame_with_over_without") if file else None
+                label = f"{letter} {scene}, {module}"
+                if value is None:
+                    missing = True
+                    lines.append(f"    {label}: missing")
+                else:
+                    slow = slow or value > RELEASE_BAR
+                    lines.append(f"    {label}: {value:.3f} {'ok' if value <= RELEASE_BAR else 'TOO SLOW'} ({file.name})")
+    verdict = "NOT passed" if slow else "incomplete: run the missing setups again" if missing else "passed"
+    return [f"Release bar, benchmark part (with over without, at most {RELEASE_BAR}×): {verdict}", *lines,
+            "Its pixel, vertex and validation-layer checks are the self-check's and the gametests' (docs/releasing.md)."]
 
 
 def main() -> None:
@@ -155,8 +162,7 @@ def main() -> None:
     print(f"\n=== Summary ({datetime.now():%H:%M}, {hours:.1f} h)")
     for title, outcome in outcomes:
         print(f"  {title}: {outcome}")
-    if smoke == 0:
-        print("Gate D on Vulkan, " + "\n".join(gate_d(args.data or bench_round.default_data(), started)))
+    print("\n".join(release_bar(args.data or bench_round.default_data(), started)))
     sys.exit(0 if all(outcome == "ok" for _, outcome in outcomes) else 1)
 
 

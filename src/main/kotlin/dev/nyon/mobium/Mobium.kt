@@ -12,7 +12,7 @@ import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.debug.VulkanValidation
 import dev.nyon.mobium.debug.selfcheck.SelfCheck
-import dev.nyon.mobium.parts.ExpandPass
+import dev.nyon.mobium.offload.ExpandPass
 import net.minecraft.client.Minecraft
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -48,7 +48,7 @@ object Mobium {
         LOGGER.info("Graphics: {}", capabilities.describe())
         VulkanValidation.installIfRequested()
         ExpandPass.configure(capabilities)
-        if (capabilities.compute) LOGGER.info("Part transform: expand pass as {}", ExpandPass.describeChoice())
+        if (capabilities.compute) LOGGER.info("Vertex offload: expand pass as {}", ExpandPass.describeChoice())
         ModuleStates.onClientStarted()
         SelfCheck.startIfRequested(Minecraft.getInstance())
         BenchAutorun.startIfRequested(Minecraft.getInstance())

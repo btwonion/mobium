@@ -5,16 +5,16 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.nyon.mobium.mixins.ModelPartAccessor;
-import dev.nyon.mobium.parts.PartTransform;
+import dev.nyon.mobium.offload.PartTransform;
 import net.minecraft.client.model.geom.ModelPart;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 
 /**
- * Module 2 for EMF's parts: EMF 3.3.12 makes {@code ModelPart.compile} extendable and {@code EMFModelPart.compile}
- * overrides it (Fresh Animations' cubes are EMF's own {@code EMFCube}s), so {@code ModelPartMixin} never sees them.
- * Same contract: {@code PartTransform.compile} takes the part or returns false and EMF compiles. Optional, so another
- * EMF version only loses Module 2 for its parts.
+ * Vertex offload for EMF's parts: EMF 3.3.12 makes {@code ModelPart.compile} extendable and {@code
+ * EMFModelPart.compile} overrides it (Fresh Animations' cubes are EMF's own {@code EMFCube}s), so {@code
+ * ModelPartMixin} never sees them. Same contract: {@code PartTransform.compile} takes the part or returns false and EMF
+ * compiles. Optional, so another EMF version only loses vertex offload for its parts.
  */
 @Pseudo
 @Mixin(targets = "traben.entity_model_features.models.parts.EMFModelPart", remap = false)
@@ -24,7 +24,7 @@ public class EmfModelPartMixin {
         if (!PartTransform.compile(((ModelPartAccessor) this).mobium$cubes(), pose, buffer, light, overlay, color)) {
             original.call(pose, buffer, light, overlay, color);
         } else if (PartTransform.checkPart) {
-            // The part is compared with the CPU's vertices (PartCheck, or the dev validation): compiled once more.
+            // The part is compared with the CPU's vertices (OffloadCheck, or the dev validation): compiled once more.
             try {
                 original.call(pose, PartTransform.validationConsumer(), light, overlay, color);
             } catch (Throwable e) {

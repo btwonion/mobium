@@ -7,8 +7,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.nyon.mobium.debug.Sections;
 import dev.nyon.mobium.debug.TimedSubmit;
-import dev.nyon.mobium.parts.PartSubmit;
-import dev.nyon.mobium.parts.PartTransform;
+import dev.nyon.mobium.offload.PartSubmit;
+import dev.nyon.mobium.offload.PartTransform;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,8 +18,8 @@ import org.spongepowered.asm.mixin.injection.At;
 /**
  * Times posing ({@code Model.setupAnim}) and tessellation ({@code Model.renderToBuffer}) inside
  * {@code ModelFeatureRenderer.prepareModel}, during the level's own prepare stage and, as separate sections, Iris's
- * shadow pass's, and tells Module 2 while a submit of an excluded entity type tessellates. Behaviour is unchanged;
- * with timers off the wrappers only call through.
+ * shadow pass's, and tells vertex offload while a submit of an excluded entity type tessellates. Behaviour is
+ * unchanged; with timers off the wrappers only call through.
  */
 @Mixin(ModelFeatureRenderer.class)
 public class ModelFeatureRendererMixin {

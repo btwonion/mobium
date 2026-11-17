@@ -24,8 +24,8 @@ import org.lwjgl.vulkan.VkShaderModuleCreateInfo
 import java.nio.ByteBuffer
 
 /**
- * Raw Vulkan for Module 2's expand pass, which Renderpearl has no API for (docs/vanilla-notes.md §18, §23): GLSL to
- * SPIR-V with shaderc as Renderpearl's own `GlslCompiler` does, buffers from Renderpearl's VMA allocator, a compute
+ * Raw Vulkan for vertex offload's expand pass, which Renderpearl has no API for (docs/vanilla-notes.md §18, §23): GLSL
+ * to SPIR-V with shaderc as Renderpearl's own `GlslCompiler` does, buffers from Renderpearl's VMA allocator, a compute
  * pipeline whose descriptor set holds storage buffers only, descriptor pools and barriers. The Vulkan counterpart of
  * `gpu/gl/GlCompute`. Render thread only.
  */

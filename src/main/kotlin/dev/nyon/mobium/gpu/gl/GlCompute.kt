@@ -8,7 +8,7 @@ import org.lwjgl.opengl.GL31C
 import org.lwjgl.opengl.GL43C
 
 /**
- * Raw OpenGL 4.3 for Module 2's expand pass, which Renderpearl has no API for (docs/vanilla-notes.md §5, §16):
+ * Raw OpenGL 4.3 for vertex offload's expand pass, which Renderpearl has no API for (docs/vanilla-notes.md §5, §16):
  * programs (compute, or a lone vertex shader for the point-draw variant), shader storage buffers and their uploads.
  * Renderpearl's GL backend does not cache the bound program, the vertex array or the storage buffer bindings, and binds
  * its pipeline anew in every render pass, so a pass between render passes only has to put back the program and vertex
@@ -75,7 +75,10 @@ object GlCompute {
         GL15C.glBindBuffer(GL31C.GL_COPY_WRITE_BUFFER, 0)
     }
 
-    /** Reads [bytes] bytes of [buffer] at [offset] into [address], waiting for the GPU (Module 2's comparison only). */
+    /**
+     * Reads [bytes] bytes of [buffer] at [offset] into [address], waiting for the GPU (vertex offload's comparison
+     * only).
+     */
     fun read(buffer: Int, offset: Long, bytes: Long, address: Long) {
         GL43C.glMemoryBarrier(GL43C.GL_BUFFER_UPDATE_BARRIER_BIT)
         GL15C.glBindBuffer(GL31C.GL_COPY_READ_BUFFER, buffer)

@@ -4,7 +4,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.vertex.VertexFormat;
-import dev.nyon.mobium.parts.PartTarget;
+import dev.nyon.mobium.offload.PartTarget;
 import net.minecraft.client.renderer.StagedVertexBuffer;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -12,9 +12,9 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 
 /**
- * Module 2: remembers which staged draw a builder writes for, and reserves vertices for the GPU expand pass. Changes
- * nothing by itself; a reservation only happens for model parts Module 2 takes over, otherwise vanilla writes as
- * before.
+ * Vertex offload: remembers which staged draw a builder writes for, and reserves vertices for the GPU expand pass.
+ * Changes nothing by itself; a reservation only happens for model parts vertex offload takes over, otherwise vanilla
+ * writes as before.
  */
 @Mixin(BufferBuilder.class)
 public abstract class BufferBuilderMixin implements PartTarget {

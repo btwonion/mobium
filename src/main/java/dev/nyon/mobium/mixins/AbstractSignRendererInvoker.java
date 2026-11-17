@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
 /**
- * Static cache (Module 1): vanilla's own test for whether glowing sign text gets its outline (camera within 16 blocks,
+ * Static cache: vanilla's own test for whether glowing sign text gets its outline (camera within 16 blocks,
  * or scoping), so that a cached sign is captured again when the answer changes. No behaviour change.
  */
 @Mixin(AbstractSignRenderer.class)

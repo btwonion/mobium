@@ -29,9 +29,10 @@ enum class GraphicsBackend {
  * @param multiDrawIndirect is Renderpearl's own `DeviceFeatures.multiDrawIndirect()`.
  * @param vulkanCompute is true on Vulkan when vertex buffers can be storage buffers ([VulkanSupport.available]);
  * compute shaders themselves are core Vulkan.
- * @param shaderDoubles is true when Module 2's expand shader may use 64-bit floats for its correctly rounded square
- * roots and divisions: on OpenGL with [glCompute] and core 4.0 or `ARB_gpu_shader_fp64` (every 4.3 context), on Vulkan
- * where the device has `shaderFloat64` enabled. Without them it computes these in integers (docs/vanilla-notes.md §26).
+ * @param shaderDoubles is true when vertex offload's expand shader may use 64-bit floats for its correctly rounded
+ * square roots and divisions: on OpenGL with [glCompute] and core 4.0 or `ARB_gpu_shader_fp64` (every 4.3 context), on
+ * Vulkan where the device has `shaderFloat64` enabled. Without them it computes these in integers
+ * (docs/vanilla-notes.md §26).
  */
 class Capabilities(
     @JvmField val backend: GraphicsBackend,

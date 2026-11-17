@@ -43,9 +43,9 @@ val vulkanValidation = findProperty("mobium.vulkanValidation")?.toString()?.let 
 // beside it in the dev clients (core/Compat.kt), which is how the check of §27 is repeated with a newer Vitrail.
 val vitrail = findProperty("mobium.vitrail")?.toString()?.let { it != "false" } ?: false
 val vitrailCache = findProperty("mobium.vitrailCache")?.toString()?.let { it != "false" } ?: false
-// -Pmobium.partsArithmetic=integer: Module 2's expand pass as on a GPU without 64-bit floats in shaders (on Vulkan the
-// device is created without shaderFloat64; docs/vanilla-notes.md §26).
-val partsArithmetic: String? = findProperty("mobium.partsArithmetic")?.toString()
+// -Pmobium.offloadArithmetic=integer: vertex offload's expand pass as on a GPU without 64-bit floats in shaders (on
+// Vulkan the device is created without shaderFloat64; docs/vanilla-notes.md §26).
+val offloadArithmetic: String? = findProperty("mobium.offloadArithmetic")?.toString()
 // -Pmobium.vulkanCpuDevice: 26.4 skips CPU Vulkan devices such as Mesa's lavapipe (CI's Vulkan gametests) unless the
 // system property renderpearl.vulkan.allowcpudevice is set (docs/vanilla-notes.md §20). Not by default: with it, a
 // machine that lists lavapipe before an integrated GPU would draw on lavapipe.
@@ -58,7 +58,7 @@ val launchProperties = buildMap {
     if (graphicsBackend != null) put("mobium.graphicsBackend", graphicsBackend)
     if (vulkanValidation) put("mobium.vulkanValidation", "true")
     if (vitrailCache) put("mobium.vitrailCache", "true")
-    if (partsArithmetic != null) put("mobium.parts.arithmetic", partsArithmetic)
+    if (offloadArithmetic != null) put("mobium.offload.arithmetic", offloadArithmetic)
     if (vulkanCpuDevice) put("renderpearl.vulkan.allowcpudevice", "true")
 }
 // The layer stops reporting a message after 10 repeats by default, so vanilla's could hide Mobium's of the same kind.

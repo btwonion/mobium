@@ -8,7 +8,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
 /**
- * Static cache (Module 1): remembers which entity a render state was extracted from ({@link EntityStateSource}), so the
+ * Static cache: remembers which entity a render state was extracted from ({@link EntityStateSource}), so the
  * cache can find the entity's entry when the state is submitted. Adds a field; no behaviour change.
  */
 @Mixin(EntityRenderState.class)

@@ -1,12 +1,12 @@
 #version 430 core
 
-// Module 2 (docs/architecture.md): expands part records into the vertices vanilla's CPU path would have written, bit
-// for bit. One invocation per quad. Every float operation is `precise` and written in the order of the Java code it
+// Vertex offload (docs/architecture.md): expands part records into the vertices vanilla's CPU path would have written,
+// bit for bit. One invocation per quad. Every float operation is `precise` and written in the order of the Java code it
 // replaces (docs/vanilla-notes.md §16): JOML without fused multiply-adds for positions and the face normal, Iris
-// 1.11.7's NormalHelper for the tangent. Square roots and divisions are correctly rounded as in Java
-// (`(float) Math.sqrt(double)`, float division), which GPUs do not do on their own: see sqrtFloat, which exists
-// twice. With 64-bit floats the GPU's result is corrected by exact double residuals; with MOBIUM_INTEGER defined, for
-// GPUs without 64-bit floats in shaders, the results are computed in 32-bit integers and the shader uses no double
+// 1.11.7's NormalHelper for the tangent. Square roots and divisions are correctly rounded as in Java (`(float)
+// Math.sqrt(double)`, float division), which GPUs do not do on their own: see sqrtFloat, which exists twice. With
+// 64-bit floats the GPU's result is corrected by exact double residuals; with MOBIUM_INTEGER defined, for GPUs without
+// 64-bit floats in shaders, the results are computed in 32-bit integers and the shader uses no double
 // (docs/vanilla-notes.md §26). Both write the same bytes.
 //
 // Buffers, all arrays of 32-bit words:
@@ -16,7 +16,7 @@
 //            | tint index << 12 | emission << 16 (tint 15: untinted), then the quad's packed normal (Sodium's, or
 //            NeoForge's baked one; ItemMeshes.kt)
 //   frame    cubes at cubeOffset (4 words: first quad, mesh quad, part, first vertex in its draw; for an item, a run of
-//            quads in one draw), parts at partOffset (32 words, PartBatch.kt), draw slots at slotOffset (1 word: the
+//            quads in one draw), parts at partOffset (32 words, OffloadBatch.kt), draw slots at slotOffset (1 word: the
 //            draw's first vertex)
 //   vertices the staged vertex buffer vanilla uploaded this frame; this pass fills the ranges Mobium reserved in it
 //
@@ -80,7 +80,7 @@ const uint MESH_QUAD_WORDS = 22u;
 const uint CUBE_WORDS = 4u;
 const uint PART_WORDS = 32u;
 
-// Part record words (PartBatch.kt).
+// Part record words (OffloadBatch.kt).
 const uint P_MATRIX = 0u;      // m00 m01 m02 m10 m11 m12 m20 m21 m22 m30 m31 m32
 const uint P_NORMALS = 12u;    // the normal matrix m00 m01 m02 m10 ... m22, or vanilla's packed normal per Direction
 const uint P_COLOR = 21u;      // ABGR
