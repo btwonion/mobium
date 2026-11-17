@@ -15,7 +15,7 @@ import org.lwjgl.vulkan.VkInstance
 import org.lwjgl.vulkan.VkLayerProperties
 
 /**
- * Dev-only check that Mobium raises no Vulkan validation messages (`PLAN.md` M7, Gate D). When a dev client runs on
+ * Dev-only check that Mobium raises no Vulkan validation messages. When a dev client runs on
  * Vulkan with Khronos' validation layer (`-Pmobium.vulkanValidation`, which passes `--vulkanValidation` and the system
  * property `mobium.vulkanValidation`), [installIfRequested] adds a debug messenger of Mobium's own next to
  * Renderpearl's, which logs only what `glDebugVerbosity` asks for (`docs/vanilla-notes.md` §21). Every warning and

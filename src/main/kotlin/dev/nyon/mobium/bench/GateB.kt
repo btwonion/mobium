@@ -8,7 +8,7 @@ package dev.nyon.mobium.bench
  *   draw calls skipped (the objects are not drawn, so the GPU has nothing to do for them), plus the CPU time those
  *   draw calls take in the normal run, over `control` with the cache. Target at most [TARGET].
  * - [noDraw]: the run without draw calls over `control`, without adding their CPU time back; reported, no target.
- * - [frame]: the whole `storage_room` frame over `control`, the gate's first definition; reported, no target.
+ * - [frame]: the whole `storage_room` frame over `control`; reported, no target.
  * - [drawingMs]: what drawing the cached objects costs per frame (CPU and GPU), the difference of the two runs.
  * - **[control]**: `control` with the cache over `control` without it; must not be slower, up to [CONTROL_TOLERANCE].
  *

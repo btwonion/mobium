@@ -9,9 +9,7 @@ import com.mojang.renderpearl.api.commands.GpuQueryPool
  * each frame from timestamps at its start (`runTick`) and right before its submit; and the GPU time of each expand
  * pass from timestamps right before it and after its barrier, which for a compute dispatch on a driver that records it
  * in a batch of its own includes the hand-over between the batches. Timestamps are Renderpearl's
- * (`GpuDevice.createTimestampQueryPool`, `CommandEncoder.writeTimestamp`: `glQueryCounter` on OpenGL,
- * `vkCmdWriteTimestamp2` on Vulkan, whose ticks `DeviceInfo.timestampPeriod` turns into nanoseconds; §21) and are read
- * [FRAMES_IN_FLIGHT] frames later, so that nothing waits for the GPU. Only runs while [enabled]; otherwise the callers
+ * (docs/vanilla-notes.md §21), read [FRAMES_IN_FLIGHT] frames later, so that nothing waits for the GPU. Only runs while [enabled]; otherwise the callers
  * skip it. Reading a result allocates (Renderpearl returns `OptionalLong`s), a few objects per frame while measuring.
  * Render thread only.
  */

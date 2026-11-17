@@ -1,10 +1,7 @@
 # Mobium — Plan
 
 The current target: Mobium on Minecraft's Vulkan backend. Tick the checkboxes as tasks land and treat Gate D as a hard
-stop. Keep *Current state* up to date at the end of every session.
-
-How Mobium works is in `docs/architecture.md`, the Vulkan backend's details in `docs/vanilla-notes.md` §18–§23,
-measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
+stop. Keep *Current state* up to date at the end of every session. § numbers are sections of `docs/vanilla-notes.md`.
 
 ---
 
@@ -13,14 +10,10 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 - Both modules run on Vulkan on `master`, Module 2 with doubles where the GPU has `shaderFloat64` and with integers
   elsewhere; the released mod has only the static cache there. The static cache stays off while Vitrail is installed.
 - Module 2 on Vulkan writes 0 differing vertices (self-check on both loaders, gametests on lavapipe in CI).
-- Module 2 for items (dropped items, items in hands, frames and displays) is on `master`, not released yet; its
-  results are in `docs/benchmarks.md` (*Dropped items*, *Latest results*).
-- `self_check.py --mode parts --api vulkan` passes on both loaders with items: 0 differing vertices, pictures
-  identical, no validation messages from Mobium.
-- A `26.4-fabric` target builds against `26.4-snapshot-10` with Fabric API `0.166.3+26.4` (Fabric only: NeoForge
-  has no 26.4 build; nor do Sodium, Iris, EMF, ETF and Vitrail). Its gametests and the self-check pass on OpenGL and
-  on Vulkan: 0 differing vertices, pictures as on 26.3, no validation messages from Mobium (`docs/vanilla-notes.md`
-  §28).
+- Module 2 for items (dropped items, items in hands, frames and displays) is on `master`, not released yet
+  (`docs/benchmarks.md`, *Dropped items*, *Latest results*).
+- The `26.4-fabric` target builds against `26.4-snapshot-10` with Fabric API `0.166.3+26.4`; gametests and self-check
+  pass there on OpenGL and Vulkan (`docs/vanilla-notes.md` §28).
 - Next: step 6, `python3 benchmark/bench_full.py` on `master`: the round on Vulkan (setups A and C) and a round A–D
   on OpenGL in one unattended run, with Gate D's benchmark numbers at the end.
 
@@ -31,26 +24,16 @@ measurements in `docs/benchmarks.md`, compatibility in `docs/compat.md`.
 **Goal:** both modules on Minecraft's Vulkan backend, with the same guarantee as on OpenGL: the same pixels and, for
 Module 2, the same vertex bytes as the game's own path.
 
-1. **26.4.** `26.4-snapshot-10` still has no compute and no storage buffers in Renderpearl and drops push descriptors;
-   everything Module 2's Vulkan path hooks or calls is as in 26.3. New around it: CPU devices such as lavapipe need
-   `-Drenderpearl.vulkan.allowcpudevice`, and "Default" picks Vulkan or OpenGL at random at each start (§20). The
-   `26.4-fabric` target follows the snapshots (§20, §28); check every hook again with each new one.
-2. **Tooling.** Done: dev clients, self-check (`--api vulkan`) and gametests on Vulkan with the validation layer,
-   `ExpandProfile` on Renderpearl's timestamps (§21).
-3. **Module 1 on Vulkan.** Done: pixel-identical on both loaders, no validation messages from Mobium (§22).
-4. **Module 2's dispatch on Vulkan.** Done: `gpu/vk/`, `parts/VulkanExpand`, three checked `require = 0` mixins (§23).
-5. **Checks on Vulkan.**
-   - [x] `PartValidation` and `PartCheck` on Vulkan; self-check `--mode parts` on Vulkan, both loaders: 0 differing
-         vertices, pictures identical, no validation messages from Mobium.
-   - [x] CI: the Fabric gametests a second time on Mesa's lavapipe.
-   - [x] Module 2 on Vulkan for players, after the visual check in game: `ModuleRules` lets it run there like the
-         static cache; while an installed mod keeps it off, the device and its buffers stay vanilla's.
+1. **26.4.** The `26.4-fabric` target follows the snapshots; check every hook again with each new one (§20, §28).
+2. **Tooling.** Done (§21).
+3. **Module 1 on Vulkan.** Done (§22).
+4. **Module 2's dispatch on Vulkan.** Done (§23).
+5. **Checks on Vulkan.** Done: self-check `--mode parts` on both loaders, the gametests on lavapipe in CI, Module 2
+   allowed on Vulkan by `ModuleRules`.
 6. **Measure and document.**
-   - [ ] Benchmark round on Vulkan in the Prism instances for setups A and C (`bench_round.py --api vulkan` sets the
-         graphics API in their options; `bench_full.py` runs it with the OpenGL round), plus `/mobium gatec` on
-         Vulkan and OpenGL in one session each. B and D need Iris and stay on OpenGL (*Decisions*).
-   - [x] `docs/compat.md` (Vulkan rows), README (*Does Mobium work with Vulkan?*, which still says Mobium stays off on
-         Vulkan), `changelog.md` (no release notes have mentioned Vulkan yet).
+   - [ ] Benchmark round on Vulkan in the Prism instances for setups A and C (`bench_full.py` runs it with the OpenGL
+         round), plus `/mobium gatec` on Vulkan and OpenGL in one session each. B and D need Iris and stay on OpenGL.
+   - [x] `docs/compat.md`, README, `changelog.md`.
 
 **Gate D:** on Vulkan in 26.3, on both loaders, zero screenshot differences and 0 differing vertices (self-check,
 gametests on lavapipe), no validation-layer messages from Mobium; `mob_pen_live` no slower with Module 2 than without
@@ -58,45 +41,22 @@ gametests on lavapipe), no validation-layer messages from Mobium; `mob_pen_live`
 gate fails, stop, write up why in the PR and agree on the next step first.
 
 **Decisions:**
-- **Iris on Vulkan: not part of M7.** No Iris release draws on Vulkan: 1.11.7 is the newest for 26.3 (none for 26.4);
-  with Vulkan chosen in `options.txt` it switches its own mixins off, and started on Vulkan by launch argument it
-  stops the game (§21). Iris's branch `26.3-new` (1.12.0, unreleased) has a Vulkan backend and hooks
-  classes Module 2 hooks or calls: `VulkanFeatureSets`, `VulkanDevice`, `VulkanCommandEncoder` (§21). Aperture has no
-  public repository, release or date. Setups B and D are measured on OpenGL only. When an Iris release draws on Vulkan:
-  the self-check with it on Vulkan, both modules, before B and D are measured there. With Iris 1.11.7 installed and
-  Vulkan chosen in `options.txt`, Iris stays dormant and both modules draw as vanilla (`self_check.py --from-options`).
-- **Vitrail: Module 2 runs beside it, the static cache stays off while it is installed.** Checked with 0.13.0-beta,
-  its newest release for 26.3, on both loaders on Vulkan with Complementary Reimagined (§27): without a pack both
-  modules match vanilla; with a pack Vitrail's own entity format keeps Module 2 on the CPU path by itself, while the
-  cached objects vanish, because the pack's composites cover the level target the cache draws into. Supporting the
-  cache there needs its buckets drawn through Vitrail's entity door (`RenderTypeFeatureRenderer.executeGroup`), which
-  Vitrail offers no API for. Check again with each Vitrail release (`-Pmobium.vitrail`, `self_check.py --vitrail
-  --vitrail-cache`).
-- **GPUs without `shaderFloat64`: Module 2 computes in integers there.** Every Intel GPU from Ice Lake's Iris Plus
-  through Iris Xe (11th to 14th gen Core) to Arrow Lake's Arc 140T, the Arc A-series, Snapdragon X and every Mac lack
-  the feature (`docs/compat.md`, *Known differences and limits*). The expand pass's correctly rounded square roots and
-  divisions use doubles where shaders have them and 32-bit integers elsewhere, with the same bytes (*Module 2 without
-  64-bit floats*). On OpenGL the same GPUs report core 4.0 and emulate doubles in the driver; how much that costs
-  Module 2 there is not measured *(verify)*.
+- **Iris on Vulkan is not part of M7:** no Iris release draws on Vulkan, so setups B and D are measured on OpenGL only;
+  with Iris installed and Vulkan chosen, both modules draw as without Iris (§21, `docs/compat.md`). When an Iris
+  release draws on Vulkan: the self-check with it on Vulkan, both modules, before B and D are measured there.
+- **Vitrail:** Module 2 runs beside it; the static cache stays off while it is installed, since under a pack its
+  buckets would need Vitrail's entity draw, which has no API (§27). Check again with each Vitrail release
+  (`-Pmobium.vitrail`, `self_check.py --vitrail --vitrail-cache`).
+- **GPUs without `shaderFloat64`:** Module 2 computes its square roots and divisions in 32-bit integers there, with the
+  same bytes (§26; which GPUs: `docs/compat.md`, *Known differences and limits*). On OpenGL those GPUs emulate doubles
+  in the driver; the cost there is not measured *(verify)*.
 
 ---
 
 ## Module 2 without 64-bit floats
 
-Module 2's expand pass used doubles for its correctly rounded square roots and divisions, so on Vulkan GPUs without
-`shaderFloat64` (*Decisions*, third entry) Module 2 stayed off. The shader now has a second arithmetic that computes
-them bit by bit in 32-bit integers and writes the same bytes (`docs/architecture.md`, *Two arithmetics, same bytes*;
-`docs/vanilla-notes.md` §26). Doubles still run where shaders have them; integers elsewhere.
+Done except two checks on hardware Mobium has not run on (§26; `docs/architecture.md`, *Two arithmetics, same bytes*).
 
-- [x] Integer square root, division and Iris's rsqrt in `expand_parts.comp` (`MOBIUM_INTEGER`), compared with Java for
-      every float and 4 · 10⁹ divisions without a difference.
-- [x] `ExpandPass.arithmetic` with `forcedArithmetic` for the checks and `-Dmobium.parts.arithmetic=integer`
-      (self-check `--arithmetic integer`) for a session as on a GPU without doubles; on Vulkan `VulkanSupport` runs
-      Module 2 without `shaderFloat64`; the GPU check samples each arithmetic as its own path.
-- [x] Self-check `--mode parts` with both arithmetics in both stages, on OpenGL and Vulkan, both loaders, plus Vulkan
-      sessions without `shaderFloat64`; the gametests with both arithmetics: 0 differing vertices, pictures identical,
-      no validation messages from Mobium (`docs/vanilla-notes.md` §26, *Results*).
-- [x] The maintainer's visual check (*How to verify* of the PR).
 - [ ] On a real GPU without `shaderFloat64` (an Intel Iris Xe or Arc A-series laptop on Vulkan): the self-check's
       `--mode parts --api vulkan`, or in normal play F3 `mobium:modules` showing the GPU check without a difference.
 - [ ] In a benchmark round: `expand-cost` and `mob_pen_live` with both arithmetics on GPUs with doubles (the Arc 140V,

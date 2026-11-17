@@ -1153,7 +1153,7 @@ object SelfCheck {
     /**
      * Mobium's picture against vanilla's like [comparePair], but with the game paused behind a screen that draws
      * nothing ([StillScreen]): Fresh Animations' animations run on EMF's frame time, which only stops while the game is
-     * paused (with ticks frozen two vanilla frames still differed in about 600 pixels). First two vanilla frames show
+     * paused (docs/vanilla-notes.md §16, *Where EMF animates*). First two vanilla frames show
      * what changes on its own; where nothing does, Mobium's picture must match exactly. A shader pack can still change
      * a few thousand pixels from frame to frame in some scenes (Complementary in the part gallery, with identical
      * vertices); there Mobium's picture may differ from vanilla's by at most twice that floor.

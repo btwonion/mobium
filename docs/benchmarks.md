@@ -8,93 +8,42 @@ and players' files in `players/`. A build id in an older round may predate a rew
 
 ## Tools
 
-- **`benchmark/mobium-bench`** — a datapack that builds the scenes. It works without Mobium; regenerate it with
-  `python3 benchmark/generate.py` after changing the generator, never edit the `.mcfunction` files by hand.
-- **`/mobium bench <scene> <seconds> [setup]`** — Mobium's client command. It hides the HUD, warms up for 5 s, records
-  every frame for `<seconds>`, then prints a summary in chat and writes two files to `<game dir>/mobium-bench/`:
-  - `<scene>-<setup>-<yyyyMMdd-HHmmss>.csv`: one row per frame (frame time, every timer below, entity and block
-    entity counts);
-  - `summary.csv`: one row per run, appended (averages, Minecraft and Mobium version, `build`, the commit the jar was
-    built from (`git describe`, `-dirty` with local changes), loader, backend, GPU, the monitor and video mode, the
-    window size, `ac` or `battery`, the power profile, `gpu_mhz`, the GPU's actual clock sampled once per second, and
-    `gpu_throttle`, why the driver held that clock down, sampled with it as the share of samples per reason
-    (`pl1 92%; none 8%`; a sample with two reasons counts for both; `xe`'s `throttle/reasons`, `i915`'s
-    `throttle_reason_*`), which four come from Linux sysfs and stay empty elsewhere; also `os` and `driver`, as in
-    `/mobium benchmark` below, and `throttled_frames`: the frames during which the game capped its own frame rate,
-    which it does at 10 FPS while an exclusive-fullscreen window is minimized or not focused (`FramerateLimitTracker`).
-    A run with such frames warns in chat and does not count. A `summary.csv` with older columns is renamed to
-    `summary-before-<timestamp>.csv`. The suite and gate files end with `# throttled_runs,<n>` (runs with such frames;
-    the medians include them) and `# build,<commit>` lines.
-  `setup` is detected when omitted: `sodium` or `vanilla`, `+iris` if a shader pack is active, `+emf` if Entity Model
-  Features is installed, `+fa` if a resource pack with "fresh" in its id is enabled. Before it starts, the run warns in chat about anything that breaks the protocol: a window other than
-  1920×1080, battery power, a low-power profile, or a setup other than the instance's (below). `/mobium stop` aborts a
-  run.
-- **`/mobium suite [seconds] [runs] [scenes…]`** — runs a whole setup unattended (defaults: 60 s, 3 runs, all seven
-  scenes). For each scene it builds the scene through the integrated server (singleplayer only; no cheats needed),
-  waits at least 10 s and until section rebuilds, client light updates and server ticks have calmed down, then
-  records `runs` runs. It rewrites `mobium-bench/suite-<timestamp>.csv` with the medians after every run (quitting
-  halfway keeps what was measured) and prints them at the end. It refuses to start when the instance was made for
-  another setup than the active one (see *Prism instances*).
-- **`/mobium gatea [seconds] [runs]`** — Gate A: builds `storage_room` and records it with the static cache off and
-  on, alternating (defaults: 60 s, 3 runs each), then prints the speed-up against the 1.5× target and writes
-  `mobium-bench/gatea-<timestamp>.csv`. It compares the whole static cache and stays useful as a before/after
-  number.
-- **`/mobium gateb [seconds] [runs]`** — Gate B: records `storage_room` with the static cache, the same with the
-  cache's draw calls skipped (setup `…+cache+nodraw`; the chests and signs vanish for that run), `control` with the
-  cache and `control` without it, in turn (defaults: 60 s, 3 rounds; about 16 minutes). Then it prints Gate B's
-  numbers (`bench/GateB.kt`): what the cached objects cost, i.e. `storage_room` without their draws plus the draw
-  calls' CPU time, against `control` (target: at most 1.2×); `control` with the cache against `control` without it
-  (must not be slower; up to 1.03× counts as noise); and, without a target, the whole `storage_room` frame against
-  `control` and what drawing the cached objects costs per frame. It writes `mobium-bench/gateb-<timestamp>.csv` with
-  the medians and those numbers, plus the run without draw calls over `control` before their CPU time is added back
-  (`gate_b_nodraw_over_control`). Both gate commands switch the cache themselves for the plan, even when it is off
-  in the settings (which they do not save).
-- **`/mobium gatec [seconds] [runs] [scene]`** — Gate C: records a scene with Module 2 off and on, alternating
-  (defaults: 60 s, 3 runs each, `mob_pen_live`; about 7 minutes), then prints the entity CPU work (`prepare` +
-  `shadow_prepare`) without over with Module 2 (target at least 1.5× in setup D) and the frame time with over without
-  (must not be slower), and writes `mobium-bench/gatec-<timestamp>.csv`. The targets are Gate C's, so they apply to
-  `mob_pen_live` only: in another scene (`/mobium gatec 60 3 item_drops`) it prints and writes the same two numbers
-  without a verdict, and the file's `scene` column names the scene. Like the other gates, it switches Module 2 on for
-  the plan.
-- **`/mobium stages [seconds] [runs] [scene]`** — Module 2's expand pass as a compute dispatch and in the vertex stage
-  (`parts/ExpandPass.kt`), alternating, in one scene (defaults: 60 s, 3 runs each, `mob_pen_live`; about 7 minutes),
-  then prints the frame time with the vertex stage over compute's and writes `mobium-bench/stages-<timestamp>.csv`.
-  Refused where vertex shaders cannot write storage buffers. Like the gates, it switches Module 2 on for the plan.
-- **`/mobium benchmark`** — the players' benchmark, with the release jar (README, *Benchmarks wanted*). The jar carries
-  `benchmark/mobium-bench` as the built-in data pack "Mobium Benchmark" (`bench/BenchPack.kt`, packaged by the build),
-  which is listed under Create New World → Data Packs and never switched on by itself, in new or existing worlds
-  (`docs/vanilla-notes.md` §17). In a classic superflat world with that pack (seed `mobium` as in *World* below; another
-  seed is warned about and recorded) the command builds `storage_room` and `mob_pen_live` and records each with all of
-  Mobium off, on, on and off (the A/B state, so the modules run as the player's settings allow), 30 s per run, about six
-  minutes. For the runs it sets render distance 12, FOV 70, entity distance 100 %, no frame cap and VSync off without
-  turning the graphics preset to Custom (`bench/BenchOptions.kt`), and puts them and the A/B state back at the end, on
-  `/mobium stop` and when the player leaves the world. It prints each scene's FPS without and with Mobium and the gain
-  in chat and writes `mobium-bench/benchmark-<timestamp>.csv`: the medians as in the suite files, then
-  `<scene>_off_ms`, `_on_ms` and `_speedup` (off over on), the OS, CPU, GPU, driver, backend, display, window size,
-  power, mods, shader pack, resource packs, graphics preset, whether the seed is `mobium`, each module's state and the
-  build. `# os` is Java's `os.name`, `os.version` and `os.arch`, on Linux after the distribution's `PRETTY_NAME` (the
-  host's under Flatpak; `bench/OperatingSystem.kt`); `# driver` is Renderpearl's driver string, `GL_VERSION` on OpenGL
-  (`docs/vanilla-notes.md` §19). It warns about battery power and low-power profiles but not about the window size.
-  It refuses outside a classic superflat overworld, without the pack, and when neither module can run. In dev
-  environments `/mobium benchmark <seconds>` shortens the runs (`self_check.py --mode benchmark` uses 5 s).
-- **Setup names** get `+cache` while the static cache is active and `+parts` while Module 2 is (`+parts-vertex` when
-  its expand pass runs in the vertex stage: without a shader pack where the GPU has it). Both modules are on by
-  default, so a plain `/mobium suite` measures with them; switch Mobium off in the settings (or with the A/B key, the
-  key right of P: `]` on US, `+` on German keyboards) for vanilla numbers.
-- **F3 entry `mobium:timings`** — the same timers averaged over the last 64 frames. Enable it in the debug options
-  screen (the timers only run while it is shown or a benchmark records).
-- **Prism instances** — `./gradlew :26.3-fabric:benchKit` collects the mods of the four setups and the datapack,
-  `./gradlew :26.3-fabric:runBenchWorld` saves a ready benchmark world (both under `versions/26.3-fabric/build/`), and
-  `python3 benchmark/prism_instances.py` creates or updates four Prism Launcher instances "Mobium Bench A–D" with the
-  mods, the world and the settings below. It also refreshes the datapack inside the instances' worlds, downloads the
-  shader pack and Fresh Animations from Modrinth once (pinned versions, checked against Modrinth's SHA-512; skip with
-  `--no-download`), installs and selects them in the setups that need them, and adds
-  `-Dmobium.bench.expect=<setup>` to each instance's Java arguments, so `/mobium suite` and `/mobium gatea` refuse to
-  run with the wrong packs. Re-run the first and last step after changing Mobium; for a new world, run the second
-  step and delete `saves/Mobium Bench` in the instances before the last. The script refuses a kit whose Mobium jar
-  was not built from the checkout's current commit, and a checkout that is behind its upstream branch (`git pull`
-  first; `--allow-behind` measures an older build on purpose), and prints the build it installed. It finds the
-  instances by folder (`mobium-bench-a` …) or, after Prism renamed a folder to the instance's name, by name.
+- **`benchmark/mobium-bench`** — a datapack that builds the scenes, also without Mobium. Regenerate it with
+  `python3 benchmark/generate.py`; never edit the `.mcfunction` files by hand.
+- **`/mobium bench <scene> <seconds> [setup]`** — hides the HUD, warms up for 5 s, records every frame, prints a summary
+  and writes to `<game dir>/mobium-bench/`: `<scene>-<setup>-<yyyyMMdd-HHmmss>.csv` (one row per frame: frame time,
+  every timer below, entity counts) and `summary.csv` (one row per run: averages, versions, `build` (the jar's commit,
+  `git describe`), loader, backend, GPU, `driver`, `os`, monitor, video mode, window size, power, `gpu_mhz` and
+  `gpu_throttle` (the GPU clock and the driver's throttle reasons, sampled each second, Linux sysfs only) and
+  `throttled_frames`, the frames the game capped at 10 FPS because its window lost the focus; such a run warns in chat
+  and does not count). A `summary.csv` with older columns is renamed to `summary-before-<timestamp>.csv`. `setup` is
+  detected when omitted (`sodium` or `vanilla`, `+iris`, `+emf`, `+fa`); the run warns about anything that breaks the
+  protocol (window size, battery, low-power profile, another setup than the instance's). `/mobium stop` aborts.
+- **`/mobium suite [seconds] [runs] [scenes…]`** — a whole setup unattended (60 s, 3 runs, all seven scenes): builds
+  each scene, waits until the world has settled, records, and rewrites `suite-<timestamp>.csv` with the medians after
+  every run. Suite and gate files end with `# throttled_runs,<n>` and `# build,<commit>`.
+- **`/mobium gatea`**, **`gateb`**, **`gatec [seconds] [runs] [scene]`** — the gates (*Gates*), alternating Mobium's
+  module off and on in one session (60 s, 3 runs each) and writing `<gate>-<timestamp>.csv` with medians and the gate's
+  numbers (`bench/GateB.kt`, `bench/GateC.kt`). `gateb` adds a `storage_room` run with the cache's draw calls skipped
+  (setup `…+cache+nodraw`). `gatec` in a scene other than `mob_pen_live` prints its numbers without a verdict. The gate
+  commands switch the module themselves, whatever the settings say.
+- **`/mobium stages [seconds] [runs] [scene]`** — Module 2's expand pass as a compute dispatch against the vertex stage,
+  alternating; refused where vertex shaders cannot write storage buffers (and so on Vulkan).
+- **`/mobium benchmark`** — the players' benchmark (README, *Benchmarks wanted*): the jar's built-in data pack "Mobium
+  Benchmark" (`bench/BenchPack.kt`, never on by itself, `docs/vanilla-notes.md` §17), `storage_room` and
+  `mob_pen_live` with Mobium off, on, on, off, 30 s per run, at fixed options (`bench/BenchOptions.kt`, put back at the
+  end); writes `benchmark-<timestamp>.csv` with medians, `<scene>_speedup` and the machine (`# os`, `# driver`: §19).
+  Refused outside a classic superflat overworld, without the pack, or when neither module can run. In dev
+  environments `/mobium benchmark <seconds>` shortens the runs.
+- **Setup names** get `+cache` and `+parts` (`+parts-vertex` in the vertex stage) while the modules run. Both are on by
+  default; switch Mobium off in the settings or with the A/B key for vanilla numbers.
+- **F3 entry `mobium:timings`** — the same timers averaged over 64 frames (they only run while shown or recording).
+- **Prism instances** — `./gradlew :26.3-fabric:benchKit` (the setups' mods and the datapack), `./gradlew
+  :26.3-fabric:runBenchWorld` (a ready world), then `python3 benchmark/prism_instances.py` creates or updates "Mobium
+  Bench A–D" with mods, world, settings, the pinned shader pack and Fresh Animations (`--no-download` to skip), and
+  `-Dmobium.bench.expect=<setup>`, so the suite and gates refuse the wrong packs. Re-run the first and last step after
+  changing Mobium. The script refuses a kit not built from the checkout's current commit and a checkout behind its
+  upstream (`--allow-behind`).
 
 The game directory of the dev clients is `versions/26.3-fabric/run/` (Fabric) and `run/` (NeoForge); in a Prism
 instance it is the instance's `minecraft/` folder.
@@ -628,26 +577,15 @@ baseline in this state does not count.
 
 ### Measurement pitfalls
 
-- Instance settings Prism ignores: Java arguments at the end of `instance.cfg` land in its `[UI]` section, and a
-  renamed instance folder leaves a duplicate; `benchmark/prism_instances.py` writes `[General]` and uses the folder
-  Prism launched last.
-- Vanilla's default 120 FPS cap, and its idle frame limit after 60 s without input (the bench handles the second).
-- Vanilla's 10 FPS cap while an exclusive-fullscreen window is minimized or not focused, whatever the inactivity
-  setting: every frame takes 100 ms and the GPU idles. `throttled_frames` in `summary.csv` counts those frames, the run
-  warns in chat, the autorun log notes the focus change and `bench_round.py` prints it with the keyboard or mouse
-  input around it. In the rounds on a484d88 and b264421 the window lost the focus three times (B for good, C for half
-  a minute, B's rerun for 2 s). None of the likely programs took it: GNOME shows notifications on the laptop's screen
-  without taking the focus (a mail notification during A took none), the session never went idle or locked, 1Password
-  showed nothing, and no long frame came first (as GNOME's "not responding" dialog would need). In B's rerun the
-  Claude desktop app's window received the focus in that second, with no session activity before it; the other two
-  left no trace in the journal or the apps' logs. The laptop's own screen stays on during a round, with its windows
-  on it, so a click there takes the focus.
-- Battery power: vanilla `storage_room` 9 → 42 ms on the dev laptop (gametest window); the bench
-  warns in chat.
+- Vanilla's default 120 FPS cap, and its idle limit after 60 s without input (the bench handles the second).
+- Vanilla's 10 FPS cap while an exclusive-fullscreen window is minimized or not focused: `throttled_frames` counts those
+  frames and `bench_round.py` prints each focus change with the input around it. Nobody may use the computer during a
+  round; the laptop's own screen stays on, so a click there takes the focus.
+- Battery power (vanilla `storage_room` 9 → 42 ms on the dev laptop); the bench warns.
 - The first run after a scene is built (the suite waits until the world has settled).
 - The slow state of vanilla `storage_room` above.
-- Zombies in the sun (fixed in the datapack), packs that are installed but not selected, and quitting during
-  `control` (all caught by the instances and the suite now).
-- A bench kit built from an outdated checkout measures the previous build. The jar names its commit (`build` in
-  `summary.csv`), and `benchmark/prism_instances.py` refuses a stale kit or a checkout behind its upstream.
+- A bench kit from an outdated checkout measures the previous build; `prism_instances.py` refuses it, and `build` in
+  `summary.csv` names the jar's commit.
+- Prism ignores Java arguments outside `instance.cfg`'s `[General]` section and leaves duplicates of renamed folders;
+  `prism_instances.py` handles both.
 - Day-to-day speed of the laptop (`control` 1.02–1.11 ms in A over three sessions): compare within one session.

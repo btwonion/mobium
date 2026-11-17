@@ -24,8 +24,9 @@ import org.lwjgl.opengl.GL43C
  *
  * The shader runs as a compute dispatch ([STAGE_COMPUTE]) or, compiled as a vertex shader, as a point draw with
  * rasterisation off ([STAGE_VERTEX]), which keeps it in the graphics pipeline: Mesa's iris records a dispatch in a
- * batch of its own and flushes both batches around it, about 0.2 ms of GPU time per frame however few parts there are
- * (docs/vanilla-notes.md §16). Both write the same bytes; [stage] picks one per pass.
+ * batch of its own and flushes both batches around it, a fixed GPU cost per frame however few parts there are
+ * (docs/vanilla-notes.md §16, docs/benchmarks.md *Module 2's fixed cost*). Both write the same bytes; [stage] picks
+ * one per pass.
  *
  * The shader's square roots and divisions exist twice as well ([arithmetic]): corrected with 64-bit floats
  * ([ARITHMETIC_DOUBLE]), or computed in 32-bit integers ([ARITHMETIC_INTEGER]) for GPUs without 64-bit floats in
@@ -82,8 +83,8 @@ object ExpandPass {
 
     /**
      * The arithmetic the next pass uses: 64-bit floats where shaders have them, 32-bit integers elsewhere (the only
-     * choice there, whatever is forced). Which of the two is faster is not measured, so a GPU with 64-bit floats keeps
-     * the variant every benchmark so far ran with.
+     * choice there, whatever is forced). Which of the two is faster is not measured (`PLAN.md`), so a GPU with 64-bit
+     * floats keeps doubles.
      */
     val arithmetic: Int
         get() = when {
