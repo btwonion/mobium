@@ -211,8 +211,11 @@ them is running. For each setup it writes the plan (`PLANS` in the script: `/mob
 `/mobium stages 60 3 display_build`; on Vulkan below) to the instance's `mobium-bench/autorun` and starts the
 instance with Prism's command line straight into the world. The game opens on the display the desktop chooses (the
 laptop's own screen); as soon as it has started, before the world loads, Mobium (`bench/BenchAutorun.kt`) moves the
-fullscreen window to the monitor whose name contains `--display` (default `AOC`) at 1920×1080, and checks it again
-before the first command.
+fullscreen window to the monitor whose name contains `--display` (default `AOC`) at 1920×1080. The first command waits
+until the window is there (from the monitor the compositor shows it on, `docs/vanilla-notes.md` §29); the move is
+repeated every 3 s, and after ten tries the setup stops without measuring and has to run again (`autorun-done`: "did
+not reach the monitor"). On Vulkan under GNOME the window does not move off the laptop's screen: turn that screen off
+for a Vulkan round.
 Then it runs the commands in turn, writes `mobium-bench/autorun-done` (what it did, the window and display it measured
 on, and when the window lost or regained focus) and closes the game. The script prints each focus change with the
 keyboard or mouse input around it, from GNOME's idle monitor (`org.gnome.Mutter.IdleMonitor`, polled every 5 s): without

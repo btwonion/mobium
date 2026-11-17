@@ -19,16 +19,18 @@ command that did not start a run. A Vulkan round's folder ends in -vulkan.
 For each setup it writes the setup's plan (PLANS) to the instance's mobium-bench/autorun, starts the instance through
 Prism's command line straight into the "Mobium Bench" world, and waits until Mobium has run every command and closed
 the game (bench/BenchAutorun.kt). As soon as the game has started, Mobium moves the fullscreen window to the monitor
-whose name contains --display at 1920×1080. Before anything starts it checks mains power, an external monitor, that
-every instance has the bench kit's Mobium jar (python3 benchmark/prism_instances.py installs it) and that none of them
-is running. Afterwards it copies this round's files into <yyyy-mm-dd>-<machine>/<setup>/ of the data repository
-btwonion/mobium-benchmarks (per-run CSVs gzipped, summary.csv with this round's rows; -<build> is appended when that
-folder holds an earlier round of the day), prints the medians, and commits and pushes the round. Runs during which
-the game capped its own frame rate (the window lost focus or was minimized: 10 FPS) are named after each setup, at the
-end and in the commit message; such a setup has to run again. Each focus change Mobium noted is printed with the
-keyboard or mouse input around it (GNOME's idle monitor, polled every 5 s): without input a program took the focus,
-with input someone at the computer. The data repository's checkout sits next to Mobium's (../mobium-benchmarks, or
---data); it is cloned or pulled before the round starts. Nobody may use the computer while it runs.
+whose name contains --display at 1920×1080, repeats the move until the window is there and stops the setup before
+measuring when it never gets there (such a setup has to run again). Before anything starts it checks mains power, an
+external monitor, that every instance has the bench kit's Mobium jar (python3 benchmark/prism_instances.py installs
+it) and that none of them is running. Afterwards it copies this round's files into <yyyy-mm-dd>-<machine>/<setup>/ of
+the data repository btwonion/mobium-benchmarks (per-run CSVs gzipped, summary.csv with this round's rows; -<build> is
+appended when that folder holds an earlier round of the day), prints the medians, and commits and pushes the round.
+Runs during which the game capped its own frame rate (the window lost focus or was minimized: 10 FPS) are named after
+each setup, at the end and in the commit message; such a setup has to run again. Each focus change Mobium noted is
+printed with the keyboard or mouse input around it (GNOME's idle monitor, polled every 5 s): without input a program
+took the focus, with input someone at the computer. The data repository's checkout sits next to Mobium's
+(../mobium-benchmarks, or --data); it is cloned or pulled before the round starts. Nobody may use the computer while it
+runs.
 """
 
 import argparse
@@ -84,6 +86,7 @@ MINUTES = {"mobium suite": 26, "mobium gatec": 8, "mobium stages": 8, "mobium st
            "mobium gateb 5 1": 3}
 START_MINUTES = 5
 REFUSED = "did not start a run"
+NOT_MOVED = "did not reach the monitor"  # BenchAutorun.NOT_MOVED
 
 
 def setups_by_letter() -> dict[str, tuple[str, str]]:
@@ -290,6 +293,12 @@ def refused_commands(done: Path) -> list[str]:
         if done.exists() else []
 
 
+def not_moved(done: Path) -> str | None:
+    """Mobium's note that the window never reached the benchmark monitor; the autorun then stopped before measuring."""
+    lines = [line[20:] for line in done.read_text().splitlines() if NOT_MOVED in line] if done.exists() else []
+    return lines[0] if lines else None
+
+
 def throttled_runs(summary: Path) -> list[str]:
     """The runs in [summary] during which the game capped its own frame rate (FrameRecorder's throttled_frames)."""
     if not summary.exists():
@@ -423,6 +432,7 @@ def main() -> None:
     throttled = {}
     wrong_api = {}
     refused = {}
+    misplaced = {}
     for letter in letters:
         folder, game = games[letter]
         started = datetime.now()
@@ -432,9 +442,9 @@ def main() -> None:
         finally:
             # The instance's next start, by hand or in another round, runs on the API it had before.
             prism_instances.set_keys(game / "options.txt", ":", {API_OPTION: previous or '"default"'})
-        plans = collect(letter, game, started, target)
-        for plan in plans:
-            print_medians(plan)
+        files = collect(letter, game, started, target)
+        for file in files:
+            print_medians(file)
         summary = target / letter / "summary.csv"
         if runs := throttled_runs(summary):
             throttled[letter] = runs
@@ -452,23 +462,27 @@ def main() -> None:
             print(f"  {letter}: {len(commands)} commands did not start a run (see chat in {game / 'logs/latest.log'}):")
             for command in commands:
                 print(f"    {command}")
+        if note := not_moved(game / "mobium-bench" / "autorun-done"):
+            misplaced[letter] = note
+            print(f"  {letter}: measured nothing, {note}")
         if not ok:
             break
         finished.append(letter)
         time.sleep(30)
     print(f"Finished {' '.join(finished) or 'nothing'}; results in {target}")
     # A smoke test asks whether the commands run on this API; a throttled run answers that as well.
-    again = sorted(set(wrong_api) | set(refused) | (set() if args.quick else set(throttled)))
+    again = sorted(set(wrong_api) | set(refused) | set(misplaced) | (set() if args.quick else set(throttled)))
     if again:
-        print(f"Run {' '.join(again)} again: their throttled runs, runs on the other API or commands that did not "
-              f"start do not count (python3 benchmark/bench_round.py {' '.join(again)}"
-              f"{' --api vulkan' if vulkan else ''}{' --quick' if args.quick else ''})")
+        print(f"Run {' '.join(again)} again: their throttled runs, runs on the other API, commands that did not "
+              f"start or a window that did not reach the monitor do not count (python3 benchmark/bench_round.py "
+              f"{' '.join(again)}{' --api vulkan' if vulkan else ''}{' --quick' if args.quick else ''})")
     if not args.quick and any(path.is_file() for path in target.rglob("*")):
         stopped = [letter for letter in letters if letter not in finished]
         notes = [f"{' '.join(stopped)} not finished"] if stopped else []
         notes += [f"throttled runs in {' '.join(throttled)}"] if throttled else []
         notes += [f"runs not on {on} in {' '.join(wrong_api)}"] if wrong_api else []
         notes += [f"commands not started in {' '.join(refused)}"] if refused else []
+        notes += [f"window not on the monitor in {' '.join(misplaced)}"] if misplaced else []
         publish(data, target, f"{target.name}: {' '.join(letters)} on {on} with build {kit}"
                 + (f" ({'; '.join(notes)})" if notes else ""))
     sys.exit(0 if len(finished) == len(letters) and not again else 1)

@@ -8,6 +8,8 @@ import org.lwjgl.sdl.SDLError
 import org.lwjgl.sdl.SDLStdinc
 import org.lwjgl.sdl.SDLVideo
 import org.lwjgl.sdl.SDL_DisplayMode
+import org.lwjgl.sdl.SDL_Point
+import org.lwjgl.sdl.SDL_Rect
 import org.lwjgl.system.MemoryStack
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,13 +18,14 @@ import java.time.format.DateTimeFormatter
 
 /**
  * An unattended benchmark round (`benchmark/bench_round.py`): when `<game dir>/mobium-bench/autorun` exists at client
- * start, Mobium reads and deletes it, puts the fullscreen window on the monitor whose name contains `display` at once
- * (and checks it again once the world has settled), opens its world (unless the launcher's quick play already did),
- * runs each `command` line in turn as a client command (`mobium suite`, `mobium gatec`, …), waiting for each plan to
- * finish, then writes `autorun-done` next to it and quits the game. File format, one `key=value` per line: `world=`,
- * `display=` (optional), any number of `command=`. Nothing happens without the file. The log also notes each time the
- * window loses or regains focus or is minimized: vanilla then caps the frame rate (`FrameRecorder` counts those frames
- * per run). Ticked once per client tick on the render thread.
+ * start, Mobium reads and deletes it, puts the fullscreen window on the monitor whose name contains `display` at once,
+ * opens its world (unless the launcher's quick play already did), runs each `command` line in turn as a client command
+ * (`mobium suite`, `mobium gatec`, …), waiting for each plan to finish, then writes `autorun-done` next to it and quits
+ * the game. The first command waits until the window is on that monitor; the move is repeated until it is, and a window
+ * that never gets there stops the autorun before it measures anything. File format, one `key=value` per line: `world=`,
+ * `display=` (optional), any number of `command=`. Nothing happens without the file. The log also notes each monitor the
+ * window appears on and each time it loses or regains focus or is minimized: vanilla then caps the frame rate
+ * (`FrameRecorder` counts those frames per run). Ticked once per client tick on the render thread.
  */
 object BenchAutorun {
     private const val REQUEST = "autorun"
@@ -33,6 +36,13 @@ object BenchAutorun {
     private const val OPEN_WORLD_TICKS = 15 * TICKS_PER_SECOND
     private const val SETTLE_TICKS = 10 * TICKS_PER_SECOND
     private const val DISPLAY_TICKS = 5 * TICKS_PER_SECOND
+
+    /** How long a move gets to arrive before it is repeated, and how many tries the window gets (vanilla-notes §29). */
+    private const val MOVE_TICKS = 3 * TICKS_PER_SECOND
+    private const val MOVES = 10
+
+    /** Written to `autorun-done` when the window never reached the monitor; `bench_round.py` looks for it. */
+    const val NOT_MOVED = "did not reach the monitor"
 
     /** How long a command may take to start a plan before it counts as refused (its reason is in chat and the log). */
     private const val START_TICKS = 3 * TICKS_PER_SECOND
@@ -45,6 +55,13 @@ object BenchAutorun {
     private lateinit var directory: Path
     private var world = ""
     private var display = ""
+
+    /** SDL id of the monitor named by `display`; 0 when none is named or none has that name. */
+    private var target = 0
+    private var moves = 0
+    private var sinceMove = 0
+    private var shownX = Int.MIN_VALUE
+    private var shownY = Int.MIN_VALUE
     private val commands = ArrayList<String>()
     private var next = 0
     private val log = ArrayList<String>()
@@ -70,8 +87,10 @@ object BenchAutorun {
         }
         note("started (build ${Mobium.BUILD}): world \"$world\", display \"$display\", ${commands.size} commands")
         // The game opens on whichever display the desktop chooses; moving before the world loads keeps the round from
-        // looking as if it ran on the wrong one. SETTLE checks the display again before the first command.
-        if (display.isNotEmpty()) note(moveToDisplay(minecraft, display))
+        // looking as if it ran on the wrong one. Each tick checks where the window is and repeats a move that did not
+        // arrive; the first command waits for it.
+        if (display.isNotEmpty()) target = findDisplay(display)
+        if (target != 0) move(minecraft)
         focused = minecraft.window.isFocused
         minimized = minecraft.window.isIconified
         state = State.WORLD
@@ -83,6 +102,7 @@ object BenchAutorun {
         if (state == State.IDLE) return
         ticks++
         noteFocus(minecraft)
+        if (target != 0) keepOnTarget(minecraft)
         when (state) {
             State.WORLD -> when {
                 minecraft.level != null && minecraft.player != null && minecraft.gui.screen() == null -> enter(State.SETTLE)
@@ -95,14 +115,18 @@ object BenchAutorun {
                     quit(minecraft)
                 }
             }
-            State.SETTLE -> if (ticks >= SETTLE_TICKS) {
-                if (display.isNotEmpty()) note(moveToDisplay(minecraft, display))
-                enter(State.DISPLAY)
-            }
-            State.DISPLAY -> if (ticks >= DISPLAY_TICKS) {
-                val snapshot = BenchEnvironment.snapshot()
-                note("window ${snapshot.resolution} on ${snapshot.display}, power ${snapshot.power}")
-                startNext(minecraft)
+            State.SETTLE -> if (ticks >= SETTLE_TICKS) enter(State.DISPLAY)
+            State.DISPLAY -> when {
+                ticks < DISPLAY_TICKS -> Unit
+                target == 0 || onTarget(minecraft) -> {
+                    val snapshot = BenchEnvironment.snapshot()
+                    note("window ${snapshot.resolution} on ${snapshot.display}, power ${snapshot.power}")
+                    startNext(minecraft)
+                }
+                moves >= MOVES && sinceMove >= MOVE_TICKS -> {
+                    note("the window $NOT_MOVED \"$display\" after $moves moves (it is on ${shownOn(minecraft)}); stopping")
+                    quit(minecraft)
+                }
             }
             State.START -> when {
                 BenchSuite.isActive || FrameRecorder.isActive -> enter(State.RUNNING)
@@ -173,42 +197,88 @@ object BenchAutorun {
         Mobium.LOGGER.info("Mobium bench autorun: {}", line)
     }
 
-    /**
-     * Puts the fullscreen window on the display whose name contains [part], in its mode closest to the protocol's
-     * 1920×1080 at the desktop refresh rate. The launcher starts the game on whichever display the desktop chooses;
-     * SDL moves a fullscreen window to the display of the mode it is given (also on Wayland, which does not let windows
-     * position themselves). Vanilla reads the active mode and display back from SDL, so the run records them.
-     */
-    private fun moveToDisplay(minecraft: Minecraft, part: String): String {
-        val handle = minecraft.window.handle()
-        val displays = SDLVideo.SDL_GetDisplays() ?: return "no displays: ${SDLError.SDL_GetError()}"
+    /** The SDL id of the first display whose name contains [part]; 0 (and a note) when there is none. */
+    private fun findDisplay(part: String): Int {
+        val displays = SDLVideo.SDL_GetDisplays() ?: return 0.also { note("no displays: ${SDLError.SDL_GetError()}") }
         try {
-            var target = 0
             val names = ArrayList<String>()
             for (i in 0 until displays.remaining()) {
                 val id = displays.get(i)
                 val name = SDLVideo.SDL_GetDisplayName(id) ?: continue
+                if (name.contains(part, ignoreCase = true)) return id
                 names += name
-                if (target == 0 && name.contains(part, ignoreCase = true)) target = id
             }
-            if (target == 0) return "no display named \"$part\" among $names, staying"
-            if (SDLVideo.SDL_GetDisplayForWindow(handle) == target && SDLVideo.SDL_GetWindowFullscreenMode(handle) != null) {
-                return "already on \"$part\""
-            }
-            MemoryStack.stackPush().use { stack ->
-                val mode = SDL_DisplayMode.malloc(stack)
-                val width = BenchEnvironment.PROTOCOL_WIDTH
-                val height = BenchEnvironment.PROTOCOL_HEIGHT
-                if (!SDLVideo.SDL_GetClosestFullscreenDisplayMode(target, width, height, 0.0f, true, mode)) {
-                    return "no ${width}x$height mode on \"$part\": ${SDLError.SDL_GetError()}"
-                }
-                if (!SDLVideo.SDL_SetWindowFullscreenMode(handle, mode) || !SDLVideo.SDL_SetWindowFullscreen(handle, true)) {
-                    return "could not move to \"$part\": ${SDLError.SDL_GetError()}"
-                }
-                return "moved to \"$part\" (${mode.w()}x${mode.h()}@${mode.refresh_rate()})"
-            }
+            note("no display named \"$part\" among $names, staying")
+            return 0
         } finally {
             SDLStdinc.SDL_free(displays)
+        }
+    }
+
+    /**
+     * Repeats the move while the window is not on [target], each time [MOVE_TICKS] after the last, at most [MOVES]
+     * times; notes each monitor the window appears on.
+     */
+    private fun keepOnTarget(minecraft: Minecraft) {
+        sinceMove++
+        val window = minecraft.window
+        if (window.x != shownX || window.y != shownY) {
+            shownX = window.x
+            shownY = window.y
+            note("window shown on ${shownOn(minecraft)}")
+        }
+        if (state == State.WORLD || state == State.SETTLE || state == State.DISPLAY) {
+            if (moves < MOVES && sinceMove >= MOVE_TICKS && !onTarget(minecraft)) move(minecraft)
+        }
+    }
+
+    /**
+     * Whether the compositor shows the window on [target] in a fullscreen mode. SDL answers every "which display" query
+     * for a fullscreen window with the display of the mode it was given (`SDL_GetDisplayForWindow`, and vanilla's
+     * `findBestMonitor` with it), whether or not the window got there; the move events vanilla keeps in `Window.x/y`
+     * carry the origin of the monitor the window really is on (vanilla-notes §29).
+     */
+    private fun onTarget(minecraft: Minecraft): Boolean {
+        val window = minecraft.window
+        if (SDLVideo.SDL_GetWindowFullscreenMode(window.handle()) == null) return false
+        MemoryStack.stackPush().use { stack ->
+            val bounds = SDL_Rect.malloc(stack)
+            return SDLVideo.SDL_GetDisplayBounds(target, bounds) && window.x == bounds.x() && window.y == bounds.y()
+        }
+    }
+
+    /** The name of the monitor the window's last move event placed it on. */
+    private fun shownOn(minecraft: Minecraft): String {
+        val window = minecraft.window
+        MemoryStack.stackPush().use { stack ->
+            val id = SDLVideo.SDL_GetDisplayForPoint(SDL_Point.malloc(stack).set(window.x, window.y))
+            val name = if (id == 0) "no display" else SDLVideo.SDL_GetDisplayName(id) ?: "display $id"
+            return "\"$name\" (${window.x}, ${window.y})"
+        }
+    }
+
+    /**
+     * Asks SDL to put the fullscreen window on [target], in its mode closest to the protocol's 1920×1080 at the desktop
+     * refresh rate. The launcher starts the game on whichever display the desktop chooses; SDL moves a fullscreen window
+     * to the display of the mode it is given (also on Wayland, which does not let windows position themselves). The
+     * compositor applies the move later, or drops it (vanilla-notes §29): [keepOnTarget] checks and repeats it. Vanilla
+     * reads the active mode and display back from SDL, so the run records them.
+     */
+    private fun move(minecraft: Minecraft) {
+        moves++
+        sinceMove = 0
+        val handle = minecraft.window.handle()
+        MemoryStack.stackPush().use { stack ->
+            val mode = SDL_DisplayMode.malloc(stack)
+            val width = BenchEnvironment.PROTOCOL_WIDTH
+            val height = BenchEnvironment.PROTOCOL_HEIGHT
+            if (!SDLVideo.SDL_GetClosestFullscreenDisplayMode(target, width, height, 0.0f, true, mode)) {
+                note("no ${width}x$height mode on \"$display\": ${SDLError.SDL_GetError()}")
+            } else if (!SDLVideo.SDL_SetWindowFullscreenMode(handle, mode) || !SDLVideo.SDL_SetWindowFullscreen(handle, true)) {
+                note("could not move to \"$display\": ${SDLError.SDL_GetError()}")
+            } else {
+                note("moving to \"$display\" (${mode.w()}x${mode.h()}@${mode.refresh_rate()}), try $moves")
+            }
         }
     }
 }
