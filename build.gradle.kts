@@ -25,7 +25,9 @@ val loader = if (isFabric) "fabric" else "neoforge"
 val beta: Int = property("mod.beta").toString().toInt()
 val majorVersion: String = property("mod.major-version").toString()
 val mcVersion = property("vers.mcVersion").toString()
-version = "$majorVersion${if (beta != 0) "-beta$beta" else ""}-$mcVersion+$loader" // Pattern is '1.0.0-beta1-1.20.6-pre.2+fabric'
+// Versions name the Minecraft version without its snapshot, pre-release or release-candidate suffix
+val mcVersionName = mcVersion.substringBefore('-')
+version = "$majorVersion${if (beta != 0) "-beta$beta" else ""}-$mcVersionName+$loader" // Pattern is '1.0.0-beta1-26.4+fabric'
 
 // Dev clients and gametests on a chosen graphics API: -Pmobium.graphicsBackend=vulkan (or opengl), plus
 // -Pmobium.vulkanValidation for Khronos' validation layer (docs/vanilla-notes.md §21). Both also go in as system
