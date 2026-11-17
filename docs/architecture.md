@@ -255,8 +255,7 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
   unit tests no LWJGL).
 - **Client gametests** (`src/gametest`, Fabric only, mod id `mobium-test`): startup on the requested graphics API,
   the benchmark world and scenes with screenshots and Module 2's byte-for-byte validation (each stage and arithmetic
-  the GPU has), the settings screen and the fallback toast. On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game (locally a
-  window opens and closes by itself). CI runs them under `xvfb-run` on Mesa's software OpenGL and a second time on
+  the GPU has), the settings screen and the fallback toast. On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game. CI runs them under `xvfb-run` on Mesa's software OpenGL and a second time on
   Vulkan with Mesa's lavapipe (`-Pmobium.graphicsBackend=vulkan`), on both Fabric targets, naming the API in both
   runs (26.4's "Default" picks one at random; lavapipe there needs `-Pmobium.vulkanCpuDevice`). Screenshots land in
   `versions/<target>/build/run/clientGameTest/screenshots/`.
@@ -264,7 +263,7 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
   `debug/selfcheck/`): starts each dev client with a request file; inside the game it walks through the checks
   (screens opened the loader's way, both languages, the Sodium page, and in the benchmark world key presses, commands
   and pixel comparisons against vanilla), writes `<game dir>/mobium-selfcheck/report.txt` plus screenshots, restores
-  every option it touched and closes the game. `--minecraft 26.4` runs the snapshot target, where the steps for
+  every option it touched and closes the game. `--minecraft 26.4` runs the snapshot target (its world from `./gradlew :26.4-fabric:runBenchWorld`), where the steps for
   Sodium, Iris and EMF are skipped (none has a 26.4 build). On Vulkan it runs with the validation layer and fails on any message Mobium's objects or calls raise.
   `--from-options` chooses the API in `options.txt` as players do instead of by launch argument, which keeps Iris
   installed on Vulkan, where it does not run (`docs/vanilla-notes.md` §21); the shader pack steps are skipped while

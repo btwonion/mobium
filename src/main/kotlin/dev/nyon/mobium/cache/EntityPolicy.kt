@@ -113,10 +113,8 @@ object ItemFrames : EntityRule("item_frames") {
  * Armor stands: cached while pose, held items, head item and everything else their renderer reads stay the same
  * (`ArmorStandRenderer`, `LivingEntityRenderer.submit`, its layers). Vanilla while they wobble after a hit
  * (`wiggle` < 5 ticks), while hurt (red overlay) and with a player head that has an owner (the skin loads later).
- * Stands wearing armor stay vanilla: `EquipmentLayerRenderer` submits each armor layer (dye, overlay, trim) in a submit
- * order of its own so that they are drawn one after another, and the cache does not keep that order.
- * `HumanoidModel.setupAnim` bobs the arms with `ageInTicks`, but `ArmorStandArmorModel.setupAnim` sets every arm, leg,
- * head and body rotation from the poses afterwards, so the picture does not depend on time.
+ * Stands wearing armor stay vanilla: each armor layer has a submit order of its own, which the cache does not keep. A
+ * still stand's picture does not depend on time (docs/vanilla-notes.md §15, *Armor stands*, *Submit orders*).
  *
  * Armor is compared by the entity's own equipment stacks: the client replaces a stack when the server sends
  * equipment, and vanilla's render state only holds copies of them.

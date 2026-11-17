@@ -7,8 +7,8 @@ import dev.nyon.mobium.core.Module
 import java.util.Locale
 
 /**
- * Module 2's check on the player's GPU. `expand_parts.comp` is written to give exactly the CPU's bytes, but it was
- * validated only on Mesa (Intel's iris, llvmpipe in CI); another driver may round or fuse operations differently. So
+ * Module 2's check on the player's GPU. `expand_parts.comp` is written to give exactly the CPU's bytes, but the dev
+ * validation runs on a few GPUs only (`docs/compat.md`); another driver may round or fuse operations differently. So
  * for each path through the shader ([path]: the part's flags, the cube layout, the stage, the arithmetic) the first [PER_PATH] parts,
  * at most [PER_FRAME] per frame, are also compiled on the CPU and compared after the expand pass ([PartValidation],
  * which waits for the GPU once per staged buffer in those frames). On a difference the compared parts get the CPU's

@@ -33,32 +33,12 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Runs benchmark plans unattended, so a whole setup is one command:
- * - `/mobium suite [seconds] [runs] [scenes…]`: every scene (default all seven), each built with the benchmark
- *   datapack, settled for at least [SETTLE_SECONDS] and until section rebuilds, light updates and server ticks have
- *   calmed down, then recorded `runs` times;
- * - `/mobium gatea [seconds] [runs]`: `storage_room` with the static cache off and on, alternating, then the
- *   speed-up against the 1.5× target of Gate A (passed with the chest prototype; kept for comparisons);
- * - `/mobium gateb [seconds] [runs]`: `storage_room` with the cache, the same with the cache's draw calls skipped,
- *   `control` with the cache and `control` without it, in turn, then Gate B's numbers ([GateB]): what the cached
- *   objects cost Mobium against `control` (target at most 1.2×), the whole frame against `control`, what drawing them
- *   costs, and `control` with the cache against `control` without it (must not be slower);
- * - `/mobium gatec [seconds] [runs] [scene]`: a scene (default `mob_pen_live`) with Module 2 off and on, alternating,
- *   then Gate C's numbers ([GateC]): the entity CPU work without over with Module 2 (target at least 1.5× in setup D)
- *   and the frame time with over without (must not be slower); in another scene the same numbers without the verdict;
- * - `/mobium stages [seconds] [runs] [scene]`: a scene (default `mob_pen_live`) with Module 2's expand pass as a
- *   compute dispatch and in the vertex stage, alternating ([ExpandPass]), then the frame time of the vertex stage over
- *   compute's;
- * - `/mobium benchmark`: the players' benchmark, in a superflat world made with the built-in Mobium Benchmark data
- *   pack ([BenchPack]): `storage_room` and `mob_pen_live` with all of Mobium off, on, on and off ([AbToggle], as the A/B
- *   key does), [BENCHMARK_SECONDS] each, with [BenchOptions], then each scene's gain in chat and one CSV with the
- *   medians, the gains and what the result depends on (CPU, GPU, window, power).
- *
- * Scenes are built through the integrated server (singleplayer only), so the world does not need commands enabled.
- * The medians per scene and setup are rewritten to `mobium-bench/suite-<timestamp>.csv` after every run, so quitting
- * halfway keeps what was measured, and printed at the end; every single run is also in `summary.csv` as usual. A plan
- * does not start when the instance declares another setup than the one that is active ([BenchEnvironment]). Ticked
- * once per client tick on the render thread.
+ * Runs benchmark plans unattended: `/mobium suite`, `gatea`, `gateb` ([GateB]), `gatec` ([GateC]), `stages` and the
+ * players' `/mobium benchmark` (docs/benchmarks.md, *Tools*). A plan builds each scene through the integrated server
+ * (singleplayer, no cheats needed), lets it settle for at least [SETTLE_SECONDS] and until section rebuilds, light
+ * updates and server ticks have calmed down, then records; the medians are rewritten after every run, so quitting
+ * halfway keeps what was measured. A plan does not start when the instance declares another setup than the active one
+ * ([BenchEnvironment]). Ticked once per client tick on the render thread.
  */
 object BenchSuite {
     const val DEFAULT_SECONDS = 60

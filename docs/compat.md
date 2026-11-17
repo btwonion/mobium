@@ -60,8 +60,8 @@ fog. "Identical" means 0 changed pixels. Dev clients run the compat stack of `ve
 | + Complementary Reimagined r5.9.3 (TAA and cloud movement off for the comparison) | Captures in Iris's formats (56-byte entity, 52-byte glyph vertices); the picture matches vanilla's up to the pack's own frame-to-frame noise, which is on terrain too. The shadow-pass timers read while the pack is on and 0 without it | Not tested: Iris 1.11.7 on NeoForge crashes with this pack in `CenterDepthSampler` ("Missing uniform InSampler"), with Mobium switched off as well (`self_check.py neoforge --mode iris-without-mobium`) |
 | + Fresh Animations (1.10.3 in the dev clients, 1.11.1 in the benchmark instances) | Identical in every comparison of the gallery; EMF replaces the head models with the pack's, and the one head Fresh Animations animates stays vanilla (`containsCustomAnims`) | Identical in every comparison of the gallery, as on Fabric |
 | Entity Culling | Not tested (not in the dev environment); expected to work, see above | Not tested |
-| On Vulkan by launch argument (`self_check.py --api vulkan`): Sodium, EMF, ETF, without Iris, with and without Fresh Animations | Identical in every comparison (70 checks; all 13 picture pairs of the gallery, `storage_room` from every view); no validation-layer messages from Mobium | Identical in every comparison (71 checks); no validation-layer messages from Mobium |
-| On Vulkan from `options.txt`, as a player chooses it (`--api vulkan --from-options`): the same with Iris 1.11.7 installed, switched off by itself | Identical in every comparison (70 checks, all 19 comparisons with 0 changed pixels; gallery 40 checks); no validation-layer messages from Mobium | Identical in every comparison (71 checks, all 19 comparisons with 0 changed pixels; gallery 40 checks); no validation-layer messages from Mobium |
+| On Vulkan by launch argument (`self_check.py --api vulkan`): Sodium, EMF, ETF, without Iris, with and without Fresh Animations | Identical in every comparison; no validation-layer messages from Mobium | Identical in every comparison; no validation-layer messages from Mobium |
+| On Vulkan from `options.txt`, as a player chooses it (`--api vulkan --from-options`): the same with Iris 1.11.7 installed, switched off by itself | Identical in every comparison; no validation-layer messages from Mobium | Identical in every comparison; no validation-layer messages from Mobium |
 
 The Fabric gametests draw their scenes with the cache on OpenGL and a second time on Vulkan (Mesa's lavapipe, CI);
 the pictures stay within the gametests' tolerance (0.1 % of the pixels) on both (§22, §23).
@@ -79,20 +79,18 @@ lavapipe on Vulkan.
 
 | Setup | Fabric | NeoForge |
 | --- | --- | --- |
-| Vanilla models (Sodium's cube path), Iris without pack | 0 differing vertices (11.4M compared in the pens), pictures identical | 0 differing vertices (13.6M in the pens, 2.4M in the gallery), pictures identical |
+| Vanilla models (Sodium's cube path), Iris without pack | 0 differing vertices, pictures identical | 0 differing vertices, pictures identical |
 | + Complementary Reimagined r5.9.3 | 0 differing vertices in the pens and the gallery, main and shadow pass; pictures identical in the pens, within the pack's own frame-to-frame noise in the gallery (the translucent conduit) | Not tested (Iris crashes with this pack on NeoForge, see above) |
-| + Fresh Animations 1.10.3 | 0 differing vertices (6.8M), pictures identical | 0 differing vertices (9.3M in the pens, 2.6M in the gallery), pictures identical |
+| + Fresh Animations 1.10.3 | 0 differing vertices, pictures identical | 0 differing vertices, pictures identical |
 | Fresh Animations and Complementary | 0 differing vertices, pictures as with the pack alone | Not tested |
-| On Vulkan by launch argument (`--mode parts --api vulkan`): vanilla models (Sodium's cube path), without Iris | 0 differing vertices (13.9M compared in the pens, 2.8M in the gallery), pictures identical, no validation-layer messages from Mobium | 0 differing vertices, pictures identical, no validation-layer messages from Mobium |
-| On Vulkan + Fresh Animations | 0 differing vertices (6.8M in the pens, 2.7M in the gallery), pictures identical | 0 differing vertices, pictures identical |
-| On Vulkan from `options.txt` (`--mode parts --api vulkan --from-options`): vanilla models and Fresh Animations, Iris 1.11.7 installed, switched off by itself | 0 differing vertices (15.2M compared), pictures identical, no validation-layer messages from Mobium | 0 differing vertices (14.5M compared), pictures identical, no validation-layer messages from Mobium |
-| On Vulkan as on a GPU without `shaderFloat64` (`--mode parts --api vulkan --arithmetic integer`): vanilla models and Fresh Animations, the integer arithmetic only | 0 differing vertices (13.8M compared), pictures identical, no validation-layer messages from Mobium | 0 differing vertices (26.1M compared), pictures identical, no validation-layer messages from Mobium |
+| On Vulkan by launch argument (`--mode parts --api vulkan`): vanilla models (Sodium's cube path), without Iris | 0 differing vertices, pictures identical, no validation-layer messages from Mobium | 0 differing vertices, pictures identical, no validation-layer messages from Mobium |
+| On Vulkan + Fresh Animations | 0 differing vertices, pictures identical | 0 differing vertices, pictures identical |
+| On Vulkan from `options.txt` (`--mode parts --api vulkan --from-options`): vanilla models and Fresh Animations, Iris 1.11.7 installed, switched off by itself | 0 differing vertices, pictures identical, no validation-layer messages from Mobium | 0 differing vertices, pictures identical, no validation-layer messages from Mobium |
+| On Vulkan as on a GPU without `shaderFloat64` (`--mode parts --api vulkan --arithmetic integer`): vanilla models and Fresh Animations, the integer arithmetic only | 0 differing vertices, pictures identical, no validation-layer messages from Mobium | 0 differing vertices, pictures identical, no validation-layer messages from Mobium |
 
 On OpenGL the expand pass runs as a compute dispatch or in the vertex stage (`parts/ExpandPass.kt`), and `--mode parts`
-validates both in every setup. Both stages: Fabric 33/33 checks (16 validations, 0 differing vertices, 0.26–9.5M
-vertices compared each), NeoForge 17/17 (8 validations, 0 differing); pictures identical as above. On Vulkan it is
-always a compute dispatch (`parts/VulkanExpand.kt`): 23 of 23 checks on each loader, 24 of 24 with Iris
-installed. Where shaders have doubles, every stage is validated with the integer arithmetic as well (§26).
+validates both in every setup; on Vulkan it is always a compute dispatch (`parts/VulkanExpand.kt`). Where shaders have
+doubles, every stage is validated with the integer arithmetic as well (`docs/vanilla-notes.md` §26).
 
 ### On players' GPUs
 
@@ -114,8 +112,8 @@ CPU's bytes in their frame and the comparison follows a few frames later (`docs/
 
 | GPU and driver | OS | Result |
 | --- | --- | --- |
-| Intel Arc 140V, Mesa iris (OpenGL) | Fedora 44 | No difference (dev validation and the check, both stages; 980 parts in 21 paths in `--mode parts` on Fabric, 542 in 13 on NeoForge) |
-| Intel Arc 140V, Mesa ANV (Vulkan) | Fedora 44 | No difference (dev validation on both loaders; the check compared 448 parts in 7 paths in `--mode parts` on Fabric) |
+| Intel Arc 140V, Mesa iris (OpenGL) | Fedora 44 | No difference (dev validation and the check, both stages) |
+| Intel Arc 140V, Mesa ANV (Vulkan) | Fedora 44 | No difference (dev validation and the check, both loaders) |
 | Mesa llvmpipe (OpenGL) | CI (Ubuntu) | No difference (gametests) |
 | Mesa lavapipe (Vulkan) | CI (Ubuntu) | No difference (gametests) |
 | Nvidia GeForce RTX 4070 Ti, driver not recorded | Not recorded | No difference: both runs with Mobium on in each scene of `/mobium benchmark` recorded `+parts-vertex`, so the check switched nothing off (vertex stage, vanilla cubes, no shader pack; [#32](https://github.com/btwonion/mobium/issues/32)) |
