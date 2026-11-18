@@ -10,13 +10,13 @@ import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.Fallback
 import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.debug.Validation
-import dev.nyon.mobium.parts.PartCheck
+import dev.nyon.mobium.offload.OffloadCheck
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 
 /**
  * Client commands `/mobium bench <scene> <seconds> [setup]`, `/mobium suite [seconds] [runs] [scenes…]`,
- * `/mobium gatea [seconds] [runs]`, `/mobium gateb [seconds] [runs]`, `/mobium gatec [seconds] [runs] [scene]`,
+ * `/mobium compare <module> [seconds] [runs] [scene]`, `/mobium cachecost [seconds] [runs]`,
  * `/mobium stages [seconds] [runs] [scene]`, `/mobium benchmark` (see [BenchSuite]) and `/mobium stop`. The tree is
  * built for any command source type, so the same code registers with Fabric's client command API and NeoForge's
  * `RegisterClientCommandsEvent`. The scene is only a label; build it first with the benchmark datapack.
@@ -66,39 +66,19 @@ object BenchCommand {
                 )
         )
         .then(
-            LiteralArgumentBuilder.literal<S>("gatea")
-                .executes { gateA(BenchSuite.DEFAULT_SECONDS, BenchSuite.DEFAULT_RUNS) }
-                .then(
-                    RequiredArgumentBuilder.argument<S, Int>("seconds", IntegerArgumentType.integer(MIN_SECONDS, MAX_SECONDS))
-                        .executes { gateA(seconds(it), BenchSuite.DEFAULT_RUNS) }
-                        .then(
-                            RequiredArgumentBuilder.argument<S, Int>("runs", IntegerArgumentType.integer(1, MAX_RUNS))
-                                .executes { gateA(seconds(it), runs(it)) }
-                        )
-                )
+            LiteralArgumentBuilder.literal<S>("compare")
+                .then(compareModule(Module.STATIC_CACHE))
+                .then(compareModule(Module.VERTEX_OFFLOAD))
         )
         .then(
-            LiteralArgumentBuilder.literal<S>("gateb")
-                .executes { gateB(BenchSuite.DEFAULT_SECONDS, BenchSuite.DEFAULT_RUNS) }
+            LiteralArgumentBuilder.literal<S>("cachecost")
+                .executes { cacheCost(BenchSuite.DEFAULT_SECONDS, BenchSuite.DEFAULT_RUNS) }
                 .then(
                     RequiredArgumentBuilder.argument<S, Int>("seconds", IntegerArgumentType.integer(MIN_SECONDS, MAX_SECONDS))
-                        .executes { gateB(seconds(it), BenchSuite.DEFAULT_RUNS) }
+                        .executes { cacheCost(seconds(it), BenchSuite.DEFAULT_RUNS) }
                         .then(
                             RequiredArgumentBuilder.argument<S, Int>("runs", IntegerArgumentType.integer(1, MAX_RUNS))
-                                .executes { gateB(seconds(it), runs(it)) }
-                        )
-                )
-        )
-        .then(
-            LiteralArgumentBuilder.literal<S>("gatec")
-                .executes { gateC(BenchSuite.DEFAULT_SECONDS, BenchSuite.DEFAULT_RUNS, GateC.SCENE) }
-                .then(
-                    RequiredArgumentBuilder.argument<S, Int>("seconds", IntegerArgumentType.integer(MIN_SECONDS, MAX_SECONDS))
-                        .executes { gateC(seconds(it), BenchSuite.DEFAULT_RUNS, GateC.SCENE) }
-                        .then(
-                            RequiredArgumentBuilder.argument<S, Int>("runs", IntegerArgumentType.integer(1, MAX_RUNS))
-                                .executes { gateC(seconds(it), runs(it), GateC.SCENE) }
-                                .then(sceneArgument { gateC(seconds(it), runs(it), scene(it)) })
+                                .executes { cacheCost(seconds(it), runs(it)) }
                         )
                 )
         )
@@ -139,8 +119,8 @@ object BenchCommand {
     /**
      * Dev environments only: `/mobium debug fail <module>` throws inside the module's fallback path, which must switch
      * the module off with one toast (docs/architecture.md, *Core*), `/mobium debug validate` requests a validation
-     * frame, and `/mobium debug gpucheck` makes Module 2's GPU check find a difference, as on a driver that rounds
-     * otherwise.
+     * frame, and `/mobium debug gpucheck` makes vertex offload's GPU check find a difference, as on a driver that
+     * rounds otherwise.
      */
     private fun <S> debug(): LiteralArgumentBuilder<S> = LiteralArgumentBuilder.literal<S>("debug")
         .then(
@@ -167,10 +147,26 @@ object BenchCommand {
             1
         })
         .then(LiteralArgumentBuilder.literal<S>("gpucheck").executes {
-            PartCheck.forceDifference()
+            OffloadCheck.forceDifference()
             chat(Component.translatable("mobium.debug.gpucheck"))
             1
         })
+
+    /** `/mobium compare <module> [seconds] [runs] [scene]`, by default in the module's own scene. */
+    private fun <S> compareModule(module: Module): LiteralArgumentBuilder<S> {
+        val scene = BenchSuite.compareScene(module)
+        return LiteralArgumentBuilder.literal<S>(module.key)
+            .executes { compare(module, BenchSuite.DEFAULT_SECONDS, BenchSuite.DEFAULT_RUNS, scene) }
+            .then(
+                RequiredArgumentBuilder.argument<S, Int>("seconds", IntegerArgumentType.integer(MIN_SECONDS, MAX_SECONDS))
+                    .executes { compare(module, seconds(it), BenchSuite.DEFAULT_RUNS, scene) }
+                    .then(
+                        RequiredArgumentBuilder.argument<S, Int>("runs", IntegerArgumentType.integer(1, MAX_RUNS))
+                            .executes { compare(module, seconds(it), runs(it), scene) }
+                            .then(sceneArgument { compare(module, seconds(it), runs(it), scene(it)) })
+                    )
+            )
+    }
 
     /** A `scene` argument with the benchmark scenes as suggestions; the plan checks it against [BenchSuite.SCENES]. */
     private fun <S> sceneArgument(command: Command<S>): RequiredArgumentBuilder<S, String> =
@@ -192,18 +188,13 @@ object BenchCommand {
         return 1
     }
 
-    private fun gateA(seconds: Int, runs: Int): Int {
-        BenchSuite.startGateA(seconds, runs)?.let { chat(it); return 0 }
+    private fun compare(module: Module, seconds: Int, runs: Int, scene: String): Int {
+        BenchSuite.startCompare(module, seconds, runs, scene)?.let { chat(it); return 0 }
         return 1
     }
 
-    private fun gateB(seconds: Int, runs: Int): Int {
-        BenchSuite.startGateB(seconds, runs)?.let { chat(it); return 0 }
-        return 1
-    }
-
-    private fun gateC(seconds: Int, runs: Int, scene: String): Int {
-        BenchSuite.startGateC(seconds, runs, scene)?.let { chat(it); return 0 }
+    private fun cacheCost(seconds: Int, runs: Int): Int {
+        BenchSuite.startCacheCost(seconds, runs)?.let { chat(it); return 0 }
         return 1
     }
 

@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
 /**
- * Static cache (Module 1): finds the feature renderer other mods register for their own submit types (Fabric's
+ * Static cache: finds the feature renderer other mods register for their own submit types (Fabric's
  * renderer API: extended block model submits, rendered by Sodium or Indigo), so a capture can let that renderer write
  * the vertices. Read-only; no behaviour change.
  */

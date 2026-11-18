@@ -92,7 +92,7 @@ public class LevelRendererMixin {
         }
     }
 
-    // Static cache (Module 1): draws the cached objects right after vanilla's solid features, in the same render pass,
+    // Static cache: draws the cached objects right after vanilla's solid features, in the same render pass,
     // where vanilla would have drawn them (sign text included: it is opaque and vanilla puts it into the solid phase).
     // Draws nothing while the cache is off. Takes only the render pass, since the method's other parameters differ
     // between versions (docs/vanilla-notes.md §28).

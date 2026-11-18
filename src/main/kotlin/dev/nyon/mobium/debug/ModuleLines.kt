@@ -4,8 +4,8 @@ import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.core.Fallback
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.gpu.Gpu
-import dev.nyon.mobium.parts.PartCheck
-import dev.nyon.mobium.parts.PartTransform
+import dev.nyon.mobium.offload.OffloadCheck
+import dev.nyon.mobium.offload.PartTransform
 import net.minecraft.client.gui.components.debug.DebugScreenDisplayer
 import net.minecraft.client.gui.components.debug.DebugScreenEntry
 //? if >=26.4 {
@@ -20,8 +20,8 @@ import java.util.Locale
 
 /**
  * F3 entry `mobium:modules`: each module's state (active, or why it takes the vanilla path), the A/B key, Mobium's
- * GPU memory, what the modules hold, Module 2's GPU check ([PartCheck]), and the types the fallback switched off.
- * Enable it in the debug options screen.
+ * GPU memory, what the modules hold, vertex offload's GPU check ([OffloadCheck]), and the types the fallback switched
+ * off. Enable it in the debug options screen.
  */
 object ModuleLines : DebugScreenEntry {
     @JvmField
@@ -55,7 +55,7 @@ object ModuleLines : DebugScreenEntry {
         )
         lines += StaticCache.debugLines()
         lines += PartTransform.debugLine()
-        lines += PartCheck.debugLine()
+        lines += OffloadCheck.debugLine()
         val disabled = Fallback.disabledTypes()
         if (disabled.isNotEmpty()) lines += "Mobium types on vanilla after failures: ${disabled.joinToString()}"
         // A group keeps the lines together in one column; vanilla splits plain lines between both columns, which put

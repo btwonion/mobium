@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
 /**
- * Static cache (Module 1): reads what a block model state draws (item frames' frame, block displays), so that a cached
+ * Static cache: reads what a block model state draws (item frames' frame, block displays), so that a cached
  * entity can be compared with the state vanilla extracts each frame ({@code BlockModelFingerprint}). Read-only; no
  * behaviour change.
  */

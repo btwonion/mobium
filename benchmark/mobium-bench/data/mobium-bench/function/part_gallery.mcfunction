@@ -1,4 +1,4 @@
-# Models the GPU part transform expands besides the mob pens, for pixel comparisons
+# Models vertex offload expands besides the mob pens, for pixel comparisons
 # Run as the player: /function mobium-bench:part_gallery
 function mobium-bench:internal/settings
 scoreboard players set #ready mobium_bench 0

@@ -1,5 +1,7 @@
+- The GPU part transform is now called vertex offload, in the settings and everywhere else
+- Settings reset to their defaults once: the settings file has a new format
 - Settings: the module status list is gone (F3 `mobium:modules` shows it), and so is the unfinished Animation LOD preset
 - The A/B key is called "Toggle Mobium" and shows just "Mobium: ON" or "Mobium: OFF" above the hotbar
-- The GPU part transform now also draws items: dropped items, items in hands, frames and displays
+- Vertex offload now also draws items: dropped items, items in hands, frames and displays
 - Mobium now works on Minecraft's Vulkan renderer
 - New build for the Minecraft 26.4 snapshot (26.4-snapshot-10), Fabric only

@@ -1,4 +1,4 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import com.mojang.renderpearl.api.buffers.GpuBuffer
 import dev.nyon.mobium.gpu.gl.GlBufferHandle
@@ -17,23 +17,23 @@ import org.lwjgl.opengl.GL42C
 import org.lwjgl.opengl.GL43C
 
 /**
- * The GPU half of Module 2 (OpenGL 4.3; on Vulkan [VulkanExpand]): uploads new meshes and one staged buffer's records, then runs
- * `expand_parts.comp` once per quad, writing the reserved vertices into the vertex buffer vanilla just uploaded,
- * followed by a vertex-attribute barrier so that vanilla's draws read them. Runs between `upload()` and the first draw
- * (docs/vanilla-notes.md §16). Render thread only.
+ * The GPU half of vertex offload (OpenGL 4.3; on Vulkan [VulkanExpand]): uploads new meshes and one staged buffer's
+ * records, then runs `expand.comp` once per quad, writing the reserved vertices into the vertex buffer vanilla just
+ * uploaded, followed by a vertex-attribute barrier so that vanilla's draws read them. Runs between `upload()` and the
+ * first draw (docs/vanilla-notes.md §16). Render thread only.
  *
  * The shader runs as a compute dispatch ([STAGE_COMPUTE]) or, compiled as a vertex shader, as a point draw with
  * rasterisation off ([STAGE_VERTEX]), which keeps it in the graphics pipeline: Mesa's iris records a dispatch in a
  * batch of its own and flushes both batches around it, a fixed GPU cost per frame however few parts there are
- * (docs/vanilla-notes.md §16, docs/benchmarks.md *Module 2's fixed cost*). Both write the same bytes; [stage] picks
- * one per pass.
+ * (docs/vanilla-notes.md §16, docs/benchmarks.md *Vertex offload's fixed cost*). Both write the same bytes; [stage]
+ * picks one per pass.
  *
  * The shader's square roots and divisions exist twice as well ([arithmetic]): corrected with 64-bit floats
  * ([ARITHMETIC_DOUBLE]), or computed in 32-bit integers ([ARITHMETIC_INTEGER]) for GPUs without 64-bit floats in
  * shaders (docs/vanilla-notes.md §26). Again the same bytes.
  */
 object ExpandPass {
-    private const val SHADER = "/assets/mobium/shaders/expand_parts.comp"
+    private const val SHADER = "/assets/mobium/shaders/expand.comp"
     private const val LOCAL_SIZE = 64
     private const val MAX_GROUPS = 65535
     private const val INITIAL_MESH_BYTES = 1L shl 20
@@ -51,12 +51,12 @@ object ExpandPass {
 
     /**
      * Shaders have 64-bit floats on this GPU (`Capabilities.shaderDoubles`), so both arithmetics can run; false with
-     * `-Dmobium.parts.arithmetic=integer`, which runs the session as on a GPU without them.
+     * `-Dmobium.offload.arithmetic=integer`, which runs the session as on a GPU without them.
      */
     var doubles = false
         private set
 
-    /** The stage from `-Dmobium.parts.stage=compute|vertex`, or -1 for the automatic choice ([stage]). */
+    /** The stage from `-Dmobium.offload.stage=compute|vertex`, or -1 for the automatic choice ([stage]). */
     private var configuredStage = -1
 
     /** A stage set for a comparison (`/mobium stages`, the self-check, the gametests), or -1. */
@@ -67,7 +67,7 @@ object ExpandPass {
      * The stage the next pass uses: the vertex stage where vertex shaders can write storage buffers and no shader pack
      * is in use. With a shader pack, compute: there the frame's GPU work is large, and the batch flushes that a
      * dispatch causes on iris submit the frame's first part early, which made frames faster in the dev client than
-     * the vertex stage's lower cost (docs/benchmarks.md *Module 2's fixed cost*).
+     * the vertex stage's lower cost (docs/benchmarks.md *Vertex offload's fixed cost*).
      */
     val stage: Int
         get() = when {
@@ -97,24 +97,24 @@ object ExpandPass {
     fun describeChoice(): String {
         val stage = when {
             Capabilities.current?.backend == GraphicsBackend.VULKAN -> "compute (Vulkan has no vertex-stage variant)"
-            configuredStage == STAGE_COMPUTE -> "compute (-Dmobium.parts.stage)"
-            configuredStage == STAGE_VERTEX -> "vertex stage (-Dmobium.parts.stage)"
+            configuredStage == STAGE_COMPUTE -> "compute (-Dmobium.offload.stage)"
+            configuredStage == STAGE_VERTEX -> "vertex stage (-Dmobium.offload.stage)"
             vertexStores -> "vertex stage, compute while a shader pack is in use"
             else -> "compute (vertex shaders cannot write storage buffers on this GPU)"
         }
         val arithmetic = when {
-            integerOnly -> "integer arithmetic (-Dmobium.parts.arithmetic=integer)"
+            integerOnly -> "integer arithmetic (-Dmobium.offload.arithmetic=integer)"
             !doubles -> "integer arithmetic (no 64-bit floats in shaders)"
             else -> "double arithmetic"
         }
         return "$stage; $arithmetic"
     }
 
-    /** The stage of the last pass, or -1 before the first ([PartCheck] samples parts per stage). */
+    /** The stage of the last pass, or -1 before the first ([OffloadCheck] samples parts per stage). */
     @JvmField
     var lastStage = -1
 
-    /** The arithmetic of the last pass ([PartCheck] samples parts per arithmetic too). */
+    /** The arithmetic of the last pass ([OffloadCheck] samples parts per arithmetic too). */
     @JvmField
     var lastArithmetic = ARITHMETIC_DOUBLE
 
@@ -139,28 +139,28 @@ object ExpandPass {
         get() = glBytesAllocated + VulkanExpand.bytesAllocated
 
     /**
-     * Reads what the GPU can do, `-Dmobium.parts.stage` (`compute` or `vertex`, for comparisons and bug reports;
-     * `vertex` only where the GPU has it) and `-Dmobium.parts.arithmetic=integer` (as on a GPU without 64-bit floats;
+     * Reads what the GPU can do, `-Dmobium.offload.stage` (`compute` or `vertex`, for comparisons and bug reports;
+     * `vertex` only where the GPU has it) and `-Dmobium.offload.arithmetic=integer` (as on a GPU without 64-bit floats;
      * on Vulkan `VulkanSupport` then leaves `shaderFloat64` off); called once the GPU is known.
      */
     fun configure(capabilities: Capabilities) {
         vertexStores = capabilities.glVertexStores
         doubles = capabilities.shaderDoubles && !integerOnly
-        configuredStage = when (System.getProperty("mobium.parts.stage")) {
+        configuredStage = when (System.getProperty("mobium.offload.stage")) {
             "compute" -> STAGE_COMPUTE
             "vertex" -> if (vertexStores) STAGE_VERTEX else -1
             else -> -1
         }
     }
 
-    /** `-Dmobium.parts.arithmetic`, read here and by `VulkanSupport` before the device exists. */
-    const val ARITHMETIC_PROPERTY = "mobium.parts.arithmetic"
+    /** `-Dmobium.offload.arithmetic`, read here and by `VulkanSupport` before the device exists. */
+    const val ARITHMETIC_PROPERTY = "mobium.offload.arithmetic"
 
-    /** `-Dmobium.parts.arithmetic=integer`: the session runs as on a GPU without 64-bit floats in shaders. */
+    /** `-Dmobium.offload.arithmetic=integer`: the session runs as on a GPU without 64-bit floats in shaders. */
     val integerOnly: Boolean = System.getProperty(ARITHMETIC_PROPERTY) == "integer"
 
     /** Expands [batch] into [vertexBuffer]; on Vulkan always as a compute dispatch. */
-    fun dispatch(batch: PartBatch, vertexBuffer: GpuBuffer) {
+    fun dispatch(batch: OffloadBatch, vertexBuffer: GpuBuffer) {
         val arithmetic = arithmetic
         lastArithmetic = arithmetic
         if (vertexBuffer is GlBufferHandle) {
@@ -172,15 +172,15 @@ object ExpandPass {
     }
 
     /** Expands [batch] into the vertex buffer with GL name [vertexBuffer]. */
-    private fun dispatchGl(batch: PartBatch, vertexBuffer: Int, arithmetic: Int) {
+    private fun dispatchGl(batch: OffloadBatch, vertexBuffer: Int, arithmetic: Int) {
         val profiling = ExpandProfile.enabled
         var lap = if (profiling) System.nanoTime() else 0L
         val stage = stage
         lastStage = stage
         uploadMeshes()
 
-        val cubeBytes = batch.cubeCount.toLong() * PartBatch.CUBE_BYTES
-        val partBytes = batch.partCount.toLong() * PartBatch.PART_BYTES
+        val cubeBytes = batch.cubeCount.toLong() * OffloadBatch.CUBE_BYTES
+        val partBytes = batch.partCount.toLong() * OffloadBatch.PART_BYTES
         val slotBytes = batch.draws.size * 4L
         val frameBytes = cubeBytes + partBytes + slotBytes
         if (frameBuffer == 0) frameBuffer = GlCompute.createBuffer(frameBytes)
@@ -238,7 +238,7 @@ object ExpandPass {
         val index = stage * 2 + arithmetic
         if (programs[index] == 0) {
             val integer = arithmetic == ARITHMETIC_INTEGER
-            val name = "expand_parts.comp (${stageName(stage, arithmetic)})"
+            val name = "expand.comp (${stageName(stage, arithmetic)})"
             programs[index] = if (stage == STAGE_VERTEX) {
                 GlCompute.createProgram(name, source("MOBIUM_VERTEX", integer), GL20C.GL_VERTEX_SHADER)
             } else {

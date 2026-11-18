@@ -1,6 +1,6 @@
 @file:Suppress("FunctionName")
 
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import com.mojang.renderpearl.api.buffers.GpuBuffer
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
@@ -9,7 +9,7 @@ import net.minecraft.client.renderer.StagedVertexBuffer
 
 /**
  * Added to `BufferBuilder` by `BufferBuilderMixin`: which staged draw the builder writes for (set when
- * `StagedVertexBuffer` opens it; null for every other builder) and Module 2's reservation of vertices that the
+ * `StagedVertexBuffer` opens it; null for every other builder) and vertex offload's reservation of vertices that the
  * expand pass writes on the GPU.
  */
 interface PartTarget {
@@ -50,7 +50,7 @@ interface PartDraw {
     /** Byte offset of the draw in the uploaded vertex buffer; valid after `upload()`. */
     fun `mobium$vertexOffset`(): Int
 
-    /** The draw's index in the current [PartBatch] of its staged buffer, or -1. */
+    /** The draw's index in the current [OffloadBatch] of its staged buffer, or -1. */
     fun `mobium$slot`(): Int
 
     fun `mobium$setSlot`(slot: Int)
@@ -58,9 +58,9 @@ interface PartDraw {
 
 /** Added to `StagedVertexBuffer` by `StagedVertexBufferMixin`. */
 interface PartStaged {
-    fun `mobium$batch`(): PartBatch?
+    fun `mobium$batch`(): OffloadBatch?
 
-    fun `mobium$setBatch`(batch: PartBatch)
+    fun `mobium$setBatch`(batch: OffloadBatch)
 
     /** The pooled vertex buffer of this frame; valid between `upload()` and `endDraw()`. */
     fun `mobium$vertexBuffer`(): GpuBuffer?

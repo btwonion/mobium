@@ -5,7 +5,7 @@ import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.debug.Sections
-import dev.nyon.mobium.parts.PartTransform
+import dev.nyon.mobium.offload.PartTransform
 import net.minecraft.SharedConstants
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Options

@@ -1,10 +1,13 @@
 # Benchmarks
 
 How Mobium is measured, and what it measured, on the development laptop and on players' machines (*Players'
-results*). Every gate in `PLAN.md` is decided with the numbers on this page. Raw data (every run's CSV, the suite and
-gate medians) is in [btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks), one folder per round
-and players' files in `players/`. A build id in an older round may predate a rewrite of this repository's history:
-`grep ^<id> ../mobium-benchmarks/commit-map.txt` gives the current commit.
+results*). The release bar's benchmark part (`docs/releasing.md`) is decided with the numbers on this page. Raw data
+(every run's CSV, the suite and comparison medians) is in
+[btwonion/mobium-benchmarks](https://github.com/btwonion/mobium-benchmarks), one folder per round and players' files in
+`players/`. A build id in an older round may predate a rewrite of this repository's history:
+`grep ^<id> ../mobium-benchmarks/commit-map.txt` gives the current commit. Older rounds name the comparison files
+`gatea-`, `gateb-` and `gatec-` (`compare-` with the static cache or vertex offload, and `cachecost-`), their keys
+`gate_…`, and vertex offload `+parts` in the setup names.
 
 ## Tools
 
@@ -21,13 +24,18 @@ and players' files in `players/`. A build id in an older round may predate a rew
   protocol (window size, battery, low-power profile, another setup than the instance's). `/mobium stop` aborts.
 - **`/mobium suite [seconds] [runs] [scenes…]`** — a whole setup unattended (60 s, 3 runs, all seven scenes): builds
   each scene, waits until the world has settled, records, and rewrites `suite-<timestamp>.csv` with the medians after
-  every run. Suite and gate files end with `# throttled_runs,<n>` and `# build,<commit>`.
-- **`/mobium gatea`**, **`gateb`**, **`gatec [seconds] [runs] [scene]`** — the gates (*Gates*), alternating Mobium's
-  module off and on in one session (60 s, 3 runs each) and writing `<gate>-<timestamp>.csv` with medians and the gate's
-  numbers (`bench/GateB.kt`, `bench/GateC.kt`). `gateb` adds a `storage_room` run with the cache's draw calls skipped
-  (setup `…+cache+nodraw`). `gatec` in a scene other than `mob_pen_live` prints its numbers without a verdict. The gate
-  commands switch the module themselves, whatever the settings say.
-- **`/mobium stages [seconds] [runs] [scene]`** — Module 2's expand pass as a compute dispatch against the vertex stage,
+  every run. Suite and comparison files end with `# throttled_runs,<n>` and `# build,<commit>`.
+- **`/mobium compare <static_cache|vertex_offload> [seconds] [runs] [scene]`** — the module off and on in turn in one
+  session (60 s, 3 runs each; `storage_room` for the static cache and `mob_pen_live` for vertex offload unless a scene
+  is named), writing `compare-<timestamp>.csv` with medians, `# compare_module`, the frame with over without the
+  module (`# compare_frame_with_over_without`, judged against the release bar's 1.03×) and the entity CPU work
+  (`prepare` + `shadow_prepare`) without over with it (`# compare_cpu_without_over_with`; `bench/ModuleComparison.kt`).
+- **`/mobium cachecost [seconds] [runs]`** — what the cached objects cost: `storage_room` with the cache, the same with
+  the cache's draw calls skipped (setup `…+cache+nodraw`), and `control` with and without the cache, writing
+  `cachecost-<timestamp>.csv` (`bench/CacheCost.kt`; *What each module achieved*). It and `/mobium compare` switch the
+  module themselves, whatever the settings say.
+- **`/mobium stages [seconds] [runs] [scene]`** — vertex offload's expand pass as a compute dispatch against the vertex
+  stage,
   alternating; refused where vertex shaders cannot write storage buffers (and so on Vulkan).
 - **`/mobium benchmark`** — the players' benchmark (README, *Benchmarks wanted*): the jar's built-in data pack "Mobium
   Benchmark" (`bench/BenchPack.kt`, never on by itself, `docs/vanilla-notes.md` §17), `storage_room` and
@@ -35,14 +43,14 @@ and players' files in `players/`. A build id in an older round may predate a rew
   end); writes `benchmark-<timestamp>.csv` with medians, `<scene>_speedup` and the machine (`# os`, `# driver`: §19).
   Refused outside a classic superflat overworld, without the pack, or when neither module can run. In dev
   environments `/mobium benchmark <seconds>` shortens the runs.
-- **Setup names** get `+cache` and `+parts` (`+parts-vertex` in the vertex stage) while the modules run. Both are on by
-  default; switch Mobium off in the settings or with the A/B key for vanilla numbers.
+- **Setup names** get `+cache` and `+offload` (`+offload-vertex` in the vertex stage) while the modules run. Both are on
+  by default; switch Mobium off in the settings or with the A/B key for vanilla numbers.
 - **F3 entry `mobium:timings`** — the same timers averaged over 64 frames (they only run while shown or recording).
 - **Prism instances** — `./gradlew :26.3-fabric:benchKit` (the setups' mods and the datapack), `./gradlew
   :26.3-fabric:runBenchWorld` (a ready world), then `python3 benchmark/prism_instances.py` creates or updates "Mobium
   Bench A–D" with mods, world, settings, the pinned shader pack and Fresh Animations (`--no-download` to skip), and
-  `-Dmobium.bench.expect=<setup>`, so the suite and gates refuse the wrong packs. Re-run the first and last step after
-  changing Mobium. The script refuses a kit not built from the checkout's current commit and a checkout behind its
+  `-Dmobium.bench.expect=<setup>`, so the suite and comparisons refuse the wrong packs. Re-run the first and last step
+  after changing Mobium. The script refuses a kit not built from the checkout's current commit and a checkout behind its
   upstream (`--allow-behind`).
 
 The game directory of the dev clients is `versions/26.3-fabric/run/` (Fabric) and `run/` (NeoForge); in a Prism
@@ -140,24 +148,25 @@ the scene two seconds later in the same place (each scene replaces the previous 
 
 ### Running everything at once
 
-`python3 benchmark/bench_full.py` does everything the gate and the release need in one unattended run (about six
+`python3 benchmark/bench_full.py` does everything the release bar needs in one unattended run (about six and a half
 hours; `--dry-run` for the checks and plans): it builds the bench kit (`benchKit`, plus `runBenchWorld` when the world
 is missing), installs it with `prism_instances.py`, runs the smoke test on Vulkan (`bench_round.py --quick --api
 vulkan`), then the round on Vulkan (A and C) unless the smoke test failed, then the round on OpenGL (A–D). Each round
-pushes its data as it ends; a failed round does not stop the next. At the end it lists each step's outcome and Gate
-D's benchmark numbers from the Vulkan round: `mob_pen_live` with over without Module 2 in A and C, `control` with over
-without Module 2 in A and C and with over without the static cache in A, each at most 1.03×.
+pushes its data as it ends; a failed round does not stop the next. At the end it lists each step's outcome and the
+release bar's benchmark numbers from both rounds: every `/mobium compare` of the plans, the frame with the module over
+the frame without it, each at most 1.03×.
 
 ### Running a round unattended
 
-`python3 benchmark/bench_round.py` runs setups A–D one after another without anyone at the keyboard (about three and
-a half hours; `A D` for some setups, `--dry-run` to see the plan, `--quick` for a smoke test: a short run of each kind
+`python3 benchmark/bench_round.py` runs setups A–D one after another without anyone at the keyboard (about four
+hours; `A D` for some setups, `--dry-run` to see the plan, `--quick` for a smoke test: a short run of each kind
 of command in the plans, which fails on a command that does not start or a run on the other API, not on throttled
 runs). Before it
 starts it checks mains power, an external monitor, that every instance has the bench kit's Mobium jar and that none of
 them is running. For each setup it writes the plan (`PLANS` in the script: `/mobium suite`, `/mobium stages` and
-`/mobium gatec 60 3 item_drops` in A–D, `/mobium gatec` in A, C and D, and in A also
-`/mobium stages 60 3 display_build`; on Vulkan below) to the instance's `mobium-bench/autorun` and starts the
+`/mobium compare vertex_offload 60 3 item_drops` in A–D, `/mobium compare vertex_offload` in A, C and D,
+`/mobium compare vertex_offload 60 3 control` in A and C, and in A also `/mobium stages 60 3 display_build` and
+`/mobium compare static_cache 60 3 control`; on Vulkan below) to the instance's `mobium-bench/autorun` and starts the
 instance with Prism's command line straight into the world. The game opens on the display the desktop chooses (the
 laptop's own screen); as soon as it has started, before the world loads, Mobium (`bench/BenchAutorun.kt`) moves the
 fullscreen window to the monitor whose name contains `--display` (default `AOC`) at 1920×1080. The first command waits
@@ -178,10 +187,10 @@ the focus from the game, which then runs at 10 FPS.
 
 `--api vulkan` runs the round on Minecraft's Vulkan renderer: setups A and C (about two hours), since B and D need
 Iris, which draws no shader pack on Vulkan (`PLAN.md`, *Decisions*). Vulkan has no vertex-stage expand pass, so
-`/mobium stages` is refused there; its plans are `/mobium suite`, `/mobium gatec`, `/mobium gatec 60 3 item_drops` and
-`/mobium gatec 60 3 control` in A and C, and in A also `/mobium gateb`, which with the last gatec gives Gate D's
-`control` numbers. For each setup the script chooses the API in the
-instance's `options.txt` as a player does in the video settings (`preferredGraphicsBackend`, with `startedCleanly`
+`/mobium stages` is refused there; its plans are `/mobium suite`, `/mobium compare vertex_offload`,
+`/mobium compare vertex_offload 60 3 item_drops` and `/mobium compare vertex_offload 60 3 control` in A and C, and in A
+also `/mobium compare static_cache 60 3 control`. For each setup the script chooses the API in the instance's
+`options.txt` as a player does in the video settings (`preferredGraphicsBackend`, with `startedCleanly`
 set, since after an unclean start the game turns `vulkan` into `default`; `docs/vanilla-notes.md` §21) and puts the
 old value back afterwards; without the option the round runs on OpenGL, set the same way. A game that fails to start
 on the chosen API carries on with the other one without saying so: the script reads every run's `backend` from
@@ -201,8 +210,8 @@ because the signing key is locked), the script prints the commands to finish by 
    medians (about 26 minutes). The HUD stays hidden until the very end: the last scene, `control`, is an empty field
    and looks finished, but it records for another three minutes. The result for a scene and setup is the median of
    the three runs.
-3. Setup A only: `/mobium gateb` for Gate B (about 16 minutes); `/mobium gatea` gives the cache's speed-up in
-   `storage_room` (about 7 minutes).
+3. Setup A only: `/mobium cachecost` for what the cached objects cost (about 16 minutes); `/mobium compare
+   static_cache` gives the cache's speed-up in `storage_room` (about 7 minutes).
 4. Do this for all four setups, then copy each instance's `minecraft/mobium-bench/` folder into
    `<yyyy-mm-dd>-<machine>/<setup>/` of the data repository (per-run CSVs gzipped), commit and push it there, and
    add the results to this page, or hand the folders to Claude Code.
@@ -213,28 +222,28 @@ By hand instead: `/function mobium-bench:<scene>`, wait for "Scene <scene> is re
 ## Latest results
 
 Build **a484d88**, unattended (`bench_round.py`), fullscreen 1920×1080 on the AOC monitor, mains power, uncapped,
-VSync off; the static cache and Module 2 on, Module 2's expand pass in the vertex stage in A and C and as a compute
-dispatch in B and D (shader pack), as `ExpandPass.stage` chooses. Setup B is from build b264421, which draws the same
-and only adds `throttled_frames` to the bench; B's runs on a484d88 do not count, as its window lost focus halfway
-(*Measurement pitfalls*). Machine: Lenovo ThinkPad X9-14 Gen 1, Intel Core Ultra 7 258V, Intel Arc 140V iGPU (`xe`,
-Mesa 26.2, OpenGL 4.6), 32 GB, Fedora 44. Raw data:
-[`2026-11-12-thinkpad-x9/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-11-12-thinkpad-x9/) (A, C,
-D) and
+VSync off; the static cache and vertex offload on, vertex offload's expand pass in the vertex stage in A and C and as a
+compute dispatch in B and D (shader pack), as `ExpandPass.stage` chooses. Setup B is from build b264421, which draws the
+same and only adds `throttled_frames` to the bench; B's runs on a484d88 do not count, as its window lost focus halfway
+(*Measurement pitfalls*). Machine: Lenovo ThinkPad X9-14 Gen 1, Intel Core Ultra 7 258V, Intel Arc 140V iGPU (`xe`, Mesa
+26.2, OpenGL 4.6), 32 GB, Fedora 44. Raw data:
+[`2026-11-12-thinkpad-x9/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-11-12-thinkpad-x9/) (A, C, D)
+and
 [`2026-11-12-thinkpad-x9-b264421/`](https://github.com/btwonion/mobium-benchmarks/tree/main/2026-11-12-thinkpad-x9-b264421/)
 (B).
 
-### Module 2 off and on, same session
+### Vertex offload off and on, same session
 
-`/mobium gatec` and `/mobium gatec 60 3 item_drops` (Module 2 off and on in turn, medians of three 60-second runs;
-*CPU work* is `prepare` + `shadow_prepare`):
+`/mobium compare vertex_offload` and `/mobium compare vertex_offload 60 3 item_drops` (vertex offload off and on in
+turn, medians of three 60-second runs; *CPU work* is `prepare` + `shadow_prepare`):
 
-| `mob_pen_live` | without Module 2: frame / CPU work | with: frame / CPU work | frame | CPU work |
+| `mob_pen_live` | without vertex offload: frame / CPU work | with: frame / CPU work | frame | CPU work |
 | --- | --- | --- | --- | --- |
 | A (vertex stage) | 3.49 / 2.01 ms (287 FPS) | 3.26 / 1.10 ms (307 FPS) | 1.07× faster | 1.82× lower |
 | C (vertex stage) | 9.93 / 5.97 ms (101 FPS) | 7.34 / 3.84 ms (136 FPS) | 1.35× faster | 1.55× lower |
 | D (compute) | 73.35 / 17.80 ms (13.6 FPS) | 61.16 / 7.69 ms (16.4 FPS) | 1.20× faster | 2.31× lower |
 
-| `item_drops` | without Module 2: frame / CPU work | with: frame / CPU work | frame | CPU work |
+| `item_drops` | without vertex offload: frame / CPU work | with: frame / CPU work | frame | CPU work |
 | --- | --- | --- | --- | --- |
 | A (vertex stage) | 12.02 / 8.77 ms (83 FPS) | 4.18 / 0.52 ms (239 FPS) | 2.88× faster | 16.9× lower |
 | B (compute) | 85.82 / 46.38 ms (11.7 FPS) | 38.62 / 0.83 ms (25.9 FPS) | 2.22× faster | 55.6× lower |
@@ -242,12 +251,12 @@ D) and
 | D (compute) | 104.92 / 49.74 ms (9.5 FPS) | 61.13 / 0.98 ms (16.4 FPS) | 1.72× faster | 50.6× lower |
 
 - **In A's mob pen the frame gains less than the CPU saves:** both sides ran at 700 MHz, the CPU work fell by 0.91 ms
-  and the frame by 0.23 ms, so the frame with Module 2 waits for the GPU. The CPU saving is the same in every session,
-  the frame follows the clock (*Frames between sessions follow the GPU clock*).
+  and the frame by 0.23 ms, so the frame with vertex offload waits for the GPU. The CPU saving is the same in every
+  session, the frame follows the clock (*Frames between sessions follow the GPU clock*).
 - **With a shader pack the items are drawn twice:** Iris's shadow pass falls from 25.8 to 4.0 ms in B and from 27.7 to
-  4.4 ms in D, so most of the CPU work Module 2 takes is there.
-- **Extract and submit read higher with Module 2 on in `item_drops`**, by 0.5–0.6 ms in A and C and by 1.2–1.6 ms in B
-  and D (submit 1.5–1.8 → 2.1–2.4 ms, extract 0.4–0.5 → 0.6–1.2 ms), as in the dev client (*Dropped items*). The
+  4.4 ms in D, so most of the CPU work vertex offload takes is there.
+- **Extract and submit read higher with vertex offload on in `item_drops`**, by 0.5–0.6 ms in A and C and by 1.2–1.6 ms
+  in B and D (submit 1.5–1.8 → 2.1–2.4 ms, extract 0.4–0.5 → 0.6–1.2 ms), as in the dev client (*Dropped items*). The
   frames include it.
 
 `/mobium stages` (compute and the vertex stage in turn, three 60-second runs each; ms per frame per run, the GPU clock
@@ -263,7 +272,7 @@ in MHz in brackets, and the ratio of the medians):
 
 - Without a shader pack the vertex stage is faster at the same or a lower GPU clock (A's mob pens by 0.12–0.14 ms at
   700 MHz, C's by 0.2–0.3 ms at 843–900 against 928–991 MHz, `display_build` by 0.03–0.10 ms): the 0.2 ms of GPU time
-  per frame of *Module 2's fixed cost* below. The rest of A's ratio is the clock, which rose during the vertex
+  per frame of *Vertex offload's fixed cost* below. The rest of A's ratio is the clock, which rose during the vertex
   stage's runs.
 - With a shader pack the two are equal: the pairs disagree in sign and each run follows the GPU clock (D: compute
   53.5 ms at 796 MHz and 62.4 ms at 632 MHz, the vertex stage 55.6 ms at 817 MHz). So `ExpandPass.stage` keeps compute
@@ -331,9 +340,9 @@ over on (`<scene>_speedup`). Raw files:
 | [#31](https://github.com/btwonion/mobium/issues/31) | Intel Core i7-13700HX, Nvidia GeForce RTX 4070 Laptop GPU; Lenovo Legion Pro 5 16IRX8 on mains, `balanced` profile, 2560×1515 window, Custom, no other mods | 111 → 252 FPS (9.05 → 3.96 ms), **2.28×** | 99 → 240 FPS (10.07 → 4.16 ms), **2.42×** |
 
 Both ran a release build on Fabric (`dd7253f`) without Sodium (setup `vanilla`), on OpenGL, without a shader pack or
-resource packs, seed `mobium`, both modules active and Module 2's expand pass in the vertex stage. 1% lows: #32 164 →
-685 and 169 → 370 FPS, #31 63 → 145 and 51 → 112 FPS. Without Sodium these frames do not compare with *Latest
-results*. Module 2's check found no difference on either GPU (`docs/compat.md`, *On players' GPUs*).
+resource packs, seed `mobium`, both modules active and vertex offload's expand pass in the vertex stage. 1% lows: #32
+164 → 685 and 169 → 370 FPS, #31 63 → 145 and 51 → 112 FPS. Without Sodium these frames do not compare with *Latest
+results*. Vertex offload's check found no difference on either GPU (`docs/compat.md`, *On players' GPUs*).
 
 - **On these Nvidia GPUs the frame gains what the CPU saves.** In `mob_pen_live` `prepare` fell by 2.90 ms on #32 and
   the frame by 2.83 ms, on #31 by 5.77 and 5.91 ms; on the Arc 140V the frame follows the clock that CPU and GPU share
@@ -346,26 +355,29 @@ results*. Module 2's check found no difference on either GPU (`docs/compat.md`, 
   Windows or a Linux desktop without a mains supply or platform profile. Current files have `# os` and `# driver`
   (*Tools*).
 
-## Gates
+## What each module achieved
 
-Every gate also requires zero screenshot differences (self-check and gametests, both loaders). Gates B and C measure
-what Mobium can change, without the GPU work that vanilla pays as well.
+What Mobium can change, without the GPU work that vanilla pays as well, each module against vanilla in one session.
+The release bar (`docs/releasing.md`) asks only that no comparison gets slower; these are the gains, measured with
+zero screenshot differences (self-check and gametests, both loaders).
 
-| Gate | Measured | Definition | Result |
+| Module | Measured | Number | Result |
 | --- | --- | --- | --- |
-| A | Setup A, `/mobium gatea`, chest prototype | `storage_room` at least 1.5× faster with Mobium than without | **1.53×** (3.33 → 2.18 ms) |
-| B | Setup A, `/mobium gateb`, build 6fb45dc | What the cached objects cost: `storage_room` with the cache's draw calls skipped, plus those draw calls' CPU time, at most 1.2× `control`; `control` with the cache at most 1.03× without | **1.170×** ((1.247 + 0.041) / 1.101 ms); `control` 1.003× |
-| C | Setups C and D, `/mobium gatec`, build b41d342 | In D `mob_pen_live`'s `prepare` + `shadow_prepare` at least 1.5× lower with Module 2; in C and D its frame at most 1.03× the frame without | **D: 1.90× lower** (13.70 → 7.22 ms), frame 0.84× (65.57 → 55.37 ms); **C: frame 0.80×** (9.05 → 7.23 ms) |
+| Static cache | Setup A, `/mobium compare static_cache`, closed chests only | `storage_room` without over with the cache | **1.53× faster** (3.33 → 2.18 ms) |
+| Static cache | Setup A, `/mobium cachecost`, build 6fb45dc | What the cached objects cost: `storage_room` with the cache's draw calls skipped, plus those draw calls' CPU time, over `control`; `control` with the cache over without | **1.170×** ((1.247 + 0.041) / 1.101 ms); `control` 1.003× |
+| Vertex offload | Setups C and D, `/mobium compare vertex_offload`, build b41d342 | `mob_pen_live`'s `prepare` + `shadow_prepare` without over with vertex offload; its frame with over without | **D: 1.90× lower** (13.70 → 7.22 ms), frame 0.84× (65.57 → 55.37 ms); **C: frame 0.80×** (9.05 → 7.23 ms) |
 
-**Gate B** leaves out the GPU drawing the 1,000 chests and 300 signs, about 0.30 ms per frame that vanilla pays as
-well. The whole `storage_room` frame (1.395× `control`) and the cost of drawing the cached objects (0.29 ms per frame)
-are reported without a target; `/mobium gateb` records the extra run without the cache's draw calls for that.
+**What the cached objects cost** leaves out the GPU drawing the 1,000 chests and 300 signs, about 0.30 ms per frame
+that vanilla pays as well. The whole `storage_room` frame (1.395× `control`) and the cost of drawing the cached objects
+(0.29 ms per frame) are reported beside it; `/mobium cachecost` records the extra run without the cache's draw calls
+for that.
 
-**Gate C** counts the entity CPU work: in D the frame is mostly GPU work, and in C Fresh Animations' animations run
-inside `ModelPart.render`, so 3.2 of 5.3 ms of tessellation stay on the CPU without a single vertex written (*What
-Module 2 can take* below). Mobium can only take CPU work away; how much of it shows in the frame depends on the GPU.
-With Module 2 the iGPU clocked higher (CPU and GPU share one power budget), so the frames gained more than the CPU time
-saved. Gate C holds on build a484d88 too (D 2.31× lower CPU work and 1.20× faster, C 1.35× faster; *Latest results*).
+**Vertex offload** is measured by the entity CPU work: in D the frame is mostly GPU work, and in C Fresh Animations'
+animations run inside `ModelPart.render`, so 3.2 of 5.3 ms of tessellation stay on the CPU without a single vertex
+written (*What vertex offload can take* below). Mobium can only take CPU work away; how much of it shows in the frame
+depends on the GPU. With vertex offload the iGPU clocked higher (CPU and GPU share one power budget), so the frames
+gained more than the CPU time saved. Build a484d88 measures the same (D 2.31× lower CPU work and 1.20× faster, C 1.35×
+faster; *Latest results*).
 
 ## Findings
 
@@ -376,24 +388,25 @@ it removes:
 
 | Scene | Frame | Where the time goes | Bound for Mobium |
 | --- | --- | --- | --- |
-| `mob_pen_static`, `mob_pen_live` | 2.9–4.2 ms | Tessellate 0.9–1.3 ms, extract 0.55 ms (1.0–1.2 ms with EMF/ETF), the rest of prepare 0.6–0.8 ms, submit 0.2–0.3 ms. Pose is only 0.08–0.09 ms | Module 2 removes most of tessellate |
-| `storage_room` | 3.3 ms (A, 1920×1080) | Prepare 1.7 ms: chest tessellation 0.34 ms and the 300 signs' text most of the rest; submit 0.26 ms, extract 0.16 ms, draw 0.22 ms | Module 1, chests and sign text |
-| `map_wall` | 4.7 ms | Prepare 2.5 ms (items and maps in frames, shelf items), extract 0.75 ms, submit 0.5–0.6 ms, draw 0.45 ms | Module 1 for the shelves; maps in frames stay vanilla (translucent) |
-| `display_build` | 1.7 ms | Extract 0.4–0.5 ms, prepare 0.75 ms (block and item models), submit 0.12–0.15 ms | Module 1 (display entities) |
+| `mob_pen_static`, `mob_pen_live` | 2.9–4.2 ms | Tessellate 0.9–1.3 ms, extract 0.55 ms (1.0–1.2 ms with EMF/ETF), the rest of prepare 0.6–0.8 ms, submit 0.2–0.3 ms. Pose is only 0.08–0.09 ms | Vertex offload removes most of tessellate |
+| `storage_room` | 3.3 ms (A, 1920×1080) | Prepare 1.7 ms: chest tessellation 0.34 ms and the 300 signs' text most of the rest; submit 0.26 ms, extract 0.16 ms, draw 0.22 ms | The static cache, chests and sign text |
+| `map_wall` | 4.7 ms | Prepare 2.5 ms (items and maps in frames, shelf items), extract 0.75 ms, submit 0.5–0.6 ms, draw 0.45 ms | The static cache for the shelves; maps in frames stay vanilla (translucent) |
+| `display_build` | 1.7 ms | Extract 0.4–0.5 ms, prepare 0.75 ms (block and item models), submit 0.12–0.15 ms | The static cache (display entities) |
 | `control` | 1.1 ms | Nothing to accelerate | Must not get slower |
 
 - **Writing vertices, not posing, is the cost of mobs** (tessellation 11–14× pose for vanilla models; with Fresh
   Animations tessellation grows from 1.0 to 4.3–4.6 ms, posing only to 0.17 ms).
-- **EMF/ETF double the entity extraction** (0.55 → 1.0–1.2 ms) even with vanilla models; Module 2 does not touch it.
+- **EMF/ETF double the entity extraction** (0.55 → 1.0–1.2 ms) even with vanilla models; vertex offload does not touch
+  it.
 - **Display entities and item frames** are mostly extract, submit and prepare work, which the static cache skips for
   unchanged objects except their extraction (entities are extracted every frame; the cache's comparison costs about
   0.3 µs per display).
 
-### What Module 2 can take
+### What vertex offload can take
 
 `self_check.py fabric --mode profile-mobs` in the dev client (854×480): `mob_pen_live` as drawn, and with
 every model part's vertex writes skipped (`Sections.skipModelVertices`; the mobs vanish). The difference is the most
-Module 2 can take off the CPU. Timer averages in ms:
+vertex offload can take off the CPU. Timer averages in ms:
 
 | Setup | Frame | `tessellate_entities` | `prepare` | `shadow_prepare` | `prepare` + `shadow_prepare` |
 | --- | --- | --- | --- | --- | --- |
@@ -405,7 +418,7 @@ Module 2 can take off the CPU. Timer averages in ms:
 | D, no vertices | 23.59 | 3.92 | 4.64 | 0.75 | 5.38 |
 
 - In C, 3.2 of 5.3 ms of tessellation stay without a single vertex: EMF evaluates Fresh Animations inside
-  `ModelPart.render`, and the part walk and its pose math stay on the CPU too. Module 2 keeps all three.
+  `ModelPart.render`, and the part walk and its pose math stay on the CPU too. Vertex offload keeps all three.
 - In D every vertex goes through Iris's per-quad extension (face normal, tangent, mid UV), so the vertex work is most
   of the entity CPU time: at most 3.1× lower.
 - JFR could not split this: two recordings of the same scene charged the same third of `renderToBuffer` once to vertex
@@ -414,10 +427,10 @@ Module 2 can take off the CPU. Timer averages in ms:
 ### Dropped items
 
 `self_check.py <loader> --mode profile-mobs --scene item_drops` in the dev client (854×480; Sodium, Iris without a
-shader pack, EMF and ETF): about 1,070 dropped bamboo items, about 2,700 drawn copies, with Module 2 off, on, and with
-every item's vertex writes skipped (the items vanish; the bound for what the CPU can lose). Timer averages in ms:
+shader pack, EMF and ETF): about 1,070 dropped bamboo items, about 2,700 drawn copies, with vertex offload off, on, and
+with every item's vertex writes skipped (the items vanish; the bound for what the CPU can lose). Timer averages in ms:
 
-| Loader | Module 2 | Frame | `extract_entities` | `submit_entities` | `prepare` |
+| Loader | Vertex offload | Frame | `extract_entities` | `submit_entities` | `prepare` |
 | --- | --- | --- | --- | --- | --- |
 | Fabric | off | 16.40 | 0.63 | 1.05 | 12.95 |
 | Fabric | on | 4.20 | 0.83 | 1.50 | 0.72 |
@@ -428,36 +441,36 @@ every item's vertex writes skipped (the items vanish; the bound for what the CPU
 
 - Frames 3.9× (Fabric) and 3.6× (NeoForge) faster; `prepare` 18× lower. At 1920×1080 in the benchmark round
   (*Latest results*) 2.9× (A), 2.2× (B), 3.2× (C) and 1.7× (D) faster, the entity CPU work 17–56× lower; with a shader
-  pack most of it is Iris's shadow pass, which draws the items again. Besides the vertex writes Module 2 also
+  pack most of it is Iris's shadow pass, which draws the items again. Besides the vertex writes vertex offload also
   removes most of their upload and the per-quad builder lookups: vanilla asks for the builder once per quad, and Iris's
   and ETF's hooks on that call cost about as much as the vertices (`docs/vanilla-notes.md` §25).
 - What stays on the CPU: the render states (rebuilt each frame, with each item model's bounding box), one submit per
   drawn copy, and the client's own tick of the items, which runs between frames and is outside Mobium's scope.
-- Extract and submit read 0.2–0.45 ms higher with Module 2 on (each condition the average of two rounds; in the
+- Extract and submit read 0.2–0.45 ms higher with vertex offload on (each condition the average of two rounds; in the
   benchmark round 0.5–0.6 ms in A and C and 1.2–1.6 ms with a shader pack). Mobium adds no work there: the CPU runs
   slower while the GPU draws more frames (*Extract and submit follow the CPU's clock*). In this table one of the two
-  rounds with Module 2 ran under Java Flight Recorder, which slows the render thread further; `profile-mobs` keeps that
-  round out of its averages.
+  rounds with vertex offload ran under Java Flight Recorder, which slows the render thread further; `profile-mobs` keeps
+  that round out of its averages.
 
-### Module 2's fixed cost: a compute batch of its own
+### Vertex offload's fixed cost: a compute batch of its own
 
-In a full round `display_build`, where Module 2 expands only 17 shields, was 0.15–0.3 ms per frame slower with
-Module 2. Measured in the Fabric dev client (1423×800 window, mains power, Mesa
+In a full round `display_build`, where vertex offload expands only 17 shields, was 0.15–0.3 ms per frame slower with
+vertex offload. Measured in the Fabric dev client (1423×800 window, mains power, Mesa
 26.2.5, uncapped), with `python3 benchmark/self_check.py fabric --mode expand-cost` (`--scene mob_pen_live`, `--scene
 "mob_pen_live stages"`): each condition 8 s, in 4 rounds whose order rotates, static cache on. A fixed order did not
-work: the laptop's CPU clocks drift within a round, and even `extract_entities`, which Module 2 does not touch, came
-out 10 % apart between conditions. *GPU* is the time from a frame's start to its submit in GL timestamps; *passes* the
-GPU time of the expand passes themselves, from a timestamp before each pass to one after its barrier (for a dispatch
+work: the laptop's CPU clocks drift within a round, and even `extract_entities`, which vertex offload does not touch,
+came out 10 % apart between conditions. *GPU* is the time from a frame's start to its submit in GL timestamps; *passes*
+the GPU time of the expand passes themselves, from a timestamp before each pass to one after its barrier (for a dispatch
 that includes the hand-over between batches below).
 
 **What costs:** Mesa's iris records `glDispatchCompute` in a compute batch of its own, apart from the render batch
 with vanilla's upload and the draws, so each expand pass flushes both batches in the middle of the frame and the GPU
 waits for the hand-over: three submissions per frame instead of one (`INTEL_DEBUG=submit`; docs/vanilla-notes.md
-§16). Module 2's own CPU time is 25–30 µs per pass (records 5–7 µs for the shields, the dispatch call 10–15 µs). The
-same shader compiled as a vertex shader and drawn as points with rasterisation off (the *vertex stage*) stays in the
-render batch: one submission per frame, as without Module 2, and the same bytes (`--mode parts`).
+§16). Vertex offload's own CPU time is 25–30 µs per pass (records 5–7 µs for the shields, the dispatch call 10–15 µs).
+The same shader compiled as a vertex shader and drawn as points with rasterisation off (the *vertex stage*) stays in the
+render batch: one submission per frame, as without vertex offload, and the same bytes (`--mode offload`).
 
-| Scene, setup | Module 2 off | compute | vertex stage | no vertices |
+| Scene, setup | Vertex offload off | compute | vertex stage | no vertices |
 | --- | --- | --- | --- | --- |
 | `display_build`, A: frame / GPU | 1.150 / 0.568 ms | 1.337 / 0.810 ms | 1.252 / 0.600 ms | 1.102 / 0.589 ms |
 | `mob_pen_live`, A | 4.18 / 1.10 ms | 3.05 / 1.34 ms | 3.06 / 1.19 ms | 2.22 / 0.54 ms |
@@ -475,8 +488,8 @@ The passes alone, two runs of compute against the vertex stage in each setup (fr
 
 What it shows:
 
-- **Without a shader pack the vertex stage removes most of the fixed cost.** In `display_build` Module 2 costs the GPU
-  0.03 ms per frame instead of 0.24, the frame 0.10 ms instead of 0.19; the passes cost the GPU 2.6–2.8× less in A
+- **Without a shader pack the vertex stage removes most of the fixed cost.** In `display_build` vertex offload costs the
+  GPU 0.03 ms per frame instead of 0.24, the frame 0.10 ms instead of 0.19; the passes cost the GPU 2.6–2.8× less in A
   and C. With the dev window CPU-bound, A's and C's frames are within noise of compute's; at 1920×1080, where A is
   closer to GPU-bound, it shows (`/mobium stages` in *Latest results*).
 - **With a shader pack compute's frames are faster**, by 3–14 ms in B and D in every run, although its passes cost the
@@ -486,7 +499,7 @@ What it shows:
   50.1), but with Mesa's threaded driver `glFlush` waits for the driver thread: 0.06 ms per frame in A, 2.5 ms in D.
   The dispatch's flushes happen on the driver thread.
 - So the expand pass runs in the vertex stage without a shader pack and as a compute dispatch with one
-  (`ExpandPass.stage`); `-Dmobium.parts.stage=compute|vertex` overrides that. At 1920×1080 the vertex stage is faster
+  (`ExpandPass.stage`); `-Dmobium.offload.stage=compute|vertex` overrides that. At 1920×1080 the vertex stage is faster
   without a shader pack and both are equal with one (*Latest results*). Single frames in B and D vary by ±5 ms
   between runs of the same condition in the dev window.
 
@@ -495,7 +508,7 @@ What it shows:
 With Complementary Reimagined r5.9.3 at its defaults, as setups B and D run it:
 
 - The shadow pass costs 0.43–0.47 ms in `control` (shadow terrain only) and up to 5.3 ms with entities; in D's mob
-  pens without Module 2, 5.0–5.3 ms, of which entity tessellation 2.2 ms. Fresh Animations makes the shadow pass's
+  pens without vertex offload, 5.0–5.3 ms, of which entity tessellation 2.2 ms. Fresh Animations makes the shadow pass's
   tessellation 2.4× as expensive, as it does the main pass's.
 - **Cached block entities cost it nothing:** Complementary sets `shadowBlockEntities = false`, so
   `shadow_tessellate_block_entities` is 0.000 ms in every scene and `storage_room`'s shadow pass equals `control`'s.
@@ -506,61 +519,64 @@ With Complementary Reimagined r5.9.3 at its defaults, as setups B and D run it:
 
 The iGPU picks its clock per workload, and CPU and GPU share one power budget. Between sessions, scenes where Mobium
 does nothing moved by up to ±18 % with the clock: `control` 1.18× slower in D at 668–766 against 900–942 MHz, 0.85× in C
-at 1160–1195 against 904–958 MHz. A's mob pens looked 1.07–1.14× slower with Module 2 across sessions and are
-faster with it in one session, by as much as the clock allows: Module 2 lowers their CPU work 1.8–1.9× in every
+at 1160–1195 against 904–958 MHz. A's mob pens looked 1.07–1.14× slower with vertex offload across sessions and are
+faster with it in one session, by as much as the clock allows: vertex offload lowers their CPU work 1.8–1.9× in every
 session, and the frame gained 1.19× at 750 MHz on build 8d26a26 and 1.07× at 700 MHz on a484d88. So speed-ups are
-measured within one session, alternating (the gate commands, `/mobium stages`, `/mobium benchmark`), and `summary.csv`
+measured within one session, alternating (`/mobium compare`, `/mobium stages`, `/mobium benchmark`), and `summary.csv`
 records `gpu_mhz` and `gpu_throttle`.
 
-- **A's mob pens with Module 2 are GPU-bound.** In one session their frame followed the clock: 3.25 ms at 700 MHz,
-  2.93 ms at 845 MHz, 2.60 ms at 1065 MHz (`/mobium stages`, vertex stage). Without Module 2 it does not (3.50–3.66 ms
-  at 750–882 MHz in 8d26a26's `/mobium gatec`): the CPU limits it.
-- **So A's gain moves with the clock, not with the build.** Between the rounds on 8d26a26 and a484d88, `/mobium gatec`
-  measured the same CPU work with Module 2 (1.12 and 1.10 ms) and without it (2.12 and 2.01 ms) and the same frame
-  without it (3.55 and 3.49 ms); the frame with it went from 2.98 to 3.26 ms as the clock went from 750–776 to 700 MHz.
-  The expand pass's changes for items add uniform branches for cubes and read the quad's extra word only for items.
-  Extract and submit, whose code did not change between the builds, read 2–5 % higher in a484d88's suite, like
-  `prepare` (7 %): the CPU ran slower too (next section).
+- **A's mob pens with vertex offload are GPU-bound.** In one session their frame followed the clock: 3.25 ms at 700 MHz,
+  2.93 ms at 845 MHz, 2.60 ms at 1065 MHz (`/mobium stages`, vertex stage). Without vertex offload it does not
+  (3.50–3.66 ms at 750–882 MHz in 8d26a26's `/mobium compare vertex_offload`): the CPU limits it.
+- **So A's gain moves with the clock, not with the build.** Between the rounds on 8d26a26 and a484d88,
+  `/mobium compare vertex_offload` measured the same CPU work with vertex offload (1.12 and 1.10 ms) and without it
+  (2.12 and 2.01 ms) and the same frame without it (3.55 and 3.49 ms); the frame with it went from 2.98 to 3.26 ms as
+  the clock went from 750–776 to 700 MHz. The expand pass's changes for items add uniform branches for cubes and read
+  the quad's extra word only for items. Extract and submit, whose code did not change between the builds, read 2–5 %
+  higher in a484d88's suite, like `prepare` (7 %): the CPU ran slower too (next section).
 - **The package power limit holds the iGPU's clock down**, which CPU and GPU share. The firmware picks the clock
   (`xe`, GuC SLPC, `power_profile` base) between the efficient frequency (`tile0/gt0/freq0/rpe_freq`, 650 MHz in a
-  dev-client session) and 1950 MHz. In the dev client at 1423×800, `item_drops` with Module 2 kept the GPU busy 90–95 %
-  of the time (`gtidle/idle_residency_ms`) at only 750–850 MHz, and `xe` named the power limit as the reason in nearly
-  every sample (`freq0/throttle/reasons`: `pl1`). So a GPU-bound frame does not get the GPU's top clock while the CPU
-  draws power too. `summary.csv` records the reasons next to `gpu_mhz` (`gpu_throttle`), so a round tells a clock the
-  power limit held down from a GPU that had little to do.
-- **`display_build` does not get slower with Module 2's items.** The static cache draws all 100 item displays, so Module
-  2 takes no item there: `self_check.py fabric --mode expand-cost --scene "display_build items"` (Module 2 off, on
-  without its items, on with them, in rotating order) counted 0 item runs and 34 parts (the 17 shields) per frame with
-  and without items. The frames of its rounds followed where the render thread ran (next section), and A's 1.80 →
-  1.94 ms between the two rounds is the clock (750 against 700 MHz).
+  dev-client session) and 1950 MHz. In the dev client at 1423×800, `item_drops` with vertex offload kept the GPU busy
+  90–95 % of the time (`gtidle/idle_residency_ms`) at only 750–850 MHz, and `xe` named the power limit as the reason in
+  nearly every sample (`freq0/throttle/reasons`: `pl1`). So a GPU-bound frame does not get the GPU's top clock while the
+  CPU draws power too. `summary.csv` records the reasons next to `gpu_mhz` (`gpu_throttle`), so a round tells a clock
+  the power limit held down from a GPU that had little to do.
+- **`display_build` does not get slower with vertex offload's items.** The static cache draws all 100 item displays, so
+  vertex offload takes no item there: `self_check.py fabric --mode expand-cost --scene "display_build items"` (vertex
+  offload off, on without its items, on with them, in rotating order) counted 0 item runs and 34 parts (the 17 shields)
+  per frame with and without items. The frames of its rounds followed where the render thread ran (next section), and
+  A's 1.80 → 1.94 ms between the two rounds is the clock (750 against 700 MHz).
 
 ### Extract and submit follow the CPU's clock
 
-With Module 2 on, `extract_entities` and `submit_entities` read higher in `item_drops` (*Latest results*: by 0.5–0.6 ms
-in A and C, by 1.2–1.6 ms in B and D, and Iris's `shadow_extract` and `shadow_submit` too) and by 5–8 % in A's mob pens.
-Mobium runs the same code there with Module 2 off and on: the timers wrap only vanilla's calls, and the one check per
-entity (`PartTransform.excludes`) runs in both. What changes is how fast the CPU runs it. The Core Ultra 7 258V has
-four P-cores (4.7–4.8 GHz) and four LP E-cores (3.7 GHz, outside the P-cores' L3), and CPU and GPU share the package's
-power limit. Measured in the Fabric dev client (854×480 and 1423×800) by sampling the render thread every 2 ms from
-outside (its core in `/proc/<pid>/task/<tid>/stat`, that core's `scaling_cur_freq`, `xe`'s clock and throttle reasons):
+With vertex offload on, `extract_entities` and `submit_entities` read higher in `item_drops` (*Latest results*: by
+0.5–0.6 ms in A and C, by 1.2–1.6 ms in B and D, and Iris's `shadow_extract` and `shadow_submit` too) and by 5–8 % in
+A's mob pens. Mobium runs the same code there with vertex offload off and on: the timers wrap only vanilla's calls, and
+the one check per entity (`PartTransform.excludes`) runs in both. What changes is how fast the CPU runs it. The Core
+Ultra 7 258V has four P-cores (4.7–4.8 GHz) and four LP E-cores (3.7 GHz, outside the P-cores' L3), and CPU and GPU
+share the package's power limit. Measured in the Fabric dev client (854×480 and 1423×800) by sampling the render thread
+every 2 ms from outside (its core in `/proc/<pid>/task/<tid>/stat`, that core's `scaling_cur_freq`, `xe`'s clock and
+throttle reasons):
 
-- **The CPU's clock drops while the GPU works.** With Module 2 the iGPU draws the items at three times the frame rate
-  instead of waiting for the CPU, at 1,150–1,500 MHz with `pl1` as the reason it is not higher. In
-  `/mobium gatec 10 2 item_drops` with the render thread held on the P-cores, its core ran at 1.8–2.1 GHz with Module 2
-  and at 2.5–2.6 GHz without, and the two stages followed the clock: `extract_entities` 0.91 and `submit_entities`
-  1.73 ms at 1.8 GHz, 0.75–0.77 and 1.46–1.52 ms at 2.0–2.1 GHz, 0.74–0.79 and 1.39–1.47 ms without Module 2.
+- **The CPU's clock drops while the GPU works.** With vertex offload the iGPU draws the items at three times the frame
+  rate instead of waiting for the CPU, at 1,150–1,500 MHz with `pl1` as the reason it is not higher. In
+  `/mobium compare vertex_offload 10 2 item_drops` with the render thread held on the P-cores, its core ran at
+  1.8–2.1 GHz with vertex offload and at 2.5–2.6 GHz without, and the two stages followed the clock: `extract_entities`
+  0.91 and `submit_entities` 1.73 ms at 1.8 GHz, 0.75–0.77 and 1.46–1.52 ms at 2.0–2.1 GHz, 0.74–0.79 and 1.39–1.47 ms
+  without vertex offload.
 - **The scheduler moves the render thread to the E-cores now and then**, where the same work takes about twice as long.
   Linux places threads by capacity (`cpu_capacity` 1005–1024 for the P-cores, 676 for the E-cores), so a thread that
   waits for the GPU for part of each frame can land on an E-core. In `profile-mobs --scene item_drops` at 1423×800,
-  without Module 2 the render thread was busy 96–97 % of the time and never ran on an E-core; with it, it waited for the
-  GPU (busy 81–84 %) and spent 45–50 % of its time on E-cores, and `extract_entities` read 0.89 against 0.69 ms,
+  without vertex offload the render thread was busy 96–97 % of the time and never ran on an E-core; with it, it waited
+  for the GPU (busy 81–84 %) and spent 45–50 % of its time on E-cores, and `extract_entities` read 0.89 against 0.69 ms,
   `submit_entities` 1.53 against 1.37 ms (no vertices: 0.60 and 1.40 ms, on P-cores). With a shader pack the frames show
-  two modes: B's `item_drops` with Module 2 has `shadow_extract` at 0.30–0.45 ms in 13 % of its frames and at 0.80–1.05
-  ms in the rest, without Module 2 at 0.35–0.50 ms in all. In `display_build` (dev client) the rounds of one condition
-  whose render thread spent 21–31 % of its time on E-cores were up to 1.3× slower than one at 4 %. Java Flight
-  Recorder's sampling, which stops the thread a thousand times a second, put it on E-cores for 60–84 % of a round.
-- **One condition differs between sessions by as much:** C's suite run of `item_drops` with Module 2 had
-  `submit_entities` at 1.44 ms, its `/mobium gatec` runs at 2.30 ms, at the same frame time (3.7 ms).
+  two modes: B's `item_drops` with vertex offload has `shadow_extract` at 0.30–0.45 ms in 13 % of its frames and at
+  0.80–1.05 ms in the rest, without vertex offload at 0.35–0.50 ms in all. In `display_build` (dev client) the rounds of
+  one condition whose render thread spent 21–31 % of its time on E-cores were up to 1.3× slower than one at 4 %. Java
+  Flight Recorder's sampling, which stops the thread a thousand times a second, put it on E-cores for 60–84 % of a
+  round.
+- **One condition differs between sessions by as much:** C's suite run of `item_drops` with vertex offload had
+  `submit_entities` at 1.44 ms, its `/mobium compare vertex_offload` runs at 2.30 ms, at the same frame time (3.7 ms).
 
 So this is not work Mobium adds, but it is in the frame wherever the CPU limits it (A and C at 1920×1080), and the
 speed-ups in *Latest results* include it. On desktops, where CPU and GPU do not share a power limit, the frame gains

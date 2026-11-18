@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
 /**
- * Static cache (Module 1): tells which sign is being edited, so that it takes the vanilla path while the edit screen is
+ * Static cache: tells which sign is being edited, so that it takes the vanilla path while the edit screen is
  * open. Read-only; no behaviour change.
  */
 @Mixin(AbstractSignEditScreen.class)

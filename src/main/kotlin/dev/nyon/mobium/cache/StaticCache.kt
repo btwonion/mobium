@@ -40,9 +40,10 @@ import java.nio.ByteBuffer
 import java.util.Locale
 
 /**
- * Module 1: block entities and entities that do not change are captured once through vanilla's own submit and prepare
- * code ([Capture]) and then drawn from per-section GPU buffers ([SectionBucket]) instead of being submitted, posed and
- * tessellated every frame. [CachePolicy] and [EntityPolicy] decide per type what is cached and while which states.
+ * The static cache: block entities and entities that do not change are captured once through vanilla's own submit and
+ * prepare code ([Capture]) and then drawn from per-section GPU buffers ([SectionBucket]) instead of being submitted,
+ * posed and tessellated every frame. [CachePolicy] and [EntityPolicy] decide per type what is cached and while which
+ * states.
  *
  * Per frame: the block entity extract hook returns no render state for cached block entities (vanilla then neither
  * submits nor tessellates them); entities are always extracted, and the hook around their renderer's submit skips it
@@ -52,7 +53,7 @@ import java.util.Locale
  *
  * Fallback: everything a rule does not accept goes through vanilla unchanged, an object whose capture cannot be drawn
  * stays on vanilla until its inputs change, repeated capture failures switch the type off and an exception switches
- * Module 1 off for the session ([Fallback]). Render thread only.
+ * the static cache off for the session ([Fallback]). Render thread only.
  */
 object StaticCache {
     private const val EVICT_AFTER_FRAMES = 2400L
@@ -70,7 +71,7 @@ object StaticCache {
     var active = false
 
     /**
-     * Measurements only (`/mobium gateb`, the dev self-check): skips the cache's draw calls, so the cached objects
+     * Measurements only (`/mobium cachecost`, the dev self-check): skips the cache's draw calls, so the cached objects
      * vanish and the GPU has nothing to draw for them; everything else the cache does per frame still runs.
      */
     @JvmField
@@ -150,7 +151,7 @@ object StaticCache {
     fun anyTypeAllowed(): Boolean =
         CachePolicy.all.any { it.enabled(config.cache.types) && !Fallback.isTypeDisabled(Module.STATIC_CACHE, it.key) }
 
-    /** Any exception switches Module 1 off for the session; the caller then takes the vanilla path. */
+    /** Any exception switches the static cache off for the session; the caller then takes the vanilla path. */
     private fun fail(error: Throwable) {
         Fallback.moduleFailed(Module.STATIC_CACHE, error)
         if (active) setActive(false)

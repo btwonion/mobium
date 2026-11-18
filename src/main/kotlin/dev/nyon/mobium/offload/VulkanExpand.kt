@@ -1,4 +1,4 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.renderpearl.api.commands.GpuFence
@@ -23,10 +23,11 @@ import org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Properties
 import org.lwjgl.vulkan.VkWriteDescriptorSet
 
 /**
- * Module 2's expand pass on Vulkan (docs/vanilla-notes.md §23): the same `expand_parts.comp`, compiled to SPIR-V
- * (with 64-bit floats, or with integer arithmetic for devices without `shaderFloat64`, §26), as a compute dispatch in a command buffer of Mobium's own that `VulkanCommandEncoder.execute` appends to the
- * frame's submission right after `StagedVertexBuffer.upload()`, so that it runs after the upload's copy and before
- * the first draw. The barrier at its end makes the vertices visible to everything after it.
+ * Vertex offload's expand pass on Vulkan (docs/vanilla-notes.md §23): the same `expand.comp`, compiled to SPIR-V
+ * (with 64-bit floats, or with integer arithmetic for devices without `shaderFloat64`, §26), as a compute dispatch in a
+ * command buffer of Mobium's own that `VulkanCommandEncoder.execute` appends to the frame's submission right after
+ * `StagedVertexBuffer.upload()`, so that it runs after the upload's copy and before the first draw. The barrier at its
+ * end makes the vertices visible to everything after it.
  *
  * Memory: per frame in flight ([SLOTS]) a persistently mapped upload buffer, into which the frame's records and new
  * mesh quads are copied with `memCopy` (no `ByteBuffer` or buffer slice per upload; LWJGL's struct wrappers for the
@@ -35,7 +36,7 @@ import org.lwjgl.vulkan.VkWriteDescriptorSet
  * once the GPU is done with them ([retire]). Render thread only.
  */
 object VulkanExpand {
-    private const val SHADER = "/assets/mobium/shaders/expand_parts.comp"
+    private const val SHADER = "/assets/mobium/shaders/expand.comp"
     private const val SLOTS = RingAllocator.FRAMES_IN_FLIGHT
     private const val LOCAL_SIZE = 64
     private const val PUSH_WORDS = 6
@@ -70,7 +71,7 @@ object VulkanExpand {
         get() = (mesh?.size ?: 0L) + upload.sumOf { it?.size ?: 0L }
 
     /** Expands [batch] into [vertexBuffer], which `upload()` has just filled, with [arithmetic] (`ExpandPass.ARITHMETIC_*`). */
-    fun dispatch(batch: PartBatch, vertexBuffer: VulkanGpuBuffer, arithmetic: Int) {
+    fun dispatch(batch: OffloadBatch, vertexBuffer: VulkanGpuBuffer, arithmetic: Int) {
         val profiling = ExpandProfile.enabled
         var lap = if (profiling) System.nanoTime() else 0L
         val device = device()
@@ -79,8 +80,8 @@ object VulkanExpand {
         val encoder = device.createCommandEncoder()
         beginSlot(device)
 
-        val cubeBytes = batch.cubeCount.toLong() * PartBatch.CUBE_BYTES
-        val partBytes = batch.partCount.toLong() * PartBatch.PART_BYTES
+        val cubeBytes = batch.cubeCount.toLong() * OffloadBatch.CUBE_BYTES
+        val partBytes = batch.partCount.toLong() * OffloadBatch.PART_BYTES
         val slotBytes = batch.draws.size * 4L
         val frameBytes = cubeBytes + partBytes + slotBytes
         val pendingQuads = MeshPool.quadCount - MeshPool.uploadedQuads
@@ -171,9 +172,9 @@ object VulkanExpand {
     }
 
     /**
-     * A read-back of [span] bytes of a vertex buffer at [start], for [PartValidation]: the bytes as the expand pass left
-     * them and, when [repairs] is above 0, the same span again after the CPU's bytes were written over the compared
-     * parts. Valid to read once [fence] has signalled; then [release] it.
+     * A read-back of [span] bytes of a vertex buffer at [start], for [OffloadValidation]: the bytes as the expand pass
+     * left them and, when [repairs] is above 0, the same span again after the CPU's bytes were written over the
+     * compared parts. Valid to read once [fence] has signalled; then [release] it.
      */
     class Readback(val buffer: VkCompute.Buffer, val span: Long, val fence: GpuFence) {
         /** Address of the first (before the repairs) or second copy. */
@@ -384,13 +385,13 @@ object VulkanExpand {
         }
         val source = VulkanExpand::class.java.getResourceAsStream(SHADER)?.use { String(it.readAllBytes()) }
             ?: throw IllegalStateException("$SHADER is missing")
-        val spirv = VkCompute.compile("expand_parts.comp", source, defines)
+        val spirv = VkCompute.compile("expand.comp", source, defines)
         try {
             val created = VkCompute.createPipeline(device.vkDevice(), spirv, 3, PUSH_WORDS * 4)
             pipelines[arithmetic] = created
             val modes = defines.filter { it.startsWith("MOBIUM_FLOAT_") }.joinToString { it.removePrefix("MOBIUM_FLOAT_").lowercase() }
             Mobium.LOGGER.info(
-                "Mobium part transform: Vulkan compute pipeline ready ({} arithmetic, float modes: {}, max groups {})",
+                "Mobium vertex offload: Vulkan compute pipeline ready ({} arithmetic, float modes: {}, max groups {})",
                 if (integer) "integer" else "double", modes.ifEmpty { "none" }, maxGroups
             )
             return created

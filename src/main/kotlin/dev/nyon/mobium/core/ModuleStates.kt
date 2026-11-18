@@ -5,7 +5,7 @@ import dev.nyon.mobium.bench.BenchSuite
 import dev.nyon.mobium.cache.StaticCache
 import dev.nyon.mobium.config.config
 import dev.nyon.mobium.debug.AbToggle
-import dev.nyon.mobium.parts.PartTransform
+import dev.nyon.mobium.offload.PartTransform
 
 /**
  * The live module states: [ModuleRules] applied to the current config and environment. Re-resolved by [refresh]
@@ -67,10 +67,10 @@ object ModuleStates {
      * `/mobium benchmark`, which switches Mobium off and on through the A/B state.
      */
     private fun apply() {
-        PartTransform.configure(config.parts.excludedEntities, config.parts.items)
+        PartTransform.configure(config.offload.excludedEntities, config.offload.items)
         if (BenchSuite.decidesModules) return
         StaticCache.setActive(isActive(Module.STATIC_CACHE) && StaticCache.anyTypeAllowed())
-        PartTransform.setActive(isActive(Module.PART_TRANSFORM))
+        PartTransform.setActive(isActive(Module.VERTEX_OFFLOAD))
     }
 
     private fun shaderPackInUse(): Boolean = Compat.isLoaded(CompatMod.IRIS) && IrisCompat.isShaderPackInUse()

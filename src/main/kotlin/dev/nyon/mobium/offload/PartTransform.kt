@@ -1,4 +1,4 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import com.mojang.blaze3d.vertex.BufferBuilder
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
@@ -36,10 +36,10 @@ import java.nio.ByteBuffer
 import kotlin.math.abs
 
 /**
- * Module 2, the GPU part transform (docs/architecture.md): a model part's cubes are not written vertex by vertex on the
+ * Vertex offload (docs/architecture.md): a model part's cubes are not written vertex by vertex on the
  * CPU; [compile] reserves their vertices in the staged buffer instead and writes one part record and one record per
  * cube, and after the staged buffer's upload [ExpandPass] writes the vertices on the GPU, exactly as the CPU path would
- * have (`expand_parts.comp`, docs/vanilla-notes.md §16). Posing, the part walk and EMF's and ETF's hooks run as before;
+ * have (`expand.comp`, docs/vanilla-notes.md §16). Posing, the part walk and EMF's and ETF's hooks run as before;
  * vanilla's draws draw the vertices.
  *
  * Taken over: parts whose cubes are vanilla cubes (as vanilla or, with Sodium, as Sodium's cube path writes them) or
@@ -60,15 +60,15 @@ object PartTransform {
     @JvmField
     var excluded = false
 
-    /** Entity types from `parts.excludedEntities` (ids that name no entity type are ignored). */
+    /** Entity types from `offload.excludedEntities` (ids that name no entity type are ignored). */
     private var excludedTypes: Set<EntityType<*>> = emptySet()
 
-    /** Dev validation ([PartValidation]): every part taken over is also compiled on the CPU and compared. */
+    /** Dev validation ([OffloadValidation]): every part taken over is also compiled on the CPU and compared. */
     @JvmField
     var validating = false
 
     /**
-     * Set by [compile] when the part it just took over is compared with the CPU's ([validating], or a [PartCheck]
+     * Set by [compile] when the part it just took over is compared with the CPU's ([validating], or a [OffloadCheck]
      * sample): the caller then compiles it once more into [validationConsumer] and calls [endValidation].
      */
     @JvmField
@@ -100,7 +100,10 @@ object PartTransform {
     /** A failure after a reservation: this frame's reserved vertices are blanked instead of expanded. */
     private var failedThisFrame = false
 
-    /** With Sodium, vanilla cubes are drawn by Sodium's cube path, so Module 2 reproduces that one ([SodiumCubes]). */
+    /**
+     * With Sodium, vanilla cubes are drawn by Sodium's cube path, so vertex offload reproduces that one
+     * ([SodiumCubes]).
+     */
     private val sodiumCubes = Compat.isLoaded(CompatMod.SODIUM)
     private val emfCube: Class<*>? = if (Compat.isLoaded(CompatMod.EMF)) {
         runCatching { Class.forName("traben.entity_model_features.models.parts.EMFModelPartCustom\$EMFCube") }.getOrNull()
@@ -130,7 +133,7 @@ object PartTransform {
         ItemTransform.enabled = items
     }
 
-    /** Whether Module 2 leaves [type]'s models on the CPU path; per entity per frame, no allocation. */
+    /** Whether vertex offload leaves [type]'s models on the CPU path; per entity per frame, no allocation. */
     @JvmStatic
     fun excludes(type: EntityType<*>?): Boolean = type != null && excludedTypes.isNotEmpty() && type in excludedTypes
 
@@ -165,12 +168,12 @@ object PartTransform {
     }
 
     /**
-     * Module 2 fails: vertices reserved this frame may be left without records, so the upload hook blanks them
+     * Vertex offload fails: vertices reserved this frame may be left without records, so the upload hook blanks them
      * ([afterUpload]) instead of expanding; the caller writes its own vertices the vanilla way.
      */
     internal fun failed(e: Throwable) {
         failedThisFrame = true
-        Fallback.moduleFailed(Module.PART_TRANSFORM, e)
+        Fallback.moduleFailed(Module.VERTEX_OFFLOAD, e)
     }
 
     private fun tryCompile(
@@ -220,7 +223,7 @@ object PartTransform {
         if (quadTotal == 0) return false
         if (target.`mobium$vertexCount`() + quadTotal * 4 > MAX_VERTICES) return false
 
-        // Everything checked: from here on the part is Module 2's.
+        // Everything checked: from here on the part is vertex offload's.
         val offset = reserve(builder, quadTotal, iris)
         val vertexSize = format.vertexSize
         var firstVertex = (target.`mobium$drawBytesBefore`() + offset) / vertexSize
@@ -239,8 +242,8 @@ object PartTransform {
         }
         parts++
         quads += quadTotal
-        if (validating || PartCheck.sample(PartCheck.path(flags, anySodiumLayout, ExpandPass.lastStage, ExpandPass.lastArithmetic))) {
-            PartValidation.begin(staged, draw, (target.`mobium$drawBytesBefore`() + offset) / vertexSize, quadTotal * 4, format, sprite)
+        if (validating || OffloadCheck.sample(OffloadCheck.path(flags, anySodiumLayout, ExpandPass.lastStage, ExpandPass.lastArithmetic))) {
+            OffloadValidation.begin(staged, draw, (target.`mobium$drawBytesBefore`() + offset) / vertexSize, quadTotal * 4, format, sprite)
             checkPart = true
         }
         return true
@@ -263,7 +266,7 @@ object PartTransform {
     /** Whether [vertices] more fit into [target]'s builder (vanilla's limit for one mesh). */
     internal fun fits(target: PartTarget, vertices: Int): Boolean = target.`mobium$vertexCount`() + vertices <= MAX_VERTICES
 
-    /** Writes the part record at [address], with [extraFlags] (`PartBatch.FLAG_ITEM`, …); returns its flags. */
+    /** Writes the part record at [address], with [extraFlags] (`OffloadBatch.FLAG_ITEM`, …); returns its flags. */
     internal fun writePart(
         address: Long,
         pose: PoseStack.Pose,
@@ -297,55 +300,55 @@ object PartTransform {
         val faceNormalOnly = iris && IrisCompat.isRenderingLevel()
         val n = pose.normal()
         if (gpuNormals(n)) {
-            MemoryUtil.memPutFloat(address + PartBatch.P_NORMALS * 4L, n.m00())
-            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 1) * 4L, n.m01())
-            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 2) * 4L, n.m02())
-            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 3) * 4L, n.m10())
-            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 4) * 4L, n.m11())
-            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 5) * 4L, n.m12())
-            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 6) * 4L, n.m20())
-            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 7) * 4L, n.m21())
-            MemoryUtil.memPutFloat(address + (PartBatch.P_NORMALS + 8) * 4L, n.m22())
-            if ((pose as PoseNormals).`mobium$trustedNormals`()) flags = flags or PartBatch.FLAG_TRUSTED_NORMALS
+            MemoryUtil.memPutFloat(address + OffloadBatch.P_NORMALS * 4L, n.m00())
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_NORMALS + 1) * 4L, n.m01())
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_NORMALS + 2) * 4L, n.m02())
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_NORMALS + 3) * 4L, n.m10())
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_NORMALS + 4) * 4L, n.m11())
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_NORMALS + 5) * 4L, n.m12())
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_NORMALS + 6) * 4L, n.m20())
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_NORMALS + 7) * 4L, n.m21())
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_NORMALS + 8) * 4L, n.m22())
+            if ((pose as PoseNormals).`mobium$trustedNormals`()) flags = flags or OffloadBatch.FLAG_TRUSTED_NORMALS
         } else {
             // The polygon normals are axis unit vectors, and the transform of -e is -(transform of e) bit for bit
             // up to the sign of zeros (same length, symmetric truncation), so three transforms cover all six.
             packNormal(pose, 1f, 0f, 0f, DIRECTION_EAST, DIRECTION_WEST)
             packNormal(pose, 0f, 1f, 0f, DIRECTION_UP, DIRECTION_DOWN)
             packNormal(pose, 0f, 0f, 1f, DIRECTION_SOUTH, DIRECTION_NORTH)
-            for (d in 0 until 6) MemoryUtil.memPutInt(address + (PartBatch.P_NORMALS + d) * 4L, normals[d])
-            flags = flags or PartBatch.FLAG_PACKED_NORMALS
+            for (d in 0 until 6) MemoryUtil.memPutInt(address + (OffloadBatch.P_NORMALS + d) * 4L, normals[d])
+            flags = flags or OffloadBatch.FLAG_PACKED_NORMALS
         }
 
-        MemoryUtil.memPutInt(address + PartBatch.P_COLOR * 4L, ARGB.toABGR(color))
-        MemoryUtil.memPutInt(address + PartBatch.P_OVERLAY * 4L, overlay)
-        MemoryUtil.memPutInt(address + PartBatch.P_LIGHT * 4L, light)
+        MemoryUtil.memPutInt(address + OffloadBatch.P_COLOR * 4L, ARGB.toABGR(color))
+        MemoryUtil.memPutInt(address + OffloadBatch.P_OVERLAY * 4L, overlay)
+        MemoryUtil.memPutInt(address + OffloadBatch.P_LIGHT * 4L, light)
 
         val properties = matrix.properties()
         flags = flags or when {
-            properties and PROPERTY_IDENTITY != 0 -> PartBatch.KIND_IDENTITY
-            properties and PROPERTY_TRANSLATION != 0 -> PartBatch.KIND_TRANSLATION
-            else -> PartBatch.KIND_GENERIC
+            properties and PROPERTY_IDENTITY != 0 -> OffloadBatch.KIND_IDENTITY
+            properties and PROPERTY_TRANSLATION != 0 -> OffloadBatch.KIND_TRANSLATION
+            else -> OffloadBatch.KIND_GENERIC
         }
         if (sprite != null) {
-            flags = flags or PartBatch.FLAG_SPRITE
-            MemoryUtil.memPutFloat(address + PartBatch.P_SPRITE * 4L, sprite.u0)
-            MemoryUtil.memPutFloat(address + (PartBatch.P_SPRITE + 1) * 4L, sprite.u1 - sprite.u0)
-            MemoryUtil.memPutFloat(address + (PartBatch.P_SPRITE + 2) * 4L, sprite.v0)
-            MemoryUtil.memPutFloat(address + (PartBatch.P_SPRITE + 3) * 4L, sprite.v1 - sprite.v0)
+            flags = flags or OffloadBatch.FLAG_SPRITE
+            MemoryUtil.memPutFloat(address + OffloadBatch.P_SPRITE * 4L, sprite.u0)
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_SPRITE + 1) * 4L, sprite.u1 - sprite.u0)
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_SPRITE + 2) * 4L, sprite.v0)
+            MemoryUtil.memPutFloat(address + (OffloadBatch.P_SPRITE + 3) * 4L, sprite.v1 - sprite.v0)
         }
         var ids = 0
         var item = 0
         if (iris) {
-            flags = flags or PartBatch.FLAG_IRIS
-            if (faceNormalOnly) flags = flags or PartBatch.FLAG_IRIS_FACE_NORMAL
+            flags = flags or OffloadBatch.FLAG_IRIS
+            if (faceNormalOnly) flags = flags or OffloadBatch.FLAG_IRIS_FACE_NORMAL
             ids = (IrisCompat.currentEntity() and 0xFFFF) or (IrisCompat.currentBlockEntity() shl 16)
             item = IrisCompat.currentItem() and 0xFFFF
         }
-        MemoryUtil.memPutInt(address + PartBatch.P_FLAGS * 4L, flags)
-        MemoryUtil.memPutInt(address + PartBatch.P_SLOT * 4L, slot)
-        MemoryUtil.memPutInt(address + PartBatch.P_IDS * 4L, ids)
-        MemoryUtil.memPutInt(address + (PartBatch.P_IDS + 1) * 4L, item)
+        MemoryUtil.memPutInt(address + OffloadBatch.P_FLAGS * 4L, flags)
+        MemoryUtil.memPutInt(address + OffloadBatch.P_SLOT * 4L, slot)
+        MemoryUtil.memPutInt(address + OffloadBatch.P_IDS * 4L, ids)
+        MemoryUtil.memPutInt(address + (OffloadBatch.P_IDS + 1) * 4L, item)
         return flags
     }
 
@@ -368,10 +371,10 @@ object PartTransform {
 
     private fun normalByte(c: Float): Int = (Math.clamp(c, -1.0f, 1.0f) * 127.0f).toInt() and 0xFF
 
-    internal fun batchOf(staged: StagedVertexBuffer): PartBatch {
+    internal fun batchOf(staged: StagedVertexBuffer): OffloadBatch {
         val holder = staged as PartStaged
         holder.`mobium$batch`()?.let { return it }
-        val batch = PartBatch()
+        val batch = OffloadBatch()
         holder.`mobium$setBatch`(batch)
         return batch
     }
@@ -403,25 +406,25 @@ object PartTransform {
                 blank(batch, vertexBuffer)
             } else {
                 ExpandPass.dispatch(batch, vertexBuffer)
-                if (PartValidation.pending(staged)) compareWithCpu(staged, vertexBuffer)
+                if (OffloadValidation.pending(staged)) compareWithCpu(staged, vertexBuffer)
             }
         } catch (e: Throwable) {
-            Fallback.moduleFailed(Module.PART_TRANSFORM, e)
+            Fallback.moduleFailed(Module.VERTEX_OFFLOAD, e)
             runCatching { blank(batch, vertexBuffer) }
         } finally {
             // Parts left uncompared (a blanked frame, an error) must not be compared against next frame's buffer.
-            PartValidation.discard(staged)
+            OffloadValidation.discard(staged)
             batch.clear()
         }
     }
 
     /**
-     * Compares the parts of [staged] that were compiled on the CPU as well. In normal play ([PartCheck]) a differing
-     * part gets the CPU's bytes in this frame and Module 2 switches off; the dev validation ([validating]) only counts
-     * differences, for the self-check's and the gametests' reports.
+     * Compares the parts of [staged] that were compiled on the CPU as well. In normal play ([OffloadCheck]) a differing
+     * part gets the CPU's bytes in this frame and vertex offload switches off; the dev validation ([validating]) only
+     * counts differences, for the self-check's and the gametests' reports.
      */
     private fun compareWithCpu(staged: StagedVertexBuffer, vertexBuffer: GpuBuffer) {
-        PartValidation.check(staged, vertexBuffer, repair = !validating, stage = ExpandPass.stageName(ExpandPass.lastStage, ExpandPass.lastArithmetic))
+        OffloadValidation.check(staged, vertexBuffer, repair = !validating, stage = ExpandPass.stageName(ExpandPass.lastStage, ExpandPass.lastArithmetic))
     }
 
     /**
@@ -443,10 +446,10 @@ object PartTransform {
     fun discard(staged: StagedVertexBuffer) {
         val batch = (staged as PartStaged).`mobium$batch`() ?: return
         if (!batch.isEmpty) {
-            Mobium.LOGGER.debug("Mobium part_transform: records discarded without an upload")
+            Mobium.LOGGER.debug("Mobium vertex_offload: records discarded without an upload")
             batch.clear()
         }
-        PartValidation.discard(staged)
+        OffloadValidation.discard(staged)
     }
 
     /**
@@ -454,7 +457,7 @@ object PartTransform {
      * nothing for them (all at the origin, without area) instead of whatever the memory held. The parts that failed
      * were compiled by vanilla as well; from the next frame on the module is off.
      */
-    private fun blank(batch: PartBatch, vertexBuffer: GpuBuffer) {
+    private fun blank(batch: OffloadBatch, vertexBuffer: GpuBuffer) {
         if (vertexBuffer is GlBufferHandle) {
             for (slot in 0 until batch.draws.size) {
                 val base = (batch.draws[slot] as PartDraw).`mobium$vertexOffset`().toLong()
@@ -486,8 +489,8 @@ object PartTransform {
     @JvmStatic
     fun endFrame() {
         failedThisFrame = false
-        PartCheck.endFrame()
-        PartValidation.poll()
+        OffloadCheck.endFrame()
+        OffloadValidation.poll()
         VulkanExpand.endFrame()
         lastParts = parts
         lastQuads = quads
@@ -499,10 +502,12 @@ object PartTransform {
         itemQuads = 0
     }
 
-    /** F3 `mobium:modules`: what Module 2 took over in the last frame, what its meshes hold and how it expands. */
+    /**
+     * F3 `mobium:modules`: what vertex offload took over in the last frame, what its meshes hold and how it expands.
+     */
     fun debugLine(): String = String.format(
         java.util.Locale.ROOT,
-        "Mobium part transform: %d parts, %d quads, %d items, %d item quads last frame; meshes %d quads; GPU %.1f MB, %s",
+        "Mobium vertex offload: %d parts, %d quads, %d items, %d item quads last frame; meshes %d quads; GPU %.1f MB, %s",
         lastParts, lastQuads, lastItems, lastItemQuads, MeshPool.quadCount, ExpandPass.bytesAllocated / 1048576.0,
         ExpandPass.stageName
     )
@@ -515,21 +520,24 @@ object PartTransform {
 
     /** The consumer the validation's CPU compile writes into (a builder in the same format, same sprite). */
     @JvmStatic
-    fun validationConsumer(): VertexConsumer = PartValidation.consumer()
+    fun validationConsumer(): VertexConsumer = OffloadValidation.consumer()
 
     @JvmStatic
     fun endValidation() {
         checkPart = false
         try {
-            PartValidation.end()
+            OffloadValidation.end()
         } catch (e: Throwable) {
-            Fallback.moduleFailed(Module.PART_TRANSFORM, e)
+            Fallback.moduleFailed(Module.VERTEX_OFFLOAD, e)
         }
     }
 
-    /** The CPU compile for a comparison threw: Module 2 fails (the GPU's vertices of the part are drawn this frame). */
+    /**
+     * The CPU compile for a comparison threw: vertex offload fails (the GPU's vertices of the part are drawn this
+     * frame).
+     */
     @JvmStatic
-    fun validationFailed(error: Throwable) = Fallback.moduleFailed(Module.PART_TRANSFORM, error)
+    fun validationFailed(error: Throwable) = Fallback.moduleFailed(Module.VERTEX_OFFLOAD, error)
 
     private const val MAX_VERTICES = 16777215
 

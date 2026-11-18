@@ -4,7 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.renderpearl.api.commands.GpuQueryPool
 
 /**
- * Dev measurement for Module 2's fixed cost per frame (self-check `--mode expand-cost`): CPU time of each step of
+ * Dev measurement for vertex offload's fixed cost per frame (self-check `--mode expand-cost`): CPU time of each step of
  * `StagedVertexBuffer.upload()` and the expand pass, summed over all staged buffers until [reset]; the GPU time of
  * each frame from timestamps at its start (`runTick`) and right before its submit; and the GPU time of each expand
  * pass from timestamps right before it and after its barrier, which for a compute dispatch on a driver that records it
@@ -14,7 +14,7 @@ import com.mojang.renderpearl.api.commands.GpuQueryPool
  * Render thread only.
  */
 object ExpandProfile {
-    /** Vanilla's `upload()` of every staged buffer, Module 2's copy without the reserved bytes included. */
+    /** Vanilla's `upload()` of every staged buffer, vertex offload's copy without the reserved bytes included. */
     const val UPLOAD = 0
 
     /** New meshes and the batch's records into their storage buffers. */

@@ -9,10 +9,10 @@ from GPU buffers instead of rebuilding them on the CPU every frame. One source t
 via [Stonecutter](https://stonecutter.kikugie.dev/) and [modstitch](https://github.com/isXander/modstitch); the
 targets are in `settings.gradle.kts`. The structure follows `btwonion/autodrop`; check it first when unsure.
 
-**Start with `PLAN.md`:** tick its checkboxes as tasks land, treat its gate as a hard stop, and keep its *Current
-state* up to date at the end of every session. How Mobium works: `docs/architecture.md` (keep it true when the code
-changes); every vanilla, Sodium, Iris and EMF detail the code relies on: `docs/vanilla-notes.md` (§10 the hook table);
-benchmarks: `docs/benchmarks.md`; releases: `docs/releasing.md`.
+**Start with `PLAN.md`:** tick its checkboxes as tasks land, treat the release bar (`docs/releasing.md`) as a hard
+stop, and keep its *Current state* up to date at the end of every session. How Mobium works: `docs/architecture.md`
+(keep it true when the code changes); every vanilla, Sodium, Iris and EMF detail the code relies on:
+`docs/vanilla-notes.md` (§10 the hook table); benchmarks: `docs/benchmarks.md`; releases: `docs/releasing.md`.
 
 ## Commands
 
@@ -29,8 +29,8 @@ python3 benchmark/self_check.py [fabric|neoforge] [--api vulkan] [--minecraft 26
 
 Run tasks take `-Pmobium.graphicsBackend=opengl|vulkan` and `-Pmobium.vulkanValidation`. Extend the self-check
 (`debug/selfcheck/SelfCheck.kt`) for every rendering PR, run it on both loaders and read its screenshots
-(`<game dir>/mobium-selfcheck/`) before asking the maintainer to look; `--mode gallery` and `--mode parts` are the
-quick loops for the static cache and Module 2. On the Fabric target `build` runs the gametests, so a game window
+(`<game dir>/mobium-selfcheck/`) before asking the maintainer to look; `--mode gallery` and `--mode offload` are the
+quick loops for the static cache and vertex offload. On the Fabric target `build` runs the gametests, so a game window
 opens and closes by itself. Self-check modes and tests: `docs/architecture.md` (*Tests*).
 
 ## Ground rules
@@ -55,8 +55,8 @@ opens and closes by itself. Self-check modes and tests: `docs/architecture.md` (
   collection operators; use `@JvmField`, primitive arrays and LWJGL `MemoryUtil`. Render thread only.
 - **Mixins** stay thin: inject and forward to Kotlin, handler methods prefixed `mobium$`, MixinExtras over
   `@Redirect`/`@Overwrite`, a comment naming the vanilla behaviour changed and its fallback.
-- **Module 2** must write exactly the bytes the CPU path would: any change to `expand_parts.comp` or the part records
-  keeps `--mode parts` at 0 differing vertices in both expand stages and on Vulkan.
+- **Vertex offload** must write exactly the bytes the CPU path would: any change to `expand.comp` or the part records
+  keeps `--mode offload` at 0 differing vertices in both expand stages and on Vulkan.
 
 ## Stonecutter
 

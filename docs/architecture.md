@@ -11,8 +11,8 @@ switches between Mobium's path and vanilla's, never between two pictures.
 
 | Module | What it does | Package | State |
 | --- | --- | --- | --- |
-| 1 · Static cache | Block entities and entities that stand still are captured once through vanilla's own submit and prepare and drawn from per-section GPU buffers until they change | `cache/` | On by default |
-| 2 · GPU part transform | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `parts/` | On by default where the GPU has compute shaders (OpenGL 4.3, or Vulkan) |
+| Static cache | Block entities and entities that stand still are captured once through vanilla's own submit and prepare and drawn from per-section GPU buffers until they change | `cache/` | On by default |
+| Vertex offload | Model parts are posed on the CPU as before (`setupAnim`, EMF), but the GPU writes their vertices, byte for byte what the CPU would have written; the same for items' baked quads (dropped items, items in hands, frames and displays) | `offload/` | On by default where the GPU has compute shaders (OpenGL 4.3, or Vulkan) |
 
 Both run on OpenGL and on Minecraft's Vulkan backend. While Vitrail is installed the static cache stays off
 (`OffReason.UNTESTED`).
@@ -33,22 +33,22 @@ flowchart LR
     E["1 · Extract<br/>LevelExtractor.extract<br/>render states"] --> S["2 · Submit<br/>LevelRenderer.submitFeatures<br/>submit records"]
     S --> P["3 · Prepare<br/>FeatureRenderDispatcher.prepareFrame<br/>setupAnim, ModelPart.compile, upload()"]
     P --> X["4 · Execute<br/>frame passes<br/>PreparedRenderType.drawFromBuffer"]
-    C1["Module 1<br/>no state, no submit<br/>for unchanged objects"] -.-> E
+    C1["The static cache<br/>no state, no submit<br/>for unchanged objects"] -.-> E
     C1 -.-> S
-    C2["Module 1<br/>capture new objects,<br/>upload changed buckets"] -.-> P
-    C3["Module 1<br/>draw the section buckets<br/>after executeSolid"] -.-> X
-    M1["Module 2<br/>compile → reserve vertices,<br/>write part records"] -.-> P
-    M2["Module 2<br/>expand pass right after<br/>upload(), before any draw"] -.-> P
+    C2["The static cache<br/>capture new objects,<br/>upload changed buckets"] -.-> P
+    C3["The static cache<br/>draw the section buckets<br/>after executeSolid"] -.-> X
+    M1["Vertex offload<br/>compile → reserve vertices,<br/>write part records"] -.-> P
+    M2["Vertex offload<br/>expand pass right after<br/>upload(), before any draw"] -.-> P
 ```
 
 The same stages run for the hand, the GUI, picture-in-picture and Iris's shadow pass, each with its own staged
-buffer; Module 2 works in all of them, Module 1 draws only in the level's main pass.
+buffer; vertex offload works in all of them, the static cache draws only in the level's main pass.
 
 The GPU layer is Renderpearl (`com.mojang.renderpearl`: `api`, `frontend`, `backend` with `opengl` and `vulkan`).
 OpenGL is 26.3's default, Vulkan opt-in; 26.4's "Default" picks one of the two at random at every start
 (`docs/vanilla-notes.md` §5, §18, §20).
 
-## Module 1: static cache
+## Static cache
 
 **What is cached** (`cache/CachePolicy.kt` for block entities, `cache/EntityPolicy.kt` for entities; every row has its
 own switch):
@@ -63,7 +63,7 @@ own switch):
 | Armor stands | Pose unchanged, no armor | Wobbling, hurt, armor, an owned player head |
 | Item and block displays | `FIXED` billboard, interpolation finished | Moving or interpolating; other billboards |
 
-Models EMF animates stay vanilla. Banners, bells, conduits and lecterns animate every frame; Module 2 takes them.
+Models EMF animates stay vanilla. Banners, bells, conduits and lecterns animate every frame; vertex offload takes them.
 Beds have no block entity in 26.3 (they are terrain).
 
 **How it works** (`cache/StaticCache.kt`):
@@ -102,46 +102,46 @@ Beds have no block entity in 26.3 (they are terrain).
 
 Iris's shadow pass draws cached objects through vanilla (the cache leaves that pass alone).
 
-## Module 2: GPU part transform
+## Vertex offload
 
 A model part keeps every CPU step up to its own `compile`: `setupAnim`, EMF's animations (evaluated inside
 `ModelPart.render`), the part walk and its pose math, per-part texture overrides, ETF's emissive passes. Only
 `compile`, which transforms each cube's corners and writes them vertex by vertex, is replaced
-(`parts/PartTransform.kt`).
+(`offload/PartTransform.kt`).
 
 1. **Hooks.** `ModelPartMixin` wraps vanilla's `ModelPart.compile`; `compat.emf.EmfModelPartMixin` wraps EMF's
    override, which Fresh Animations' parts use. A part is taken when the consumer is a builder the frame's staged
    buffer opened (directly or through an atlas sprite), its draw is unsorted, its format is the entity format or
    Iris's 56-byte one, and every cube is a vanilla cube or EMF's `EMFCube`. Otherwise, and for entity types in
-   `parts.excludedEntities`, vanilla compiles.
+   `offload.excludedEntities`, vanilla compiles.
 2. **Three cube paths.** A vanilla cube is written as vanilla writes it, or, with Sodium installed, as Sodium's
-   `ModelCuboid` path writes it (corners by a chain of additions, its own face order; `parts/SodiumCubes.kt`); EMF's
-   cubes are written as EMF writes them. Module 2 reproduces whichever path would have drawn the part.
+   `ModelCuboid` path writes it (corners by a chain of additions, its own face order; `offload/SodiumCubes.kt`); EMF's
+   cubes are written as EMF writes them. Vertex offload reproduces whichever path would have drawn the part.
 3. **Meshes.** The first time a cube is drawn, its faces are written once in the cube's local space, in the layout of
-   that path (`parts/MeshPool.kt`); the mesh is kept on the cube object, so EMF's cubes work too, and written again
+   that path (`offload/MeshPool.kt`); the mesh is kept on the cube object, so EMF's cubes work too, and written again
    after a reload.
 4. **Reserve and record.** Instead of writing vertices, `compile` reserves their bytes in the staged builder (leaving
    Iris's per-vertex state as after a Sodium push) and writes one 128-byte part record (pose, normal matrix or packed
    normals, colour, overlay, light, flags, draw slot, sprite, Iris's three entity ids) and one 16-byte record per cube
-   into the staged buffer's `PartBatch` (off-heap, per frame).
+   into the staged buffer's `OffloadBatch` (off-heap, per frame).
 5. **Upload.** `StagedVertexBuffer.upload()` lays out the draws and copies them to the GPU as usual, except that the
-   reserved ranges are left out of the copy into the staging buffer (`parts/ReservedRanges.kt`).
-6. **Expand.** Right after `upload()` and before anything is drawn from it, `parts/ExpandPass.kt` uploads new meshes
-   and the frame's records and runs `assets/mobium/shaders/expand_parts.comp` once per quad, writing the reserved
+   reserved ranges are left out of the copy into the staging buffer (`offload/ReservedRanges.kt`).
+6. **Expand.** Right after `upload()` and before anything is drawn from it, `offload/ExpandPass.kt` uploads new meshes
+   and the frame's records and runs `assets/mobium/shaders/expand.comp` once per quad, writing the reserved
    vertices into the vertex buffer vanilla just filled, followed by a vertex-attribute barrier. Vanilla's own draws
    then draw them, in vanilla's order. The pass is raw OpenGL 4.3 on the buffers' GL names (`gpu/gl/GlCompute.kt`),
-   because Renderpearl has no compute or storage buffers. On Vulkan (`parts/VulkanExpand.kt`, raw Vulkan in
+   because Renderpearl has no compute or storage buffers. On Vulkan (`offload/VulkanExpand.kt`, raw Vulkan in
    `gpu/vk/VkCompute.kt`) the same shader, compiled to SPIR-V, runs as a compute dispatch in a command buffer of
    Mobium's own that Renderpearl's encoder appends to the frame right after `upload()`; three `require = 0` mixins
    (`mixins/vulkan`, `gpu/vk/VulkanSupport.kt`) give vertex buffers storage usage and enable `shaderFloat64` where the
-   GPU has it (`docs/vanilla-notes.md` §23); while an installed mod keeps Module 2 on the vanilla path (an overlapping
-   mod), the device and its buffers stay vanilla's.
+   GPU has it (`docs/vanilla-notes.md` §23); while an installed mod keeps vertex offload on the vanilla path (an
+   overlapping mod), the device and its buffers stay vanilla's.
 7. **Two stages, same bytes.** Mesa's iris records a compute dispatch in a batch of its own and flushes both batches
    around it, a fixed GPU cost per frame however few parts there are. So without a shader pack the same shader runs
    compiled as a vertex shader, drawn as points with rasterisation off (the *vertex stage*, where vertex shaders may
    write three storage buffers); with a shader pack it stays a compute dispatch, whose early flushes help a GPU-heavy
-   frame. `ExpandPass.stage` chooses; `-Dmobium.parts.stage=compute|vertex` overrides (`docs/benchmarks.md`,
-   *Module 2's fixed cost*). On Vulkan only the compute dispatch exists.
+   frame. `ExpandPass.stage` chooses; `-Dmobium.offload.stage=compute|vertex` overrides (`docs/benchmarks.md`,
+   *Vertex offload's fixed cost*). On Vulkan only the compute dispatch exists.
 
 **Exactness.** The shader repeats the Java code's float operations in their order (`precise`, JOML without fused
 multiply-adds, Sodium's and Iris's own formulas), gives square roots and divisions the correctly rounded float (GPUs
@@ -153,17 +153,17 @@ extension (face normal, mid UV, tangent) as Iris does on the CPU (`docs/vanilla-
 `MOBIUM_INTEGER`, computed bit by bit in 32-bit integers, which needs no 64-bit floats (`docs/vanilla-notes.md` §26).
 Doubles run where shaders have them (every OpenGL 4.3 context, Vulkan devices with `shaderFloat64`), the integer
 variant elsewhere (most Intel GPUs before Xe2, Snapdragon X, Macs through MoltenVK); which is faster is not measured.
-`-Dmobium.parts.arithmetic=integer` runs a whole session as on a GPU without doubles (on Vulkan the device is then
+`-Dmobium.offload.arithmetic=integer` runs a whole session as on a GPU without doubles (on Vulkan the device is then
 created without `shaderFloat64`); the checks force both arithmetics through
 `ExpandPass.forcedArithmetic`, and the GPU check of normal play samples each arithmetic as a path of its own.
 
-**Checks.** The CPU path is the reference. `parts/PartValidation.kt` compiles parts on the CPU as well, reads the
+**Checks.** The CPU path is the reference. `offload/OffloadValidation.kt` compiles parts on the CPU as well, reads the
 GPU's vertices back and compares them byte for byte (bytes the CPU never writes left out):
 
-- every part in the dev validation (self-check `--mode parts`, the Fabric gametests on Mesa's software renderer);
-- on players' GPUs, the first 64 parts of each shader path, at most 8 per frame (`parts/PartCheck.kt`,
-  `parts/PathSampler.kt`). On a difference the compared parts get the CPU's bytes in that frame and Module 2 switches
-  off until restart, with one toast and the GPU named in the log. F3 `mobium:modules` shows the parts compared.
+- every part in the dev validation (self-check `--mode offload`, the Fabric gametests on Mesa's software renderer);
+- on players' GPUs, the first 64 parts of each shader path, at most 8 per frame (`offload/OffloadCheck.kt`,
+  `offload/PathSampler.kt`). On a difference the compared parts get the CPU's bytes in that frame and vertex offload
+  switches off until restart, with one toast and the GPU named in the log. F3 `mobium:modules` shows the parts compared.
   On Vulkan, which cannot wait for the GPU inside a frame, the compared span is copied out and compared a few frames
   later, and the compared parts always get the CPU's bytes in their frame.
 
@@ -172,19 +172,19 @@ glint, outline and the breaking overlay (other formats or consumers), other cube
 
 ### Items
 
-Items go through the same pass (`parts/ItemTransform.kt`, `docs/vanilla-notes.md` §25). Their render states, the
+Items go through the same pass (`offload/ItemTransform.kt`, `docs/vanilla-notes.md` §25). Their render states, the
 copies a stack draws and their submits stay vanilla; only `ItemFeatureRenderer.prepareMainSubmit`, which writes each
-baked quad vertex by vertex, is replaced (`ItemFeatureRendererMixin`, config `parts.items`).
+baked quad vertex by vertex, is replaced (`ItemFeatureRendererMixin`, config `offload.items`).
 
 1. **Meshes.** One mesh per list of baked quads (`ItemQuads.solid()` / `translucent()`, made once per model), written
-   the first time the list is drawn (`parts/ItemMeshes.kt`): positions and UVs as `BakedQuad` holds them, the face,
+   the first time the list is drawn (`offload/ItemMeshes.kt`): positions and UVs as `BakedQuad` holds them, the face,
    tint index and light emission per quad, and with Sodium the packed normal Sodium writes the quad with, read from
    Sodium itself (on NeoForge, without Sodium's path, NeoForge's baked normal, which its `putBakedQuad` draws instead of
    the face's).
 2. **Runs.** The submit's quads are walked in runs of one render type (the standard glint is just another render
    type): the builder is fetched once per run (vanilla asks per quad, and Iris's and ETF's hooks on that call cost as
    much as the vertices), the run's vertices are reserved and one part record (pose, normal matrix, light, overlay,
-   four tint colours in the sprite's words) and one record for the run are written. A run whose builder Module 2
+   four tint colours in the sprite's words) and one record for the run are written. A run whose builder vertex offload
    cannot write for is written with vanilla's `putBakedQuad` in its place, so the draws keep vanilla's order.
 3. **Two item paths.** The shader writes a quad as vanilla's `putBakedQuad` does (also while Iris extends the format,
    where Sodium hands item quads to vanilla's code), or, with Sodium and the entity format, as Sodium's
@@ -195,8 +195,8 @@ baked quad vertex by vertex, is replaced (`ItemFeatureRendererMixin`, config `pa
 The checks are the parts' ones: every run in the dev validation, the first runs of each path in normal play. **Not
 taken:** the special glint (decal UVs), outlines (other render types and colours), translucent items without improved
 transparency (sorted), Fabric renderer API meshes (`ExtendedItemSubmit`), quads with NeoForge baked colours other
-than white or different baked normals per vertex, more than four tint layers, and items of entity types in `parts.excludedEntities`
-(`minecraft:item` for dropped items).
+than white or different baked normals per vertex, more than four tint layers, and items of entity types in
+`offload.excludedEntities` (`minecraft:item` for dropped items).
 
 ## Core
 
@@ -221,7 +221,7 @@ than white or different baked normals per vertex, more than four tint layers, an
 
 `gpu/GpuBackend.kt` is what the modules need from the GPU: buffers, uploads, fences, and drawing a buffer range with a
 vanilla render type. `gpu/RenderpearlBackend.kt` implements it on Renderpearl, which covers OpenGL and Vulkan alike,
-and counts Mobium's GPU memory for F3. Compute has no Renderpearl API: Module 2's expand pass uses raw OpenGL 4.3
+and counts Mobium's GPU memory for F3. Compute has no Renderpearl API: vertex offload's expand pass uses raw OpenGL 4.3
 (`gpu/gl/GlCompute.kt`) on Renderpearl's `GlBuffer.handle()`, and raw Vulkan (`gpu/vk/VkCompute.kt`: shaderc, VMA
 buffers, a compute pipeline, descriptor pools) on `VulkanGpuBuffer.vkBuffer()`, reaching the `VulkanDevice` through
 `FrontendGpuDeviceAccessor`. `gpu/RingBuffer.kt` (frames in flight with fences) and its unit-tested arithmetic
@@ -236,9 +236,9 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
 - **F3 entries:** `mobium:modules` (`debug/ModuleLines.kt`: states and reasons, GPU memory, cached objects, the GPU
   check, failed types) and `mobium:timings` (`debug/DebugLines.kt`: the `debug/Sections.kt` timers around extract,
   submit, pose, tessellate, prepare and draw, and Iris's shadow pass, averaged over 64 frames).
-- **Benchmarks** (`bench/`): `/mobium bench`, `suite`, the gate commands, `stages`, the players' `/mobium benchmark`
-  with its built-in data pack, and the unattended rounds (`BenchAutorun`). Protocol and results in
-  `docs/benchmarks.md`.
+- **Benchmarks** (`bench/`): `/mobium bench`, `suite`, `compare` (a module off and on), `cachecost`, `stages`, the
+  players' `/mobium benchmark` with its built-in data pack, and the unattended rounds (`BenchAutorun`). Protocol and
+  results in `docs/benchmarks.md`.
 - **Dev only:** `debug/Validation.kt` (`/mobium debug validate`: a frame with Mobium against the next with vanilla,
   pixel by pixel), `/mobium debug fail <module>` (one toast, the module on vanilla until restart),
   `/mobium debug gpucheck`, `debug/ExpandProfile.kt` (CPU time and Renderpearl's GPU timestamps of the expand pass, on
@@ -249,15 +249,16 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
 ## Tests
 
 - **Unit tests** (`src/test`, pure Kotlin, `./gradlew :26.3-fabric:test`): module rules, the failure ledger, ring and
-  memory-budget arithmetic, light stamps, the path sampler, frame statistics, gate maths, machine state and OS
+  memory-budget arithmetic, light stamps, the path sampler, frame statistics, comparison maths, machine state and OS
   strings, the config format and translation keys; on Fabric also the expand shader compiled to SPIR-V in every
   variant, both arithmetics, the integer one without any 64-bit type (`ExpandShaderTest`; ModDevGradle gives the
   unit tests no LWJGL).
 - **Client gametests** (`src/gametest`, Fabric only, mod id `mobium-test`): startup on the requested graphics API,
-  the benchmark world and scenes with screenshots and Module 2's byte-for-byte validation (each stage and arithmetic
-  the GPU has), the settings screen and the fallback toast. On the Fabric target `check` depends on `runClientGameTest`, so `build` starts the game. CI runs them under `xvfb-run` on Mesa's software OpenGL and a second time on
-  Vulkan with Mesa's lavapipe (`-Pmobium.graphicsBackend=vulkan`), on both Fabric targets, naming the API in both
-  runs (26.4's "Default" picks one at random; lavapipe there needs `-Pmobium.vulkanCpuDevice`). Screenshots land in
+  the benchmark world and scenes with screenshots and vertex offload's byte-for-byte validation (each stage and
+  arithmetic the GPU has), the settings screen and the fallback toast. On the Fabric target `check` depends on
+  `runClientGameTest`, so `build` starts the game. CI runs them under `xvfb-run` on Mesa's software OpenGL and a second
+  time on Vulkan with Mesa's lavapipe (`-Pmobium.graphicsBackend=vulkan`), on both Fabric targets, naming the API in
+  both runs (26.4's "Default" picks one at random; lavapipe there needs `-Pmobium.vulkanCpuDevice`). Screenshots land in
   `versions/<target>/build/run/clientGameTest/screenshots/`.
 - **Self-check** (`benchmark/self_check.py [fabric|neoforge] [--api opengl|vulkan] [--minecraft 26.4]`,
   `debug/selfcheck/`): starts each dev client with a request file; inside the game it walks through the checks
@@ -270,44 +271,45 @@ upload buffers of its own per frame in flight (`RingAllocator.FRAMES_IN_FLIGHT`)
   Iris does not run. `--mode` runs one part instead:
   - `gallery`: the `cache_gallery` scene only (every cached type, effects, shader pack, Fresh Animations); failed count
     checks name why an object was not cached.
-  - `parts`: Module 2's GPU vertices against the CPU's and pictures against vanilla in `mob_pen_live` and
+  - `offload`: vertex offload's GPU vertices against the CPU's and pictures against vanilla in `mob_pen_live` and
     `part_gallery` (with a row of dropped items of every item path), with the four setups' models, both expand
     stages and both arithmetics; `--arithmetic integer` starts the game as on a GPU without 64-bit floats.
   - `benchmark`: the players' `/mobium benchmark` with 5-second runs, its refusals and the built-in pack.
-  - `profile-mobs [--scene <scene>]`: Module 2 off, on and without vertices (models' and items'), and one more run
-    with Module 2 under Java Flight Recorder that the averages leave out (`--scene item_drops` for items); `profile`
-    records `storage_room` under Java Flight Recorder with the static cache and without Mobium.
-  - `expand-cost [--scene <scene>]`: Module 2's fixed cost per frame (compute against the vertex stage, CPU time per
-    step, GPU timestamps of the frame and of each pass; `ExpandProfile`); `--scene "display_build items"` measures
-    Module 2 off, on without its items (`parts.items`) and on with them.
-  - `gateb`: `/mobium gateb 20 2` in the dev window (a hint, not the protocol); `iris-without-mobium`: the first shader
-    pack with Mobium off.
+  - `profile-mobs [--scene <scene>]`: vertex offload off, on and without vertices (models' and items'), and one more
+    run with vertex offload under Java Flight Recorder that the averages leave out (`--scene item_drops` for items);
+    `profile` records `storage_room` under Java Flight Recorder with the static cache and without Mobium.
+  - `expand-cost [--scene <scene>]`: vertex offload's fixed cost per frame (compute against the vertex stage, CPU time
+    per step, GPU timestamps of the frame and of each pass; `ExpandProfile`); `--scene "display_build items"` measures
+    vertex offload off, on without its items (`offload.items`) and on with them.
+  - `cachecost`: `/mobium cachecost 20 2` in the dev window (a hint, not the protocol); `iris-without-mobium`: the first
+    shader pack with Mobium off.
 
 ## Config and settings
 
-`config/mobium.json` through konfig, `{"version", "config"}`, format version 6 (`config/ConfigHandler.kt`: a format
-change bumps `CONFIG_VERSION` and adds a migration branch; unknown keys keep failing). Contents (`config/Config.kt`):
-the global switch; Module 1's switch, memory budget and eight type switches; Module 2's switch, its item switch and
-excluded entity types. One settings screen built from vanilla's option
-widgets (`config/screen/MobiumSettingsScreen.kt`) edits a copy and applies it on Done; it opens from Mod Menu
-(Fabric), the NeoForge mod list, and Mobium's page in Sodium's video settings (`config/SodiumOptions.kt`, Sodium
-Config API). `en_us` and `de_de` keep identical keys (`LangKeysTest`).
+`config/mobium.json` through konfig, `{"version", "config"}`, format version 1 (`config/ConfigHandler.kt`: a file of
+another format gets the defaults; a format change bumps `CONFIG_VERSION` and adds a migration branch; unknown keys keep
+failing). Contents (`config/Config.kt`): the global switch; the static cache's switch (`cache`), memory budget and eight
+type switches; vertex offload's switch (`offload`), its item switch and excluded entity types. One settings screen
+built from vanilla's option widgets (`config/screen/MobiumSettingsScreen.kt`) edits a copy and applies it on Done; it
+opens from Mod Menu (Fabric), the NeoForge mod list, and Mobium's page in Sodium's video settings
+(`config/SodiumOptions.kt`, Sodium Config API). `en_us` and `de_de` keep identical keys (`LangKeysTest`).
 
 ## Package map
 
 ```
 dev.nyon.mobium
 ├── MobiumEntrypoint.kt, Mobium.kt, MobiumKeys.kt   # loader entrypoints (Stonecutter), bootstrap, key bindings
-├── bench/        # /mobium bench, suite, gates, stages, benchmark; FrameRecorder, BenchPack, BenchAutorun, GateB/GateC
-├── cache/        # Module 1: StaticCache, Capture, CaptureConsumer, SectionBucket, Cache/EntityPolicy, fingerprints,
+├── bench/        # /mobium bench, suite, compare, cachecost, stages, benchmark; FrameRecorder, BenchPack, BenchAutorun,
+│                 #   ModuleComparison, CacheCost
+├── cache/        # Static cache: StaticCache, Capture, CaptureConsumer, SectionBucket, Cache/EntityPolicy, fingerprints,
 │                 #   LightStamps, MemoryBudget, CachedBlockEntity/CachedEntity, ExtendedSubmits (Fabric renderer API)
 ├── config/       # Config, ConfigHandler, settings screen, ModMenuImpl, SodiumOptions
 ├── core/         # ModuleState (rules), ModuleStates, Fallback, Capabilities, Compat, IrisCompat, EmfCompat
 ├── debug/        # AbToggle, F3 entries, Sections, Validation, ExpandProfile, VulkanValidation, selfcheck/
 ├── gpu/          # GpuBackend, RenderpearlBackend, RingBuffer + RingAllocator (unused), gl/GlCompute,
 │                 #   vk/VkCompute, vk/VulkanSupport
-└── parts/        # Module 2: PartTransform, ItemTransform, PartHooks, MeshPool, ItemMeshes, SodiumCubes, PartBatch,
-                  #   ReservedRanges, ExpandPass, VulkanExpand, PartValidation, PartCheck, PathSampler
+└── offload/      # Vertex offload: PartTransform, ItemTransform, OffloadHooks, MeshPool, ItemMeshes, SodiumCubes,
+                  #   OffloadBatch, ReservedRanges, ExpandPass, VulkanExpand, OffloadValidation, OffloadCheck, PathSampler
 ```
 
 Mixins live in `src/main/java/dev/nyon/mobium/mixins` (compat mixins in `compat/emf` and `compat/iris`, Renderpearl's
@@ -322,10 +324,10 @@ Vulkan backend in `vulkan/`), shaders in
 | Capture through vanilla's own submit and prepare instead of building meshes | Resource packs, EMF/ETF and Iris's formats and ids are right by construction; nothing downstream has to know Mobium exists |
 | Draw through `PreparedRenderType.drawFromBuffer`, never Mobium's own shaders | Vanilla's pipelines and Iris's replacements stay in charge of what is drawn |
 | One bucket per (section, render type), camera-relative vertices written by the CPU | A per-object offset would need a shader change Iris packs do not expect; an offset in the model-view matrix changes the fog |
-| Module 2 replaces `ModelPart.compile`, not the part walk | EMF overrides `render` and `compile` and animates inside `render`; Sodium's cube path sits below `compile` |
+| Vertex offload replaces `ModelPart.compile`, not the part walk | EMF overrides `render` and `compile` and animates inside `render`; Sodium's cube path sits below `compile` |
 | Expand into vanilla's own uploaded vertex buffer | Vanilla's draw order and sorting stay untouched, and no draw call is added |
 | The CPU path is the reference, compared byte for byte | A Kotlin copy of the shader's math would only test the copy; the 24k wrong normals on the Arc 140V were found this way |
-| Gates measure what Mobium can change | GPU work that vanilla pays as well cannot be taken away, so Gates B and C leave it out (`docs/benchmarks.md`, *Gates*) |
+| Measure what Mobium can change | GPU work that vanilla pays as well cannot be taken away, so `/mobium cachecost` and the CPU work of `/mobium compare` leave it out (`docs/benchmarks.md`, *What each module achieved*) |
 | Vanilla first | Every feature has a config switch, a per-type switch and a runtime fallback; new hooks ship off until their screenshot tests pass |
 
 ## Project

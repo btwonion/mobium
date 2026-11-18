@@ -18,9 +18,9 @@ import dev.nyon.mobium.core.Module
 import dev.nyon.mobium.core.ModuleStates
 import dev.nyon.mobium.debug.DebugLines
 import dev.nyon.mobium.debug.Sections
-import dev.nyon.mobium.parts.ExpandPass
-import dev.nyon.mobium.parts.PartTransform
-import dev.nyon.mobium.parts.PartValidation
+import dev.nyon.mobium.offload.ExpandPass
+import dev.nyon.mobium.offload.PartTransform
+import dev.nyon.mobium.offload.OffloadValidation
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Options
 import net.minecraft.client.gui.components.debug.DebugScreenEntries
@@ -92,15 +92,15 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 if (scene in COMPARED_SCENES) compareWithCache(context, scene, vanilla)
                 if (scene == GALLERY) singleplayer.server.runCommand("tick unfreeze")
                 if (scene in PART_SCENES) checkParts(context, singleplayer, scene)
-                if (scene == "storage_room") checkGateA(context)
+                if (scene == "storage_room") checkCompareCache(context)
             }
 
             checkBenchCommand(context)
             checkDebugEntry(context)
             checkSuiteCommand(context)
-            checkGateB(context)
-            checkGateC(context, null)
-            checkGateC(context, "item_drops")
+            checkCacheCost(context)
+            checkCompareOffload(context, null)
+            checkCompareOffload(context, "item_drops")
             checkStages(context)
             setCache(context, true)
         }
@@ -114,27 +114,27 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
     }
 
-    private fun setParts(context: ClientGameTestContext, enabled: Boolean) {
+    private fun setOffload(context: ClientGameTestContext, enabled: Boolean) {
         context.runOnClient<RuntimeException> {
-            config.parts.enabled = enabled
+            config.offload.enabled = enabled
             ModuleStates.refresh("gametest")
         }
     }
 
     /**
-     * Module 2 in [scene] with ticks frozen: the GPU's vertices against the CPU's for every part it takes over
-     * ([PartValidation], byte for byte; CI runs Mesa's llvmpipe), with each expand stage and arithmetic the GPU has,
-     * then its picture against the picture with Module 2 off.
+     * Vertex offload in [scene] with ticks frozen: the GPU's vertices against the CPU's for every part it takes over
+     * ([OffloadValidation], byte for byte; CI runs Mesa's llvmpipe), with each expand stage and arithmetic the GPU has,
+     * then its picture against the picture with vertex offload off.
      */
     private fun checkParts(context: ClientGameTestContext, singleplayer: TestSingleplayerContext, scene: String) {
         singleplayer.server.runCommand("tick freeze")
-        setParts(context, false)
+        setOffload(context, false)
         context.waitTicks(SETTLE_TICKS)
         val vanilla = context.takeScreenshot("scene_${scene}_parts_off")
-        setParts(context, true)
+        setOffload(context, true)
         context.waitTicks(SETTLE_TICKS)
         context.runOnClient<RuntimeException> {
-            check(PartTransform.active) { "Module 2 did not start: ${ModuleStates.status(Module.PART_TRANSFORM).describe()}" }
+            check(PartTransform.active) { "Vertex offload did not start: ${ModuleStates.status(Module.VERTEX_OFFLOAD).describe()}" }
         }
         // Both stages where the GPU has the vertex stage (which one runs depends on the shader pack), compute else.
         val vertexStores = context.computeOnClient<Boolean, RuntimeException> { ExpandPass.vertexStores }
@@ -147,20 +147,20 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
                 context.runOnClient<RuntimeException> {
                     ExpandPass.forcedStage = stage
                     ExpandPass.forcedArithmetic = arithmetic
-                    PartValidation.reset()
+                    OffloadValidation.reset()
                     PartTransform.validating = true
                 }
                 context.waitTicks(VALIDATION_TICKS)
                 context.runOnClient<RuntimeException> { PartTransform.validating = false }
                 // On Vulkan the last frames' comparisons arrive once the GPU is done with them.
-                context.waitFor({ PartValidation.settled }, SETTLE_TICKS)
+                context.waitFor({ OffloadValidation.settled }, SETTLE_TICKS)
                 context.runOnClient<RuntimeException> {
-                    LOGGER.info("Module 2 validation ({}, {}): {}; {}", scene, ExpandPass.stageName(stage, arithmetic), PartValidation.summary(), PartTransform.debugLine())
+                    LOGGER.info("Vertex offload validation ({}, {}): {}; {}", scene, ExpandPass.stageName(stage, arithmetic), OffloadValidation.summary(), PartTransform.debugLine())
                     check(ExpandPass.lastStage == stage && ExpandPass.lastArithmetic == arithmetic) {
                         "The expand pass ran as ${ExpandPass.stageName(ExpandPass.lastStage, ExpandPass.lastArithmetic)}, not as ${ExpandPass.stageName(stage, arithmetic)}"
                     }
-                    check(PartValidation.compared > 0 && PartValidation.mismatched == 0L && PartValidation.unmatchedParts == 0) {
-                        "Module 2's vertices (${ExpandPass.stageName}) differ from the CPU's in $scene: ${PartValidation.summary()} ${PartValidation.reports}"
+                    check(OffloadValidation.compared > 0 && OffloadValidation.mismatched == 0L && OffloadValidation.unmatchedParts == 0) {
+                        "Vertex offload's vertices (${ExpandPass.stageName}) differ from the CPU's in $scene: ${OffloadValidation.summary()} ${OffloadValidation.reports}"
                     }
                 }
             }
@@ -172,30 +172,32 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         val parts = context.takeScreenshot("scene_${scene}_parts")
         singleplayer.server.runCommand("tick unfreeze")
         ScreenshotDiff.compare(vanilla, parts).also { diff ->
-            LOGGER.info("Module 2 screenshot diff ({}): {}", scene, diff)
-            check(diff.changedFraction <= MAX_DIFFERING_FRACTION) { "Module 2 changes $scene: $diff (see ${diff.diffImage})" }
+            LOGGER.info("Vertex offload screenshot diff ({}): {}", scene, diff)
+            check(diff.changedFraction <= MAX_DIFFERING_FRACTION) { "Vertex offload changes $scene: $diff (see ${diff.diffImage})" }
         }
     }
 
     /**
-     * A short `/mobium gatec` in [scene] (null: without the argument, `mob_pen_live`): the scene with Module 2 off and
-     * on, Gate C's numbers, Module 2 restored.
+     * A short `/mobium compare vertex_offload` in [scene] (null: without the argument, `mob_pen_live`): the scene with
+     * vertex offload off and on, the comparison's numbers, vertex offload restored.
      */
-    private fun checkGateC(context: ClientGameTestContext, scene: String?) {
-        val command = if (scene == null) "mobium gatec $BENCH_SECONDS 1" else "mobium gatec $BENCH_SECONDS 1 $scene"
-        val gate = runPlan(context, command, "gatec-")
-        val rows = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',') }
+    private fun checkCompareOffload(context: ClientGameTestContext, scene: String?) {
+        val base = "mobium compare vertex_offload $BENCH_SECONDS 1"
+        val command = if (scene == null) base else "$base $scene"
+        val lines = runPlan(context, command, "compare-")
+        val rows = lines.drop(1).filter { !it.startsWith("#") }.map { it.split(',') }
         val scenes = rows.map { it[0] }.toSet()
-        check(rows.size == 2 && scenes == setOf(scene ?: "mob_pen_live") && rows.count { "+parts" in it[1] } == 1) {
-            "Unexpected /$command rows: $gate"
+        check(rows.size == 2 && scenes == setOf(scene ?: "mob_pen_live") && rows.count { "+offload" in it[1] } == 1) {
+            "Unexpected /$command rows: $lines"
         }
-        fun value(name: String) = gate.single { it.startsWith("# $name,") }.substringAfter(',').toDouble()
+        fun value(name: String) = lines.single { it.startsWith("# $name,") }.substringAfter(',')
+        check(value("compare_module") == "vertex_offload") { "Unexpected /$command module: $lines" }
         LOGGER.info(
-            "Module 2 first look (/{}): entity CPU work {}x lower with Module 2, frame {}x",
-            command, value("gate_c_cpu_without_over_with"), value("gate_c_frame_with_over_without")
+            "Vertex offload first look (/{}): entity CPU work {}x lower with it, frame {}x",
+            command, value("compare_cpu_without_over_with"), value("compare_frame_with_over_without")
         )
         context.runOnClient<RuntimeException> {
-            check(PartTransform.active && config.parts.enabled) { "/mobium gatec did not restore Module 2" }
+            check(PartTransform.active && config.offload.enabled) { "/$command did not restore vertex offload" }
         }
     }
 
@@ -207,9 +209,9 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
         val rows = runPlan(context, "mobium stages $BENCH_SECONDS 1", "stages-")
         val setups = rows.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
-        check(setups.size == 2 && setups.count { "+parts-vertex" in it } == 1) { "Unexpected /mobium stages rows: $rows" }
+        check(setups.size == 2 && setups.count { "+offload-vertex" in it } == 1) { "Unexpected /mobium stages rows: $rows" }
         LOGGER.info(
-            "Module 2's stages first look (/mobium stages {} 1): frame with the vertex stage {}x compute's", BENCH_SECONDS,
+            "Vertex offload's stages first look (/mobium stages {} 1): frame with the vertex stage {}x compute's", BENCH_SECONDS,
             rows.single { it.startsWith("# stages_vertex_over_compute,") }.substringAfter(',')
         )
         context.runOnClient<RuntimeException> { check(ExpandPass.forcedStage == -1) { "/mobium stages did not restore the stage" } }
@@ -277,20 +279,29 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         }
     }
 
-    /** A short `/mobium gatea` in `storage_room`, which switches the cache itself and restores it afterwards. */
-    private fun checkGateA(context: ClientGameTestContext) {
-        val gate = runPlan(context, "mobium gatea $BENCH_SECONDS 1", "gatea-")
-        val setups = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',')[1] }
-        check(setups.size == 2 && setups.count { it.endsWith("+cache") } == 1) { "Unexpected Gate A rows: $gate" }
-        val speedUp = gate.single { it.startsWith("# gate_a_speedup") }.substringAfter(',').toDouble()
-        LOGGER.info("storage_room first look (/mobium gatea {} 1): {}x faster with the static cache", BENCH_SECONDS, speedUp)
+    /**
+     * A short `/mobium compare static_cache` (`storage_room` by default), which switches the cache itself and restores
+     * it afterwards.
+     */
+    private fun checkCompareCache(context: ClientGameTestContext) {
+        val lines = runPlan(context, "mobium compare static_cache $BENCH_SECONDS 1", "compare-")
+        val rows = lines.drop(1).filter { !it.startsWith("#") }.map { it.split(',') }
+        check(rows.size == 2 && rows.all { it[0] == "storage_room" } && rows.count { it[1].endsWith("+cache") } == 1) {
+            "Unexpected /mobium compare static_cache rows: $lines"
+        }
+        fun value(name: String) = lines.single { it.startsWith("# $name,") }.substringAfter(',')
+        check(value("compare_module") == "static_cache") { "Unexpected /mobium compare static_cache module: $lines" }
+        LOGGER.info(
+            "storage_room first look (/mobium compare static_cache {} 1): frame {}x with the static cache", BENCH_SECONDS,
+            value("compare_frame_with_over_without")
+        )
         context.runOnClient<RuntimeException> {
-            check(!StaticCache.active && !config.cache.enabled) { "/mobium gatea did not restore the cache state" }
+            check(!StaticCache.active && !config.cache.enabled) { "/mobium compare static_cache did not restore the cache state" }
         }
     }
 
     /**
-     * Runs a `/mobium suite` or `/mobium gatea` command and returns the lines of the medians file it writes. The file
+     * Runs a `/mobium suite` or `/mobium compare` command and returns the lines of the medians file it writes. The file
      * is rewritten after every run, so wait for the plan to finish before reading it.
      */
     private fun runPlan(context: ClientGameTestContext, command: String, filePrefix: String): List<String> {
@@ -344,26 +355,26 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
         context.computeOnClient<Path, RuntimeException> { it.gameDirectory.toPath().resolve("mobium-bench") }
 
     /**
-     * A short `/mobium gateb`: four runs (`storage_room` with the cache, with its draw calls skipped, `control` with and
-     * without the cache), Gate B's numbers, and the cache state restored afterwards.
+     * A short `/mobium cachecost`: four runs (`storage_room` with the cache, with its draw calls skipped, `control`
+     * with and without the cache), its numbers, and the cache state restored afterwards.
      */
-    private fun checkGateB(context: ClientGameTestContext) {
-        val gate = runPlan(context, "mobium gateb $BENCH_SECONDS 1", "gateb-")
-        val rows = gate.drop(1).filter { !it.startsWith("#") }.map { it.split(',').let { fields -> fields[0] to fields[1] } }
+    private fun checkCacheCost(context: ClientGameTestContext) {
+        val lines = runPlan(context, "mobium cachecost $BENCH_SECONDS 1", "cachecost-")
+        val rows = lines.drop(1).filter { !it.startsWith("#") }.map { it.split(',').let { fields -> fields[0] to fields[1] } }
         check(
             rows.size == 4 && rows.count { it.second.endsWith("+cache") } == 2 &&
                 rows.single { it.second.endsWith("+cache+nodraw") }.first == "storage_room"
-        ) { "Unexpected Gate B rows: $gate" }
-        fun value(name: String) = gate.single { it.startsWith("# $name,") }.substringAfter(',').toDouble()
+        ) { "Unexpected /mobium cachecost rows: $lines" }
+        fun value(name: String) = lines.single { it.startsWith("# $name,") }.substringAfter(',').toDouble()
         LOGGER.info(
-            "Gate B first look (/mobium gateb {} 1): cached objects {}x control, whole storage_room frame {}x control, " +
-                "drawing them {} ms, control {}x with the cache",
-            BENCH_SECONDS, value("gate_b_cost_over_control"), value("gate_b_storage_over_control"),
-            value("gate_b_drawing_ms"), value("gate_b_control_cache_over_vanilla")
+            "Cache cost first look (/mobium cachecost {} 1): cached objects {}x control, whole storage_room frame {}x " +
+                "control, drawing them {} ms, control {}x with the cache",
+            BENCH_SECONDS, value("cachecost_cost_over_control"), value("cachecost_storage_over_control"),
+            value("cachecost_drawing_ms"), value("cachecost_control_cache_over_vanilla")
         )
         context.runOnClient<RuntimeException> {
             check(!StaticCache.active && !config.cache.enabled && !StaticCache.skipDraws) {
-                "/mobium gateb did not restore the cache state"
+                "/mobium cachecost did not restore the cache state"
             }
         }
     }
@@ -479,16 +490,17 @@ class BenchmarkScenesGameTest : FabricClientGameTest {
 
         // Must match X0 / Z0 in benchmark/generate.py.
         val ORIGIN = BlockPos(-3840, -60, -2816)
-        // The mob pens come last: the bench, suite and gate checks after the loop record the scene that stands, mob_pen_live.
+        // The mob pens come last: the bench, suite and compare checks after the loop record the scene that stands,
+        // mob_pen_live.
         val SCENES = listOf("control", "storage_room", "map_wall", "display_build", "item_drops", "mob_pen_static", "mob_pen_live")
 
         /** Not a benchmark scene: every cached type side by side (benchmark/generate.py). */
         const val GALLERY = "cache_gallery"
 
-        /** Not a benchmark scene: models Module 2 expands besides the mob pens (benchmark/generate.py). */
+        /** Not a benchmark scene: models vertex offload expands besides the mob pens (benchmark/generate.py). */
         const val PART_GALLERY = "part_gallery"
 
-        /** Where Module 2 is compared with vanilla, with ticks frozen. */
+        /** Where vertex offload is compared with vanilla, with ticks frozen. */
         val PART_SCENES = setOf(PART_GALLERY, "mob_pen_static")
 
         const val VALIDATION_TICKS = 10

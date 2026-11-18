@@ -1,4 +1,4 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
@@ -12,13 +12,14 @@ import java.lang.invoke.MethodType
 import java.util.IdentityHashMap
 
 /**
- * Module 2's item meshes ([MeshPool], item layout): one mesh per list of baked quads an item submit draws
- * (`ItemQuads.solid()` / `translucent()`, built once per model and kept until a resource reload), written the first time
- * the list is drawn. A quad holds its four positions and UVs as `BakedQuad` does, its `Direction`, tint index and light
- * emission, and the quad's packed normal: with Sodium the one Sodium's `BakedModelEncoder` transforms
+ * Vertex offload's item meshes ([MeshPool], item layout): one mesh per list of baked quads an item submit draws
+ * (`ItemQuads.solid()` / `translucent()`, built once per model and kept until a resource reload), written the first
+ * time the list is drawn. A quad holds its four positions and UVs as `BakedQuad` does, its `Direction`, tint index and
+ * light emission, and the quad's packed normal: with Sodium the one Sodium's `BakedModelEncoder` transforms
  * (`getAccurateNormal`, read from Sodium itself so that each platform's own value is used), else NeoForge's baked
- * normal. A list with a quad the expand pass cannot reproduce (more than four tint layers, an emission outside 0 to
- * 15, per-vertex normals, colours from NeoForge or Sodium) is remembered as such and stays on the vanilla path. Lookups per submit allocate nothing; render thread only.
+ * normal. A list with a quad the expand pass cannot reproduce (more than four tint layers, an emission outside 0 to 15,
+ * per-vertex normals, colours from NeoForge or Sodium) is remembered as such and stays on the vanilla path. Lookups per
+ * submit allocate nothing; render thread only.
  */
 object ItemMeshes {
     /** A list's mesh: its first quad in [MeshPool], or -1 when it stays vanilla, and its distinct sprites. */
@@ -35,7 +36,7 @@ object ItemMeshes {
     private var lastMesh: Mesh? = null
     private val noSprites = arrayOf<TextureAtlasSprite>()
 
-    /** The tint layers the expand pass has room for (`PartBatch.P_TINTS`). */
+    /** The tint layers the expand pass has room for (`OffloadBatch.P_TINTS`). */
     const val MAX_TINTS = 4
 
     private val sodium = Compat.isLoaded(CompatMod.SODIUM)

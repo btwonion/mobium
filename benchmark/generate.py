@@ -411,9 +411,9 @@ def cache_gallery() -> list[str]:
     return lines
 
 
-# Items floating in front of the part gallery's mobs, one of each path Module 2 takes or leaves for items: flat items
-# drawn from a sprite, block items, stacks drawn several times, tint layers, the standard glint, the special glint and
-# translucent items (both stay vanilla), and an item whose model is built from parts.
+# Items floating in front of the part gallery's mobs, one of each path vertex offload takes or leaves for items: flat
+# items drawn from a sprite, block items, stacks drawn several times, tint layers, the standard glint, the special glint
+# and translucent items (both stay vanilla), and an item whose model is built from parts.
 GALLERY_ITEMS = [
     'id:"minecraft:bamboo",count:1',
     'id:"minecraft:stick",count:64',
@@ -436,7 +436,7 @@ STILL_ITEM = "PickupDelay:32767,Age:-32768"
 
 
 def part_gallery() -> list[str]:
-    """Models Module 2 expands besides the mob pens, close to the camera: block entities the static cache leaves alone
+    """Models vertex offload expands besides the mob pens, close to the camera: block entities the static cache leaves alone
     (banners, a bell, a conduit, a lectern, an enchanting table), armour with a trim, equipment layers and items whose
     models are built from parts, and in front of them a row of floating dropped items (GALLERY_ITEMS). Mobs have NoAI,
     the undead helmets (no burning)."""
@@ -587,8 +587,9 @@ def main() -> None:
     # Not a benchmark scene: the self-check compares vanilla and Mobium on every cached type here.
     scene("cache_gallery", "Every type the static cache handles, for pixel comparisons",
           (X0 + 0.5, GROUND + 2.6, Z0 + 0.5, 0, 12), cache_gallery())
-    # Not a benchmark scene either: the self-check's Module 2 checks (block entities, armour, layers, item models).
-    scene("part_gallery", "Models the GPU part transform expands besides the mob pens, for pixel comparisons",
+    # Not a benchmark scene either: the self-check's vertex offload checks (block entities, armour, layers, item
+    # models).
+    scene("part_gallery", "Models vertex offload expands besides the mob pens, for pixel comparisons",
           (X0 + 0.5, GROUND + 2.2, Z0 + 0.5, 0, 10), part_gallery())
 
 

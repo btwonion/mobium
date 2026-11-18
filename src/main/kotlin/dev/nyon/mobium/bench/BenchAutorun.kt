@@ -20,12 +20,13 @@ import java.time.format.DateTimeFormatter
  * An unattended benchmark round (`benchmark/bench_round.py`): when `<game dir>/mobium-bench/autorun` exists at client
  * start, Mobium reads and deletes it, puts the fullscreen window on the monitor whose name contains `display` at once,
  * opens its world (unless the launcher's quick play already did), runs each `command` line in turn as a client command
- * (`mobium suite`, `mobium gatec`, …), waiting for each plan to finish, then writes `autorun-done` next to it and quits
- * the game. The first command waits until the window is on that monitor; the move is repeated until it is, and a window
- * that never gets there stops the autorun before it measures anything. File format, one `key=value` per line: `world=`,
- * `display=` (optional), any number of `command=`. Nothing happens without the file. The log also notes each monitor the
- * window appears on and each time it loses or regains focus or is minimized: vanilla then caps the frame rate
- * (`FrameRecorder` counts those frames per run). Ticked once per client tick on the render thread.
+ * (`mobium suite`, `mobium compare vertex_offload`, …), waiting for each plan to finish, then writes `autorun-done`
+ * next to it and quits the game. The first command waits until the window is on that monitor; the move is repeated
+ * until it is, and a window that never gets there stops the autorun before it measures anything. File format, one
+ * `key=value` per line: `world=`, `display=` (optional), any number of `command=`. Nothing happens without the file.
+ * The log also notes each monitor the window appears on and each time it loses or regains focus or is minimized:
+ * vanilla then caps the frame rate (`FrameRecorder` counts those frames per run). Ticked once per client tick on the
+ * render thread.
  */
 object BenchAutorun {
     private const val REQUEST = "autorun"

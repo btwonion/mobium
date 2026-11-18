@@ -1,8 +1,8 @@
 package dev.nyon.mobium.bench
 
 import dev.nyon.mobium.cache.StaticCache
-import dev.nyon.mobium.parts.ExpandPass
-import dev.nyon.mobium.parts.PartTransform
+import dev.nyon.mobium.offload.ExpandPass
+import dev.nyon.mobium.offload.PartTransform
 import dev.nyon.mobium.core.Capabilities
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.CompatMod
@@ -57,14 +57,16 @@ object BenchEnvironment {
 
     /**
      * The setup name for file names and `summary.csv`: base renderer, Iris with an active pack, EMF, Fresh Animations
-     * if selected, and the Mobium features that are on (`nodraw` while the static cache skips its draw calls, Gate B's
-     * measurement of what the cached objects cost without drawing them; `parts` while Module 2 runs).
+     * if selected, and the Mobium features that are on (`nodraw` while the static cache skips its draw calls,
+     * `/mobium cachecost`'s measurement of what the cached objects cost without drawing them; `offload` while vertex
+     * offload runs).
      */
     fun detectSetup(): String {
         val parts = ArrayList<String>()
         parts += setupWithoutMobium()
-        // Before the cache's suffixes, which Gate A and B look for at the end; only the vertex stage gets its own name.
-        if (PartTransform.active) parts += if (ExpandPass.stage == ExpandPass.STAGE_VERTEX) "parts-vertex" else "parts"
+        // Before the cache's suffixes, which `/mobium compare` and `cachecost` look for at the end; only the vertex
+        // stage gets its own name.
+        if (PartTransform.active) parts += if (ExpandPass.stage == ExpandPass.STAGE_VERTEX) "offload-vertex" else "offload"
         if (StaticCache.active) parts += "cache"
         if (StaticCache.active && StaticCache.skipDraws) parts += "nodraw"
         return parts.joinToString("+")

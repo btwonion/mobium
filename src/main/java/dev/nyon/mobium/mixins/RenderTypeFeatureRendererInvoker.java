@@ -12,8 +12,8 @@ import java.util.List;
 
 /**
  * Lets the cache run a feature renderer's {@code buildGroup} (for models: vanilla's {@code prepareModel} per submit)
- * outside the frame, while {@link RenderTypeFeatureRendererMixin} redirects its vertices, and Module 2's items ask for
- * a render type's builder as {@code ItemFeatureRenderer} does. No behaviour change.
+ * outside the frame, while {@link RenderTypeFeatureRendererMixin} redirects its vertices, and vertex offload's items
+ * ask for a render type's builder as {@code ItemFeatureRenderer} does. No behaviour change.
  */
 @Mixin(RenderTypeFeatureRenderer.class)
 public interface RenderTypeFeatureRendererInvoker {

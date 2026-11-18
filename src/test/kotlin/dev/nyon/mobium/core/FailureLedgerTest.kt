@@ -11,8 +11,8 @@ class FailureLedgerTest {
         val ledger = FailureLedger()
         assertTrue(ledger.moduleFailed(Module.STATIC_CACHE, "first"))
         assertFalse(ledger.moduleFailed(Module.STATIC_CACHE, "second"))
-        assertTrue(ledger.moduleFailed(Module.PART_TRANSFORM, "other module"))
-        assertEquals(mapOf(Module.STATIC_CACHE to "first", Module.PART_TRANSFORM to "other module"), ledger.failures)
+        assertTrue(ledger.moduleFailed(Module.VERTEX_OFFLOAD, "other module"))
+        assertEquals(mapOf(Module.STATIC_CACHE to "first", Module.VERTEX_OFFLOAD to "other module"), ledger.failures)
     }
 
     @Test
@@ -30,7 +30,7 @@ class FailureLedgerTest {
     @Test
     fun `clear forgets everything`() {
         val ledger = FailureLedger()
-        ledger.moduleFailed(Module.PART_TRANSFORM, "x")
+        ledger.moduleFailed(Module.VERTEX_OFFLOAD, "x")
         repeat(FailureLedger.TYPE_FAILURE_LIMIT) { ledger.typeFailed(Module.STATIC_CACHE, "signs") }
         ledger.clear()
         assertTrue(ledger.failures.isEmpty())

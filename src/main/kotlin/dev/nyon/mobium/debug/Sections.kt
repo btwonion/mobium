@@ -85,7 +85,7 @@ object Sections {
     var inLevelPrepare = false
 
     /**
-     * Measurement for Module 2 (dev self-check only): model parts and items write no vertices while set, so they
+     * Measurement for vertex offload (dev self-check only): model parts and items write no vertices while set, so they
      * vanish and the timers show what the vertex work costs (`ModelPartMixin`, `compat.emf.EmfModelPartMixin`,
      * `ItemFeatureRendererMixin`).
      */

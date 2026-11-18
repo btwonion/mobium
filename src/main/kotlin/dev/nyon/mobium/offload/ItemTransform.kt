@@ -1,4 +1,4 @@
-package dev.nyon.mobium.parts
+package dev.nyon.mobium.offload
 
 import com.mojang.blaze3d.vertex.BufferBuilder
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
@@ -18,21 +18,21 @@ import net.minecraft.util.ARGB
 import org.lwjgl.system.MemoryUtil
 
 /**
- * Module 2 for items (docs/architecture.md): an item submit's baked quads are not written vertex by vertex on the CPU;
- * [prepare] replaces `ItemFeatureRenderer.prepareMainSubmit` and, per run of quads with the same render type, fetches
- * the builder once, reserves the run's vertices and writes one part record and one record for the run, from the
+ * Vertex offload for items (docs/architecture.md): an item submit's baked quads are not written vertex by vertex on the
+ * CPU; [prepare] replaces `ItemFeatureRenderer.prepareMainSubmit` and, per run of quads with the same render type,
+ * fetches the builder once, reserves the run's vertices and writes one part record and one record for the run, from the
  * list's mesh ([ItemMeshes]). The expand pass writes the vertices as the path that would have drawn them
  * (docs/vanilla-notes.md §25): vanilla's `VertexConsumer.putBakedQuad` (also while Iris extends the format, where
  * Sodium hands its quads to vanilla's; on NeoForge with the quad's baked normal), or with Sodium and the entity format
  * Sodium's `BakedModelEncoder`.
  *
  * Taken over: submits without the special glint (the plain and the standard glint write the same vertices), from
- * entity types Module 2 does not exclude, whose quad list has a mesh, run by run where the builder is a staged builder
- * in the entity format or Iris's, unsorted. A run that cannot be taken is written the vanilla way in its place; a
- * submit that cannot be taken at all returns false and vanilla writes it. Render thread only.
+ * entity types vertex offload does not exclude, whose quad list has a mesh, run by run where the builder is a staged
+ * builder in the entity format or Iris's, unsorted. A run that cannot be taken is written the vanilla way in its place;
+ * a submit that cannot be taken at all returns false and vanilla writes it. Render thread only.
  */
 object ItemTransform {
-    /** `parts.items`; set by `PartTransform.configure`. */
+    /** `offload.items`; set by `PartTransform.configure`. */
     @JvmField
     var enabled = true
 
@@ -104,7 +104,7 @@ object ItemTransform {
 
     /**
      * Reserves the vertices of [quads] from [start] to [end] in [consumer] and writes their records, if [consumer] is a
-     * staged builder Module 2 can write for; false leaves the run to the caller.
+     * staged builder vertex offload can write for; false leaves the run to the caller.
      */
     private fun takeRun(
         consumer: VertexConsumer,
@@ -144,7 +144,7 @@ object ItemTransform {
         val runQuads = end - start
         if (!PartTransform.fits(target, runQuads * 4)) return false
 
-        // Everything checked: from here on the run is Module 2's.
+        // Everything checked: from here on the run is vertex offload's.
         val offset = PartTransform.reserve(consumer, runQuads, iris)
         val vertexSize = format.vertexSize
         val drawBytes = target.`mobium$drawBytesBefore`() + offset
@@ -154,19 +154,19 @@ object ItemTransform {
         val slot = batch.slotOf(draw)
         batch.reserved(slot).add(drawBytes, drawBytes + runQuads * 4 * vertexSize)
         val address = batch.addPart()
-        val extra = PartBatch.FLAG_ITEM or if (sodiumPath) PartBatch.FLAG_ITEM_SODIUM else 0
+        val extra = OffloadBatch.FLAG_ITEM or if (sodiumPath) OffloadBatch.FLAG_ITEM_SODIUM else 0
         val light = submit.lightCoords()
         val flags = PartTransform.writePart(address, pose, light, submit.overlayCoords(), -1, null, iris, slot, extra)
-        for (t in 0 until tints.size) MemoryUtil.memPutInt(address + (PartBatch.P_TINTS + t) * 4L, ARGB.toABGR(tints[t]))
+        for (t in 0 until tints.size) MemoryUtil.memPutInt(address + (OffloadBatch.P_TINTS + t) * 4L, ARGB.toABGR(tints[t]))
         batch.addCube(mesh.firstQuad + start, runQuads, partIndex, firstVertex)
         PartTransform.items++
         PartTransform.itemQuads += runQuads
 
-        if (PartTransform.validating || PartCheck.sample(PartCheck.path(flags, false, ExpandPass.lastStage, ExpandPass.lastArithmetic))) {
+        if (PartTransform.validating || OffloadCheck.sample(OffloadCheck.path(flags, false, ExpandPass.lastStage, ExpandPass.lastArithmetic))) {
             // Compared with the CPU's vertices: the run is written once more, the vanilla way, into the check's builder.
-            PartValidation.begin(staged, draw, firstVertex, runQuads * 4, format, null)
+            OffloadValidation.begin(staged, draw, firstVertex, runQuads * 4, format, null)
             try {
-                val check = PartValidation.consumer()
+                val check = OffloadValidation.consumer()
                 for (i in start until end) {
                     instance.setColor(layerColor(submit.tintLayers(), quads[i]))
                     check.putBakedQuad(pose, quads[i], instance)

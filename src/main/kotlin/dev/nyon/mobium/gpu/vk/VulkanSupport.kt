@@ -8,34 +8,34 @@ import com.mojang.renderpearl.backend.vulkan.init.VulkanFeature
 import dev.nyon.mobium.Mobium
 import dev.nyon.mobium.core.Compat
 import dev.nyon.mobium.core.Module
-import dev.nyon.mobium.parts.ExpandPass
+import dev.nyon.mobium.offload.ExpandPass
 import org.lwjgl.vulkan.VK10
 
 /**
- * What Module 2 needs from Minecraft's Vulkan backend beyond Renderpearl's API (docs/vanilla-notes.md §18, §23):
+ * What vertex offload needs from Minecraft's Vulkan backend beyond Renderpearl's API (docs/vanilla-notes.md §18, §23):
  * storage and transfer source usage on vertex buffers, which the expand pass writes and the check copies out, and,
  * where the GPU has them, 64-bit floats in shaders through an optional feature set of Mobium's own ([FLOAT64]);
  * without them the expand pass computes in integers (§26). Three mixins in `mixins/vulkan` provide them, each
- * `require = 0`: when the device or the usage hook does not apply, [available] stays false and Module 2 stays off on
- * Vulkan with a reason instead of the game crashing; without the feature set hook it runs with integers.
+ * `require = 0`: when the device or the usage hook does not apply, [available] stays false and vertex offload stays off
+ * on Vulkan with a reason instead of the game crashing; without the feature set hook it runs with integers.
  *
- * Vanilla's device and buffers change only in sessions where Module 2 can run on Vulkan: never while an installed mod
- * keeps it on the vanilla path ([heldBack]).
+ * Vanilla's device and buffers change only in sessions where vertex offload can run on Vulkan: never while an installed
+ * mod keeps it on the vanilla path ([heldBack]).
  */
 object VulkanSupport {
     /**
      * Why Mobium leaves vanilla's feature sets and buffer usages alone in this session, or null: an installed mod
-     * keeps Module 2 on the vanilla path (`Compat.keepsOff`), or the device is created before the mods are detected.
-     * Decided once, when the backend first asks for the optional feature sets.
+     * keeps vertex offload on the vanilla path (`Compat.keepsOff`), or the device is created before the mods are
+     * detected. Decided once, when the backend first asks for the optional feature sets.
      */
     private val heldBack: String? by lazy {
         if (!Compat.detected) "the device was created before the mods were detected"
-        else Compat.keepsOff(Module.PART_TRANSFORM)?.let { "$it is installed" }
+        else Compat.keepsOff(Module.VERTEX_OFFLOAD)?.let { "$it is installed" }
     }
 
     /**
-     * `-Dmobium.parts.arithmetic=integer`: the session runs as on a GPU without `shaderFloat64`. Mobium does not offer
-     * [FLOAT64], so the device is created without the feature and a shader that needed it would be refused.
+     * `-Dmobium.offload.arithmetic=integer`: the session runs as on a GPU without `shaderFloat64`. Mobium does not
+     * offer [FLOAT64], so the device is created without the feature and a shader that needed it would be refused.
      */
     private val integerOnly: Boolean
         get() = ExpandPass.integerOnly
@@ -45,7 +45,7 @@ object VulkanSupport {
      * first use, which only the Vulkan hooks make.
      */
     val FLOAT64: FeatureSet by lazy {
-        FeatureSet("Mobium part transform (shaderFloat64)", setOf(), setOf(VulkanFeature(VulkanFeatureSets.VK10_FEATURES_STRUCT, "shaderFloat64")))
+        FeatureSet("Mobium vertex offload (shaderFloat64)", setOf(), setOf(VulkanFeature(VulkanFeatureSets.VK10_FEATURES_STRUCT, "shaderFloat64")))
     }
 
     /** The `VulkanDevice` constructor hook ran. */
@@ -67,7 +67,7 @@ object VulkanSupport {
     var storageVertexBuffers = false
         private set
 
-    /** Module 2's expand pass can run on this Vulkan device, with doubles ([float64]) or with integers. */
+    /** Vertex offload's expand pass can run on this Vulkan device, with doubles ([float64]) or with integers. */
     val available: Boolean
         get() = heldBack == null && storageUsage
 
@@ -77,11 +77,14 @@ object VulkanSupport {
         !deviceSeen -> "the device hook did not apply"
         !storageUsage -> "the storage usage hook did not apply"
         float64 -> "available, with 64-bit floats in shaders"
-        integerOnly -> "available, with integer arithmetic (-Dmobium.parts.arithmetic=integer)"
+        integerOnly -> "available, with integer arithmetic (-Dmobium.offload.arithmetic=integer)"
         else -> "available, with integer arithmetic (no shaderFloat64: the GPU lacks it, or the feature set hook did not apply)"
     }
 
-    /** `VulkanFeatureSets.optionalFeatureSets()`: adds [FLOAT64] unless Module 2 is [heldBack] or runs [integerOnly]. */
+    /**
+     * `VulkanFeatureSets.optionalFeatureSets()`: adds [FLOAT64] unless vertex offload is [heldBack] or runs
+     * [integerOnly].
+     */
     @JvmStatic
     fun optionalFeatureSets(sets: Set<FeatureSet>): Set<FeatureSet> {
         if (heldBack != null || integerOnly) return sets
@@ -92,7 +95,7 @@ object VulkanSupport {
 
     /**
      * The `VulkanDevice` constructor ends: which feature sets it enabled decides the expand pass's arithmetic, and
-     * unless Module 2 is [heldBack] vertex buffers are storage buffers from here on.
+     * unless vertex offload is [heldBack] vertex buffers are storage buffers from here on.
      */
     @JvmStatic
     fun onDeviceCreated(enabled: FeatureSet) {
@@ -103,7 +106,7 @@ object VulkanSupport {
             storageUsage = VulkanConst.bufferUsageToVk(GpuBuffer.USAGE_VERTEX) and VK10.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT != 0
             if (!storageUsage) storageVertexBuffers = false
         }
-        Mobium.LOGGER.info("Mobium part transform on Vulkan: {}", describe())
+        Mobium.LOGGER.info("Mobium vertex offload on Vulkan: {}", describe())
     }
 
     /** `VulkanConst.bufferUsageToVk`'s result [vkUsage] for Renderpearl's [usage]. */

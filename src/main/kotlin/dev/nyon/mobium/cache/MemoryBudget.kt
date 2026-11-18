@@ -3,8 +3,8 @@ package dev.nyon.mobium.cache
 import it.unimi.dsi.fastutil.doubles.DoubleArrays
 
 /**
- * Module 1's memory budget (`cache.memoryBudgetMb`, default 128 MB), without Minecraft classes, unit-tested. It counts
- * the cached vertex data, which lives once in a GPU buffer and once in system memory (the CPU copy is what the
+ * The static cache's memory budget (`cache.memoryBudgetMb`, default 128 MB), without Minecraft classes, unit-tested. It
+ * counts the cached vertex data, which lives once in a GPU buffer and once in system memory (the CPU copy is what the
  * camera-relative uploads start from).
  *
  * Above the budget the farthest objects are evicted until [usedBytes] is at most [TARGET_FRACTION] of it; evicted

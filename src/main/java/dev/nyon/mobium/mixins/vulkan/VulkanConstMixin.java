@@ -8,11 +8,11 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
- * Module 2 on Vulkan: its expand pass writes into vanilla's vertex buffers as storage buffers and its check copies
- * them out, usages Renderpearl never asks for ({@code docs/vanilla-notes.md} §18). In sessions where Module 2 can run
- * on Vulkan, vertex buffers also get {@code VK_BUFFER_USAGE_STORAGE_BUFFER_BIT} and
- * {@code VK_BUFFER_USAGE_TRANSFER_SRC_BIT}; otherwise the usage is vanilla's. {@code require = 0}: without the hook
- * {@code VulkanSupport} sees no storage usage and Module 2 stays off on Vulkan.
+ * Vertex offload on Vulkan: its expand pass writes into vanilla's vertex buffers as storage buffers and its check
+ * copies them out, usages Renderpearl never asks for ({@code docs/vanilla-notes.md} §18). In sessions where vertex
+ * offload can run on Vulkan, vertex buffers also get {@code VK_BUFFER_USAGE_STORAGE_BUFFER_BIT} and {@code
+ * VK_BUFFER_USAGE_TRANSFER_SRC_BIT}; otherwise the usage is vanilla's. {@code require = 0}: without the hook {@code
+ * VulkanSupport} sees no storage usage and vertex offload stays off on Vulkan.
  */
 @Mixin(VulkanConst.class)
 public class VulkanConstMixin {
